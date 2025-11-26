@@ -1,0 +1,56 @@
+# --- General ---
+.DS_Store
+Thumbs.db
+*.log
+
+# --- VS Code ---
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+*.code-workspace
+
+# --- Environment Variables (Security) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+*.env.*
+
+# --- Python / Django (Backend) ---
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/venv/
+backend/.venv/
+backend/env/
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/media/
+backend/staticfiles/
+backend/.coverage
+backend/htmlcov/
+
+# --- Node.js / Next.js (Frontend) ---
+frontend/node_modules/
+frontend/.next/
+frontend/build/
+frontend/dist/
+frontend/.vercel/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnp.*
+
+# --- Docker / Infrastructure ---
+postgres_data/
+.docker/
+docker-compose.override.yml
+
+# --- Testing / Coverage ---
+coverage/
+*.lcov
+.nyc_output/
