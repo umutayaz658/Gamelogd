@@ -1,18 +1,8 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.conf import settings
 
-class User(AbstractUser):
-    ROLE_CHOICES = (
-        ('gamer', 'Gamer'),
-        ('dev', 'Developer'),
-        ('investor', 'Investor'),
-    )
-    bio = models.TextField(blank=True)
-    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='gamer')
-
-    def __str__(self):
-        return self.username
+# User and Interest are now in api.models
+# We import them or use settings.AUTH_USER_MODEL where appropriate
 
 class Game(models.Model):
     title = models.CharField(max_length=255)
@@ -24,7 +14,7 @@ class Game(models.Model):
         return self.title
 
 class Review(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='reviews')
     rating = models.PositiveSmallIntegerField(choices=[(i, str(i)) for i in range(1, 6)])
     text_comment = models.TextField()
@@ -37,21 +27,21 @@ class Review(models.Model):
         return f"{self.user.username} - {self.game.title} ({self.rating}/5)"
 
 class Post(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='posts')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     content = models.TextField()
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
+    
+    # Media Support
+    media_file = models.FileField(upload_to='posts/media/', null=True, blank=True)
+    media_type = models.CharField(max_length=20, choices=[('image', 'Image'), ('video', 'Video')], null=True, blank=True)
+    gif_url = models.URLField(max_length=500, null=True, blank=True)
+    
+    # Poll Support
+    poll_options = models.JSONField(null=True, blank=True, default=list)
+    
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Post by {self.user.username} at {self.timestamp}"
 
-class Follow(models.Model):
-    follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name='following')
-    following = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followers')
-    timestamp = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        unique_together = ('follower', 'following')
-
-    def __str__(self):
-        return f"{self.follower.username} follows {self.following.username}"
