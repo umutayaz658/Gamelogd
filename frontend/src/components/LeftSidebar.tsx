@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash } from 'lucide-react';
+import { Search, Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { useLogModal } from '@/context/LogModalContext';
 import SidebarSearch from './SidebarSearch';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
@@ -23,6 +24,7 @@ interface Notification {
 export default function LeftSidebar() {
     const { user } = useAuth();
     const { unreadMessages, unreadNotifications, markMessagesRead, markNotificationsRead } = useNotifications();
+    const { openLogModal } = useLogModal();
 
     const [isNotifMode, setIsNotifMode] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -136,16 +138,38 @@ export default function LeftSidebar() {
                 </div>
             ) : (
                 // --- VIEW B: STANDARD MENU ---
-                <nav className="flex flex-col gap-1">
-                    {menuItems.map((item) => {
-                        const isButton = item.href === '#';
+                <nav className="flex flex-col gap-1 h-full">
+                    <div className="flex-1 flex flex-col gap-1">
+                        {menuItems.map((item) => {
+                            const isButton = item.href === '#';
+                            const extraClass = (item as any).className || '';
 
-                        if (isButton) {
+                            if (isButton) {
+                                return (
+                                    <button
+                                        key={item.label}
+                                        onClick={item.onClick}
+                                        className={`flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group w-full text-left relative ${extraClass}`}
+                                    >
+                                        <div className="relative">
+                                            <item.icon className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                                            {item.badge && item.badge > 0 ? (
+                                                <span className="absolute -top-1 -right-1 h-4 w-4 bg-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-zinc-950">
+                                                    {item.badge > 9 ? '9+' : item.badge}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <span className="font-medium text-lg">{item.label}</span>
+                                    </button>
+                                );
+                            }
+
                             return (
-                                <button
+                                <Link
                                     key={item.label}
+                                    href={item.href}
                                     onClick={item.onClick}
-                                    className="flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group w-full text-left relative"
+                                    className={`flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group relative ${extraClass}`}
                                 >
                                     <div className="relative">
                                         <item.icon className="h-6 w-6 group-hover:scale-110 transition-transform" />
@@ -156,29 +180,19 @@ export default function LeftSidebar() {
                                         ) : null}
                                     </div>
                                     <span className="font-medium text-lg">{item.label}</span>
-                                </button>
+                                </Link>
                             );
-                        }
+                        })}
 
-                        return (
-                            <Link
-                                key={item.label}
-                                href={item.href}
-                                onClick={item.onClick}
-                                className="flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group relative"
-                            >
-                                <div className="relative">
-                                    <item.icon className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                                    {item.badge && item.badge > 0 ? (
-                                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-zinc-950">
-                                            {item.badge > 9 ? '9+' : item.badge}
-                                        </span>
-                                    ) : null}
-                                </div>
-                                <span className="font-medium text-lg">{item.label}</span>
-                            </Link>
-                        );
-                    })}
+                        {/* Log Game CTA Button - Solid Green, Below Settings with Spacing */}
+                        <button
+                            onClick={openLogModal}
+                            className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
+                        >
+                            <PlusCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                            <span className="font-bold text-lg">Log Game</span>
+                        </button>
+                    </div>
                 </nav>
             )}
         </div>

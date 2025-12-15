@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import Switch from "@/components/Switch";
@@ -9,6 +9,14 @@ import { useAuth } from "@/context/AuthContext";
 import { User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe, FileText, HelpCircle, ChevronRight, ExternalLink, MessageCircle, Bug, Zap, Play, Loader2 } from 'lucide-react';
 
 export default function SettingsPage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-zinc-500">Loading settings...</div>}>
+            <SettingsContent />
+        </Suspense>
+    );
+}
+
+function SettingsContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();

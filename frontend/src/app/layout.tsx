@@ -4,6 +4,8 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import MessagesDrawer from '@/components/MessagesDrawer';
+import { LogModalProvider } from '@/context/LogModalContext';
+import ClientLogModalWrapper from '@/components/ClientLogModalWrapper';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,8 +24,11 @@ export default function RootLayout({
             <body className={`${inter.className} bg-zinc-950 text-zinc-100 antialiased`} suppressHydrationWarning={true}>
                 <AuthProvider>
                     <NotificationProvider>
-                        {children}
-                        <MessagesDrawer />
+                        <LogModalProvider>
+                            {children}
+                            <MessagesDrawer />
+                            <ClientLogModalWrapper />
+                        </LogModalProvider>
                     </NotificationProvider>
                 </AuthProvider>
             </body>
