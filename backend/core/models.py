@@ -28,7 +28,7 @@ class Review(models.Model):
 
 class Post(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
-    content = models.TextField()
+    content = models.TextField(blank=True)
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
     
     # Media Support

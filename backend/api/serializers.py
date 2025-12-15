@@ -132,6 +132,13 @@ class PostSerializer(serializers.ModelSerializer):
 
     def validate_poll_options(self, value):
         if value:
+            if isinstance(value, str):
+                import json
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    raise serializers.ValidationError("Poll options must be a valid JSON list.")
+
             if not isinstance(value, list):
                 raise serializers.ValidationError("Poll options must be a list of strings.")
             if len(value) < 2:
