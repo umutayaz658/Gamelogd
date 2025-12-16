@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from core.models import Game, Review, Post
+from core.models import Game, Post
 from api.models import User, Interest, Follow, Notification
 
 @admin.register(Interest)
@@ -48,10 +48,7 @@ class PostAdmin(admin.ModelAdmin):
     def content_preview(self, obj):
         return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
 
-@admin.register(Review)
-class ReviewAdmin(admin.ModelAdmin):
-    list_display = ('user', 'game', 'rating', 'timestamp')
-    list_filter = ('rating', 'timestamp')
+
 
 @admin.register(Follow)
 class FollowAdmin(admin.ModelAdmin):

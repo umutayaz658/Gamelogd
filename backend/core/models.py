@@ -13,18 +13,6 @@ class Game(models.Model):
     def __str__(self):
         return self.title
 
-class Review(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
-    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='reviews')
-    rating = models.PositiveSmallIntegerField(choices=[(i, str(i)) for i in range(1, 6)])
-    text_comment = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('user', 'game')
-
-    def __str__(self):
-        return f"{self.user.username} - {self.game.title} ({self.rating}/5)"
 
 class Post(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')

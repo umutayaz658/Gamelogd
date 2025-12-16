@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post
+from core.models import Game, Post
 from api.models import User, Interest, Follow, Notification, Conversation, Message
 
 RESERVED_USERNAMES = [
@@ -110,15 +110,6 @@ class GameSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id']
         read_only_fields = ['id']
 
-class ReviewSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    game = GameSerializer(read_only=True)
-    game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
-
-    class Meta:
-        model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'text_comment', 'timestamp']
-        read_only_fields = ['id', 'user', 'timestamp']
 
 
 
