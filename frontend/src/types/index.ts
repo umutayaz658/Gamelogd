@@ -21,6 +21,19 @@ export interface Game {
     igdb_id?: number;
 }
 
+export interface Review {
+    id: number;
+    user: User;
+    game: Game;
+    rating: number;
+    content: string;
+    is_liked: boolean;
+    is_completed: boolean;
+    contains_spoilers: boolean;
+    timestamp: string;
+    type?: 'review';
+}
+
 export interface Post {
     id: number;
     user: User;
@@ -34,7 +47,10 @@ export interface Post {
     likes?: number;
     comments?: number;
     is_liked?: boolean;
+    type?: 'post';
 }
+
+export type FeedItem = Post | Review;
 
 export interface Notification {
     id: number;

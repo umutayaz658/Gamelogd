@@ -28,37 +28,54 @@ export default function ExplorePage() {
         tabs = [...tabs, "Esports", "Indie", "RPG"];
     }
 
-    const [posts, setPosts] = useState([]);
+    const [posts, setPosts] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Fetch posts on mount
+    // Fetch feed on mount
     useEffect(() => {
-        const fetchPosts = async () => {
+        const fetchFeed = async () => {
             setIsLoading(true);
             try {
-                const response = await api.get('/posts/');
-                setPosts(response.data);
+                const [postsRes, reviewsRes] = await Promise.all([
+                    api.get('/posts/'),
+                    api.get('/reviews/')
+                ]);
+
+                const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
+                const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
+
+                const combined = [...posts, ...reviews].sort((a: any, b: any) =>
+                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+
+                setPosts(combined);
             } catch (error) {
-                console.error("Failed to fetch posts:", error);
+                console.error("Failed to fetch feed:", error);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchPosts();
+        fetchFeed();
     }, []);
 
-    // Filter posts based on active tab (Client-side filtering for now)
-    const getFilteredPosts = () => {
+    // Filter items based on active tab (Client-side filtering for now)
+    const getFilteredItems = () => {
         if (activeTab === 'For You') return posts;
 
         // Simple keyword matching for demo purposes
-        // In a real app, you'd likely pass a query param to the API: /posts/?category=rpg
         const term = activeTab.toLowerCase();
-        return posts.filter((post: any) =>
-            post.content.toLowerCase().includes(term) ||
-            (post.user.username && post.user.username.toLowerCase().includes(term))
-        );
+        return posts.filter((item: any) => {
+            const content = item.content || '';
+            const username = item.user?.username || '';
+            const gameTitle = item.game?.title || ''; // Handle Review game title
+
+            return (
+                content.toLowerCase().includes(term) ||
+                username.toLowerCase().includes(term) ||
+                gameTitle.toLowerCase().includes(term)
+            );
+        });
     };
 
     return (
@@ -104,7 +121,7 @@ export default function ExplorePage() {
                                         <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
                                     </div>
                                 ) : (
-                                    <Feed initialPosts={getFilteredPosts()} />
+                                    <Feed initialItems={getFilteredItems()} />
                                 )}
                             </div>
 

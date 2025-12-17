@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from core.models import Game, Post
+from core.models import Game, Review, Post
 from api.models import User, Interest, Follow, Notification
 
 @admin.register(Interest)
@@ -58,3 +58,8 @@ class FollowAdmin(admin.ModelAdmin):
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ('recipient', 'actor', 'verb', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ('user', 'game', 'rating', 'timestamp')
+    list_filter = ('timestamp', 'rating')

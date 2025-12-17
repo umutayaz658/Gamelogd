@@ -4,9 +4,9 @@ from rest_framework import viewsets, permissions, filters, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
-from core.models import Game, Post
+from core.models import Game, Review, Post
 from api.models import User, Notification
-from .serializers import UserSerializer, GameSerializer, PostSerializer, RegisterSerializer
+from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -123,6 +123,21 @@ class GameViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ['title']
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        queryset = Review.objects.all()
+        username = self.request.query_params.get('username', None)
+        if username is not None:
+            queryset = queryset.filter(user__username=username)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class PostViewSet(viewsets.ModelViewSet):

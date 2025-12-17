@@ -48,7 +48,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
     const [topGames, setTopGames] = useState<(Game | null)[]>([null, null, null, null]);
-    const [userPosts, setUserPosts] = useState([]);
+    const [userPosts, setUserPosts] = useState<any[]>([]);
     const [isPostsLoading, setIsPostsLoading] = useState(true);
 
     // Follow State
@@ -98,21 +98,32 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         }
     }, [profileUser]);
 
-    // Fetch User Posts
+    // Fetch User Feed (Posts + Reviews)
     useEffect(() => {
         if (username) {
-            const fetchUserPosts = async () => {
+            const fetchUserFeed = async () => {
                 setIsPostsLoading(true);
                 try {
-                    const res = await api.get(`/posts/?username=${username}`);
-                    setUserPosts(res.data);
+                    const [postsRes, reviewsRes] = await Promise.all([
+                        api.get(`/posts/?username=${username}`),
+                        api.get(`/reviews/?username=${username}`)
+                    ]);
+
+                    const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
+                    const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
+
+                    const combined = [...posts, ...reviews].sort((a: any, b: any) =>
+                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    );
+
+                    setUserPosts(combined);
                 } catch (err) {
-                    console.error("Failed to fetch user posts:", err);
+                    console.error("Failed to fetch user feed:", err);
                 } finally {
                     setIsPostsLoading(false);
                 }
             };
-            fetchUserPosts();
+            fetchUserFeed();
         }
     }, [username]);
 
@@ -325,7 +336,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                         </h1>
                                         {isOwnProfile ? (
                                             <Link
-                                                href="/profile/edit"
+                                                href="/settings?tab=account"
                                                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-all text-sm font-medium"
                                             >
                                                 <Pencil className="h-3.5 w-3.5" />
@@ -545,14 +556,34 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                         <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
                                     </div>
                                 ) : userPosts.length > 0 ? (
-                                    <Feed initialPosts={userPosts} />
+                                    <Feed initialItems={userPosts} />
                                 ) : (
                                     <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
                                         No activity yet.
                                     </div>
                                 )
                             )}
-                            {activeTab !== 'activity' && (
+
+                            {activeTab === 'reviews' && (
+                                isPostsLoading ? (
+                                    <div className="flex justify-center py-12">
+                                        <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+                                    </div>
+                                ) : (
+                                    (() => {
+                                        const reviews = userPosts.filter((p: any) => p.type === 'review');
+                                        return reviews.length > 0 ? (
+                                            <Feed initialItems={reviews} />
+                                        ) : (
+                                            <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                No reviews yet.
+                                            </div>
+                                        );
+                                    })()
+                                )
+                            )}
+
+                            {activeTab !== 'activity' && activeTab !== 'reviews' && (
                                 <div className="py-12 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
                                     <span className="capitalize">{activeTab}</span> content coming soon...
                                 </div>
