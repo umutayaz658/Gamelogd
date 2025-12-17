@@ -8,24 +8,35 @@ import Feed from "@/components/Feed";
 import api from '@/lib/api';
 
 export default function Home() {
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchPosts = async () => {
+    const fetchFeed = async () => {
       try {
-        const response = await api.get('/posts/');
-        setPosts(response.data);
+        const [postsRes, reviewsRes] = await Promise.all([
+          api.get('/posts/'),
+          api.get('/reviews/')
+        ]);
+
+        const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
+        const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
+
+        const combined = [...posts, ...reviews].sort((a: any, b: any) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+
+        setPosts(combined);
       } catch (err) {
-        console.error('Failed to fetch posts:', err);
-        setError('Failed to load posts. Please try again later.');
+        console.error('Failed to fetch feed:', err);
+        setError('Failed to load feed. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPosts();
+    fetchFeed();
   }, []);
 
   return (
@@ -50,7 +61,7 @@ export default function Home() {
                 {error}
               </div>
             ) : (
-              <Feed initialPosts={posts} />
+              <Feed initialItems={posts} />
             )}
           </div>
 

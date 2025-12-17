@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, GameViewSet, PostViewSet, RegisterView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, LibraryViewSet
+from .views import UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, LibraryViewSet
 from rest_framework.authtoken.views import obtain_auth_token
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
 router.register(r'games', GameViewSet)
+router.register(r'reviews', ReviewViewSet)
 
 router.register(r'posts', PostViewSet)
 router.register(r'notifications', NotificationViewSet, basename='notification')

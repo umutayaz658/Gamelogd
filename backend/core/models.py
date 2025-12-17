@@ -13,6 +13,26 @@ class Game(models.Model):
     def __str__(self):
         return self.title
 
+class Review(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='reviews')
+    rating = models.DecimalField(max_digits=3, decimal_places=1)
+    content = models.TextField(blank=True)
+    
+    # Flags
+    is_liked = models.BooleanField(default=False)
+    is_completed = models.BooleanField(default=False)
+    contains_spoilers = models.BooleanField(default=False)
+    
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'game')
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.game.title} ({self.rating})"
+
 
 class Post(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')

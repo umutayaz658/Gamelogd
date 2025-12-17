@@ -1,25 +1,25 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Post } from '@/types';
+import { Post, FeedItem } from '@/types';
 
 interface FeedContextType {
-    posts: Post[];
-    setPosts: (posts: Post[]) => void;
-    addFeedItem: (post: Post) => void;
+    items: FeedItem[];
+    setItems: (items: FeedItem[]) => void;
+    addFeedItem: (item: FeedItem) => void;
 }
 
 const FeedContext = createContext<FeedContextType | undefined>(undefined);
 
 export function FeedProvider({ children }: { children: ReactNode }) {
-    const [posts, setPosts] = useState<Post[]>([]);
+    const [items, setItems] = useState<FeedItem[]>([]);
 
-    const addFeedItem = (post: Post) => {
-        setPosts((prevPosts) => [post, ...prevPosts]);
+    const addFeedItem = (item: FeedItem) => {
+        setItems((prevItems) => [item, ...prevItems]);
     };
 
     return (
-        <FeedContext.Provider value={{ posts, setPosts, addFeedItem }}>
+        <FeedContext.Provider value={{ items, setItems, addFeedItem }}>
             {children}
         </FeedContext.Provider>
     );
