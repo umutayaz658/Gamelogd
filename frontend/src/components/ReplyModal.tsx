@@ -1,6 +1,7 @@
 'use client';
 
 import { useReplyModal } from '@/context/ReplyModalContext';
+import { useFeed } from '@/context/FeedContext';
 import { X, Loader2, ImagePlay, Smile, BarChart2, Plus, Trash2, FileImage } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { getImageUrl } from '@/lib/utils';
@@ -9,9 +10,11 @@ import PostCard from './PostCard';
 import ReviewCard from './ReviewCard';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
+import api from '@/lib/api';
 
 export default function ReplyModal() {
     const { isOpen, activeItem, closeReplyModal } = useReplyModal();
+    const { addFeedItem } = useFeed();
     const { user } = useAuth();
 
     // Core State
@@ -113,10 +116,42 @@ export default function ReplyModal() {
 
         setIsSubmitting(true);
         try {
-            // TODO: Implement actual API call for creating a reply with media/poll
-            // For now, we simulate a delay
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            console.log('Replying to', activeItem.id, 'with:', { content, selectedFile, selectedGif, pollOptions });
+            // FormData
+            const formData = new FormData();
+            formData.append('content', content);
+
+            if (activeItem.id) {
+                // Check if active item is a review by checking if 'rating' exists (typical for Review)
+                // Using explicit cast or check
+                const isReviewItem = (activeItem as any).rating !== undefined;
+
+                if (isReviewItem) {
+                    formData.append('review_parent', activeItem.id.toString());
+                } else {
+                    formData.append('parent', activeItem.id.toString());
+                }
+                formData.append('type', 'reply');
+            }
+            if (mediaType && selectedFile) {
+                formData.append('media_file', selectedFile);
+                formData.append('media_type', mediaType);
+            }
+            if (selectedGif) {
+                formData.append('gif_url', selectedGif);
+            }
+            if (showPollCreator && pollOptions.filter(o => o.trim()).length >= 2) {
+                formData.append('poll_options', JSON.stringify(pollOptions.filter(o => o.trim())));
+            }
+
+            // API Call
+            const res = await api.post('/posts/', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            // Add to Global Feed (Backend response includes all fields)
+            addFeedItem({ ...res.data, type: 'reply' }); // Explicitly mark as reply for frontend filtering if needed, though backend structure is same
+
+            console.log('Reply created:', res.data);
 
             // Reset
             setContent('');

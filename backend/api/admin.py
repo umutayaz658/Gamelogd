@@ -42,7 +42,7 @@ class GameAdmin(admin.ModelAdmin):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ('user', 'timestamp', 'content_preview')
+    list_display = ('user', 'timestamp', 'parent', 'content_preview')
     list_filter = ('timestamp',)
 
     def content_preview(self, obj):

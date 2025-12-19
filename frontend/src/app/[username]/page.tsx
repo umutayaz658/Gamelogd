@@ -10,6 +10,7 @@ import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
+import { useFeed } from "@/context/FeedContext";
 
 interface Game {
     id: number;
@@ -40,6 +41,7 @@ interface UserProfile {
 export default function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
     const { username } = use(params);
     const { user: currentUser } = useAuth();
+    const { items: feedItems } = useFeed();
     const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('activity');
@@ -111,6 +113,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
                     const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
                     const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
+                    // Ensure backend results don't mix, but for feedItems from context we need to filter in render
 
                     const combined = [...posts, ...reviews].sort((a: any, b: any) =>
                         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -529,9 +532,8 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                     {/* Right Column (Content) */}
                     <div className="col-span-12 lg:col-span-8">
 
-                        {/* Tabs */}
                         <div className="flex gap-6 border-b border-zinc-800 mb-6 overflow-x-auto">
-                            {['Activity', 'Reviews', 'Diary', 'Portfolio'].map((tab) => (
+                            {['Activity', 'Reviews', 'Replies', 'Diary', 'Portfolio'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab.toLowerCase())}
@@ -555,12 +557,20 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                     <div className="flex justify-center py-12">
                                         <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
                                     </div>
-                                ) : userPosts.length > 0 ? (
-                                    <Feed initialItems={userPosts} />
                                 ) : (
-                                    <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
-                                        No activity yet.
-                                    </div>
+                                    (() => {
+                                        // Strict Activity Filter: NO parents allowed (no replies)
+                                        const activityItems = userPosts.filter((p: any) =>
+                                            !p.parent && !p.review_parent
+                                        );
+                                        return activityItems.length > 0 ? (
+                                            <Feed initialItems={activityItems} />
+                                        ) : (
+                                            <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                No activity yet.
+                                            </div>
+                                        );
+                                    })()
                                 )
                             )}
 
@@ -571,7 +581,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                     </div>
                                 ) : (
                                     (() => {
-                                        const reviews = userPosts.filter((p: any) => p.type === 'review');
+                                        const reviews = userPosts.filter((p: any) => p.type === 'review' && !p.parent && !p.review_parent);
                                         return reviews.length > 0 ? (
                                             <Feed initialItems={reviews} />
                                         ) : (
@@ -583,7 +593,36 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                 )
                             )}
 
-                            {activeTab !== 'activity' && activeTab !== 'reviews' && (
+                            {activeTab === 'replies' && (
+                                (() => {
+                                    // Local Context Replies (for immediate feedback)
+                                    const contextReplies = feedItems.filter(item =>
+                                        item.user.username === username && ((item as any).parent || (item as any).review_parent || item.type === 'reply')
+                                    );
+
+                                    // In a real app, we might also want to filter `userPosts` for replies if the API returns them
+                                    // But since `userPosts` usually fetches root posts, let's assume we rely on context
+                                    // OR if we start fetching replies in userPosts, we merge:
+                                    const fetchedReplies = userPosts.filter((p: any) => p.parent || p.review_parent);
+
+                                    // Merege unique by ID
+                                    const allRepliesMap = new Map();
+                                    [...fetchedReplies, ...contextReplies].forEach(item => allRepliesMap.set(item.id, item));
+                                    const allReplies = Array.from(allRepliesMap.values()).sort((a: any, b: any) =>
+                                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                                    );
+
+                                    return allReplies.length > 0 ? (
+                                        <Feed initialItems={allReplies} />
+                                    ) : (
+                                        <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                            No replies yet.
+                                        </div>
+                                    );
+                                })()
+                            )}
+
+                            {activeTab !== 'activity' && activeTab !== 'reviews' && activeTab !== 'replies' && (
                                 <div className="py-12 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
                                     <span className="capitalize">{activeTab}</span> content coming soon...
                                 </div>

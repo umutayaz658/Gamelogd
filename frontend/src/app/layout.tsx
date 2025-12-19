@@ -8,6 +8,7 @@ import { LogModalProvider } from '@/context/LogModalContext';
 import ClientLogModalWrapper from '@/components/ClientLogModalWrapper';
 import { ReplyModalProvider } from '@/context/ReplyModalContext';
 import ReplyModal from '@/components/ReplyModal';
+import { FeedProvider } from '@/context/FeedContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -28,10 +29,12 @@ export default function RootLayout({
                     <NotificationProvider>
                         <LogModalProvider>
                             <ReplyModalProvider>
-                                {children}
-                                <MessagesDrawer />
-                                <ClientLogModalWrapper />
-                                <ReplyModal />
+                                <FeedProvider>
+                                    {children}
+                                    <MessagesDrawer />
+                                    <ClientLogModalWrapper />
+                                    <ReplyModal />
+                                </FeedProvider>
                             </ReplyModalProvider>
                         </LogModalProvider>
                     </NotificationProvider>
