@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
+import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState } from 'react';
 
 interface ReviewCardProps {
@@ -11,28 +13,50 @@ interface ReviewCardProps {
 }
 
 export default function ReviewCard({ review }: ReviewCardProps) {
+    const router = useRouter();
+    const { openReplyModal } = useReplyModal();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
 
+    const handleCardClick = () => {
+        router.push(`/${review.user.username}/review/${review.id}`);
+    };
+
     return (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors hover:bg-zinc-900/80 cursor-pointer">
+        <div
+            onClick={handleCardClick}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors hover:bg-zinc-900/80 cursor-pointer"
+        >
             <div className="flex gap-4">
                 {/* User Avatar */}
-                <Link href={`/${review.user.username}`} className="flex-shrink-0">
-                    <img
-                        src={getImageUrl(review.user.avatar, review.user.username)}
-                        alt={review.user.username}
-                        className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
-                    />
-                </Link>
+                <div className="flex flex-col items-center flex-shrink-0 w-fit">
+                    <Link
+                        href={`/${review.user.username}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <img
+                            src={getImageUrl(review.user.avatar, review.user.username)}
+                            alt={review.user.username}
+                            className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
+                        />
+                    </Link>
+                </div>
 
                 <div className="flex-1 min-w-0">
                     {/* Header: Name, Username, Date, More Button */}
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                            <Link href={`/${review.user.username}`} className="font-bold text-white hover:underline">
+                            <Link
+                                href={`/${review.user.username}`}
+                                className="font-bold text-white hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 {review.user.username}
                             </Link>
-                            <Link href={`/${review.user.username}`} className="text-zinc-500 text-sm hover:text-zinc-400">
+                            <Link
+                                href={`/${review.user.username}`}
+                                className="text-zinc-500 text-sm hover:text-zinc-400"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 @{review.user.username.toLowerCase()}
                             </Link>
                             <span className="text-zinc-700 text-sm">•</span>
@@ -40,7 +64,10 @@ export default function ReviewCard({ review }: ReviewCardProps) {
                                 {new Date(review.timestamp).toLocaleDateString()}
                             </span>
                         </div>
-                        <button className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all">
+                        <button
+                            className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <MoreHorizontal className="h-4 w-4" />
                         </button>
                     </div>
@@ -118,21 +145,33 @@ export default function ReviewCard({ review }: ReviewCardProps) {
 
                     {/* Actions Footer */}
                     <div className="flex items-center justify-between mt-2 text-zinc-500 border-t border-zinc-800/50 pt-3">
-                        <button className="flex items-center gap-2 hover:text-emerald-500 group transition-colors">
+                        <button
+                            className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                openReplyModal({ ...review, type: 'review' });
+                            }}
+                        >
                             <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
                                 <MessageCircle className="h-4 w-4" />
                             </div>
                             <span className="text-sm">0</span>
                         </button>
 
-                        <button className="flex items-center gap-2 hover:text-pink-500 group transition-colors">
+                        <button
+                            className="flex items-center gap-2 hover:text-pink-500 group transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
                                 <Heart className="h-4 w-4" />
                             </div>
                             <span className="text-sm">0</span>
                         </button>
 
-                        <button className="flex items-center gap-2 hover:text-blue-500 group transition-colors">
+                        <button
+                            className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
                                 <Share2 className="h-4 w-4" />
                             </div>

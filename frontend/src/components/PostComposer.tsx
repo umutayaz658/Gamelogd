@@ -11,9 +11,10 @@ import { Post } from '@/types';
 
 interface PostComposerProps {
     onPostCreated: (post: Post) => void;
+    replyingTo?: { username: string };
 }
 
-export default function PostComposer({ onPostCreated }: PostComposerProps) {
+export default function PostComposer({ onPostCreated, replyingTo }: PostComposerProps) {
     const { user } = useAuth();
 
     // Create Post State
@@ -161,9 +162,15 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
                     className="h-10 w-10 rounded-full bg-zinc-800 object-cover"
                 />
                 <div className="flex-1 relative">
+                    {replyingTo && (
+                        <div className="mb-2">
+                            <span className="text-zinc-500 text-sm">Replying to </span>
+                            <span className="text-emerald-500 text-sm font-medium">@{replyingTo.username}</span>
+                        </div>
+                    )}
                     <textarea
                         placeholder="What's happening in the game world?"
-                        className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-500 focus:outline-none text-lg mb-2 resize-none min-h-[60px]"
+                        className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0 text-lg mb-2 resize-none min-h-[60px]"
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
                         onKeyDown={(e) => {

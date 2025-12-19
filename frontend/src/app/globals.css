@@ -26,24 +26,31 @@ body {
 }
 
 @layer utilities {
+
   /* Custom Dark Scrollbar for Webkit (Chrome, Safari, Edge) */
   .scrollbar-thin-dark::-webkit-scrollbar {
-    height: 8px; /* Thin height for horizontal scrollbar */
-    width: 8px;  /* Thin width for vertical scrollbar */
+    height: 8px;
+    /* Thin height for horizontal scrollbar */
+    width: 8px;
+    /* Thin width for vertical scrollbar */
   }
 
   .scrollbar-thin-dark::-webkit-scrollbar-track {
-    background: transparent; /* The track is invisible */
+    background: transparent;
+    /* The track is invisible */
   }
 
   .scrollbar-thin-dark::-webkit-scrollbar-thumb {
-    background-color: #3f3f46; /* Zinc-700 - A nice dark gray */
-    border-radius: 10px;       /* Rounded corners */
-    border: 2px solid transparent; /* Padding around the thumb */
+    background-color: #3f3f46;
+    /* Zinc-700 */
+    border-radius: 9999px;
+    /* Pill shape */
+    border: 3px solid transparent;
     background-clip: content-box;
   }
 
   .scrollbar-thin-dark::-webkit-scrollbar-thumb:hover {
-    background-color: #52525b; /* Zinc-600 - Slightly lighter on hover */
+    background-color: #52525b;
+    /* Zinc-600 */
   }
 }
