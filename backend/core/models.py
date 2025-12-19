@@ -47,6 +47,10 @@ class Post(models.Model):
     # Poll Support
     poll_options = models.JSONField(null=True, blank=True, default=list)
     
+    # Reply Support
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    review_parent = models.ForeignKey('Review', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

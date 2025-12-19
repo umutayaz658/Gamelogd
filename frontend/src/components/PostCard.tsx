@@ -37,6 +37,18 @@ export default function PostCard({ post, isDetailView = false }: PostCardProps) 
                     </Link>
                 </div>
                 <div className="flex-1 min-w-0">
+                    {(post.reply_to_username || post.parent) && (
+                        <div className="mb-1 flex items-center gap-1 text-sm">
+                            <span className="text-zinc-500">Replying to</span>
+                            <Link
+                                href={`/${post.reply_to_username || 'user'}`}
+                                className="text-emerald-500 hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                @{post.reply_to_username || 'user'}
+                            </Link>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Link

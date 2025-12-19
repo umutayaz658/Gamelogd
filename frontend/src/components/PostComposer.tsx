@@ -12,9 +12,11 @@ import { Post } from '@/types';
 interface PostComposerProps {
     onPostCreated: (post: Post) => void;
     replyingTo?: { username: string };
+    parentId?: number;
+    parentType?: 'post' | 'review';
 }
 
-export default function PostComposer({ onPostCreated, replyingTo }: PostComposerProps) {
+export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
     const { user } = useAuth();
 
     // Create Post State
@@ -113,8 +115,18 @@ export default function PostComposer({ onPostCreated, replyingTo }: PostComposer
 
         setIsPosting(true);
         try {
+            // FormData
             const formData = new FormData();
             formData.append('content', content);
+
+            if (replyingTo && parentId) {
+                if (parentType === 'review') {
+                    formData.append('review_parent', parentId.toString());
+                } else {
+                    formData.append('parent', parentId.toString());
+                }
+                formData.append('type', 'reply'); // Force strict type
+            }
 
             if (selectedFile) {
                 formData.append('media_file', selectedFile);
@@ -136,7 +148,7 @@ export default function PostComposer({ onPostCreated, replyingTo }: PostComposer
                 },
             });
 
-            onPostCreated(response.data);
+            onPostCreated({ ...response.data, type: 'reply' }); // Ensure type is set for context if needed
 
             // Reset
             setContent('');

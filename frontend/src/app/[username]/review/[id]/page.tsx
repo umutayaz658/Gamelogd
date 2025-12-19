@@ -6,35 +6,43 @@ import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import ReviewCard from "@/components/ReviewCard";
+import PostCard from "@/components/PostCard";
 import PostComposer from "@/components/PostComposer";
 import api from '@/lib/api';
 import { Review } from '@/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getImageUrl } from '@/lib/utils';
+import { useFeed } from '@/context/FeedContext';
 
 export default function SingleReviewPage() {
     const params = useParams();
+    const { addFeedItem } = useFeed();
     const router = useRouter();
     const { user } = useAuth();
     const [review, setReview] = useState<Review | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [replies, setReplies] = useState<any[]>([]);
 
     useEffect(() => {
         if (params?.id) {
-            const fetchReview = async () => {
+            const fetchData = async () => {
                 try {
-                    const response = await api.get(`/reviews/${params.id}/`);
-                    setReview(response.data);
+                    const [reviewRes, repliesRes] = await Promise.all([
+                        api.get(`/reviews/${params.id}/`),
+                        api.get(`/posts/?review_parent=${params.id}`)
+                    ]);
+                    setReview(reviewRes.data);
+                    setReplies(repliesRes.data);
                 } catch (err) {
-                    console.error('Failed to fetch review:', err);
+                    console.error('Failed to fetch data:', err);
                     setError('Failed to load review.');
                 } finally {
                     setLoading(false);
                 }
             };
-            fetchReview();
+            fetchData();
         }
     }, [params?.id]);
 
@@ -77,11 +85,28 @@ export default function SingleReviewPage() {
 
                                 {/* Reply Composer */}
                                 <div className="border-t border-zinc-800 pt-6">
-                                    <PostComposer onPostCreated={(post) => console.log('Replied:', post)} replyingTo={review.user} />
+                                    <PostComposer
+                                        onPostCreated={(post) => {
+                                            console.log('Replied:', post);
+                                            addFeedItem(post);
+                                            setReplies(prev => [post, ...prev]);
+                                        }}
+                                        replyingTo={review.user}
+                                        parentId={review.id}
+                                        parentType="review"
+                                    />
 
-                                    {/* Future: Render Comments List Here */}
-                                    <div className="py-8 text-center text-zinc-500">
-                                        No replies yet.
+                                    {/* Replies List */}
+                                    <div className="mt-8 space-y-4">
+                                        {replies.length > 0 ? (
+                                            replies.map((reply) => (
+                                                <PostCard key={reply.id} post={reply} />
+                                            ))
+                                        ) : (
+                                            <div className="text-center py-8 text-zinc-500 border border-dashed border-zinc-900 rounded-xl">
+                                                No replies yet. Be the first to share your thoughts!
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

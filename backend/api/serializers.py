@@ -125,11 +125,20 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    reply_to_username = serializers.SerializerMethodField()
+    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp']
-        read_only_fields = ['id', 'user', 'timestamp']
+        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'reply_to_username', 'replies_count']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count']
+
+    def get_reply_to_username(self, obj):
+        if obj.parent:
+            return obj.parent.user.username
+        if obj.review_parent:
+            return obj.review_parent.user.username
+        return None
 
     def validate_poll_options(self, value):
         if value:

@@ -46,11 +46,21 @@ export interface Post {
     timestamp: string;
     likes?: number;
     comments?: number;
+    replies_count?: number;
+    parent?: number | null;
+    review_parent?: number | null;
+    reply_to_username?: string | null;
     is_liked?: boolean;
-    type?: 'post';
+    type?: 'post' | 'reply'; // This is frontend helper mostly, but backend returns same structure
 }
 
-export type FeedItem = Post | Review;
+export interface Reply extends Post {
+    type: 'reply';
+    parentId: number;
+    replyToUsername: string;
+}
+
+export type FeedItem = Post | Review | Reply;
 
 export interface Notification {
     id: number;

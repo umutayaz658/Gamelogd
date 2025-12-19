@@ -148,8 +148,18 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Post.objects.all().order_by('-timestamp')
         username = self.request.query_params.get('username', None)
+        parent_id = self.request.query_params.get('parent', None)
+
         if username is not None:
             queryset = queryset.filter(user__username=username)
+        
+        if parent_id is not None:
+            queryset = queryset.filter(parent_id=parent_id)
+
+        review_parent_id = self.request.query_params.get('review_parent', None)
+        if review_parent_id is not None:
+            queryset = queryset.filter(review_parent_id=review_parent_id)
+        
         return queryset
 
     def create(self, request, *args, **kwargs):

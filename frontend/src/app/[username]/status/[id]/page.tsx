@@ -10,6 +10,7 @@ import PostComposer from "@/components/PostComposer";
 import api from '@/lib/api';
 import { Post } from '@/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { useFeed } from '@/context/FeedContext';
 
 export default function SinglePostPage() {
     const params = useParams();
@@ -17,28 +18,34 @@ export default function SinglePostPage() {
     const [post, setPost] = useState<Post | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [replies, setReplies] = useState<Post[]>([]);
 
     useEffect(() => {
         if (params?.id) {
-            const fetchPost = async () => {
+            const fetchData = async () => {
                 try {
-                    const response = await api.get(`/posts/${params.id}/`);
-                    setPost(response.data);
+                    const [postRes, repliesRes] = await Promise.all([
+                        api.get(`/posts/${params.id}/`),
+                        api.get(`/posts/`, { params: { parent: params.id } })
+                    ]);
+                    setPost(postRes.data);
+                    setReplies(repliesRes.data);
                 } catch (err) {
-                    console.error('Failed to fetch post:', err);
+                    console.error('Failed to fetch data:', err);
                     setError('Failed to load post.');
                 } finally {
                     setLoading(false);
                 }
             };
-            fetchPost();
+            fetchData();
         }
     }, [params?.id]);
 
+    const { addFeedItem } = useFeed();
+
     const handleReply = (newReply: any) => {
-        // Handle reply creation - for now just log or refresh
         console.log("New reply:", newReply);
-        // Ideally append to comments list
+        addFeedItem(newReply);
     };
 
     return (
@@ -78,11 +85,28 @@ export default function SinglePostPage() {
 
                                 {/* Reply Composer */}
                                 <div className="border-t border-zinc-800 pt-6">
-                                    <PostComposer onPostCreated={handleReply} replyingTo={post.user} />
+                                    <PostComposer
+                                        onPostCreated={(newReply) => {
+                                            handleReply(newReply);
+                                            setReplies(prev => [newReply, ...prev]);
+                                        }}
+                                        replyingTo={post.user}
+                                        parentId={post.id}
+                                        parentType="post"
+                                    />
 
-                                    {/* Future: Render Comments List Here */}
-                                    <div className="py-8 text-center text-zinc-500">
-                                        No replies yet.
+                                    <div className="py-4">
+                                        {replies.length > 0 ? (
+                                            replies.map((reply) => (
+                                                <div key={reply.id} className="mb-4">
+                                                    <PostCard post={reply} />
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="py-8 text-center text-zinc-500">
+                                                No replies yet.
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
