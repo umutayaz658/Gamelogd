@@ -35,6 +35,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
     const [isCompleted, setIsCompleted] = useState(false);
     const [containsSpoilers, setContainsSpoilers] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     // Reset state on open/close
     useEffect(() => {
@@ -48,6 +49,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
             setIsLiked(false);
             setIsCompleted(false);
             setContainsSpoilers(false);
+            setSubmitError(null);
         }
     }, [isOpen]);
 
@@ -81,6 +83,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
     const handleSubmit = async () => {
         if (!selectedGame) return;
         setIsSubmitting(true);
+        setSubmitError(null);
 
         try {
             await api.post('/reviews/', {
@@ -95,8 +98,28 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
             if (onSuccess) onSuccess();
             onClose();
             window.location.reload();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to submit review:", error);
+            if (error.response && error.response.data) {
+                // Handle DRF validation errors (which might be list or string)
+                const data = error.response.data;
+                if (Array.isArray(data)) {
+                    setSubmitError(data[0]);
+                } else if (typeof data === 'object') {
+                    // If it's a field error like {"non_field_errors": ["..."]} or {"detail": "..."}
+                    const firstKey = Object.keys(data)[0];
+                    const firstError = data[firstKey];
+                    if (Array.isArray(firstError)) {
+                        setSubmitError(firstError[0]);
+                    } else {
+                        setSubmitError(String(firstError));
+                    }
+                } else {
+                    setSubmitError("Failed to submit review.");
+                }
+            } else {
+                setSubmitError("An unexpected error occurred.");
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -306,6 +329,13 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
                                 </div>
                             </div>
 
+                            {submitError && (
+                                <div className="mx-6 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-medium flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+                                    {submitError}
+                                </div>
+                            )}
+
                             {/* Footer Actions */}
                             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end gap-3 shrink-0">
                                 <button onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm">
@@ -321,10 +351,10 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
                                 </button>
                             </div>
                         </div>
-
                     </div>
                 )}
             </div>
         </div>
     );
 }
+

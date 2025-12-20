@@ -10,9 +10,10 @@ import { useState } from 'react';
 
 interface ReviewCardProps {
     review: Review;
+    isDetailView?: boolean;
 }
 
-export default function ReviewCard({ review }: ReviewCardProps) {
+export default function ReviewCard({ review, isDetailView = false }: ReviewCardProps) {
     const router = useRouter();
     const { openReplyModal } = useReplyModal();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
@@ -24,7 +25,7 @@ export default function ReviewCard({ review }: ReviewCardProps) {
     return (
         <div
             onClick={handleCardClick}
-            className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors hover:bg-zinc-900/80 cursor-pointer"
+            className={`bg-zinc-900 border border-zinc-800 rounded-2xl hover:bg-zinc-900/80 p-4 transition-colors cursor-pointer`}
         >
             <div className="flex gap-4">
                 {/* User Avatar */}

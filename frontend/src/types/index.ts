@@ -49,9 +49,10 @@ export interface Post {
     replies_count?: number;
     parent?: number | null;
     review_parent?: number | null;
+    parent_details?: Post | Review;
     reply_to_username?: string | null;
     is_liked?: boolean;
-    type?: 'post' | 'reply'; // This is frontend helper mostly, but backend returns same structure
+    type?: 'post' | 'reply';
 }
 
 export interface Reply extends Post {
