@@ -21,7 +21,7 @@ export default function PostCard({ post, isDetailView = false }: PostCardProps) 
     return (
         <div
             onClick={handleCardClick}
-            className={`bg-zinc-900 border border-zinc-800 ${isDetailView ? 'rounded-none border-x-0 border-t-0' : 'rounded-2xl hover:bg-zinc-900/80'} p-4 transition-colors cursor-pointer`}
+            className={`bg-zinc-900 border border-zinc-800 rounded-2xl hover:bg-zinc-900/80 p-4 transition-colors cursor-pointer`}
         >
             <div className="flex gap-4">
                 <div className="flex flex-col items-center flex-shrink-0 w-fit">

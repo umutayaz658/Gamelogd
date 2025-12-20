@@ -114,24 +114,51 @@ class ReviewSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     game = GameSerializer(read_only=True)
     game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
+    type = serializers.CharField(default='review', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_completed', 'contains_spoilers', 'timestamp']
+        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
         read_only_fields = ['id', 'user', 'timestamp']
 
+    def validate(self, data):
+        request = self.context.get('request')
+        if request and request.method == 'POST':
+            game = data.get('game')
+            # If game is looked up via game_id, it might be in validated_data as 'game' object
+            if Review.objects.filter(user=request.user, game=game).exists():
+                raise serializers.ValidationError("You have already reviewed this game.")
+        return data
 
+
+class SimplePostSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    type = serializers.CharField(default='post', read_only=True)
+    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
+    
+    class Meta:
+        model = Post
+        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'replies_count', 'type']
 
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     reply_to_username = serializers.SerializerMethodField()
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
+    parent_details = serializers.SerializerMethodField()
+    type = serializers.CharField(default='post', read_only=True)
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'reply_to_username', 'replies_count']
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count']
+        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'reply_to_username', 'replies_count', 'parent_details', 'type']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'type']
+
+    def get_parent_details(self, obj):
+        if obj.review_parent:
+            return ReviewSerializer(obj.review_parent, context=self.context).data
+        if obj.parent:
+            return SimplePostSerializer(obj.parent, context=self.context).data
+        return None
 
     def get_reply_to_username(self, obj):
         if obj.parent:
