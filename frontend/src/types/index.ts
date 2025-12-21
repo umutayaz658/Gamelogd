@@ -11,6 +11,9 @@ export interface User {
     is_following?: boolean;
     followers_count?: number;
     following_count?: number;
+    date_joined?: string;
+    birth_date?: string;
+    show_birth_date?: boolean;
 }
 
 export interface Game {

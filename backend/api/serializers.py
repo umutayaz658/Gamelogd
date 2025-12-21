@@ -24,9 +24,9 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id'
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined'
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'date_joined']
 
     def validate_username(self, value):
         if value.lower() in RESERVED_USERNAMES:
@@ -135,10 +135,18 @@ class SimplePostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     type = serializers.CharField(default='post', read_only=True)
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
+    reply_to_username = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
-        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'replies_count', 'type']
+        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'replies_count', 'type', 'reply_to_username']
+
+    def get_reply_to_username(self, obj):
+        if obj.parent:
+            return obj.parent.user.username
+        if obj.review_parent:
+            return obj.review_parent.user.username
+        return None
 
 
 class PostSerializer(serializers.ModelSerializer):

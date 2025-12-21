@@ -11,6 +11,7 @@ import api from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
+import EditProfileModal from "@/components/EditProfileModal";
 
 interface Game {
     id: number;
@@ -47,6 +48,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [activeTab, setActiveTab] = useState('activity');
 
     // Top 4 State
+    const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
     const [topGames, setTopGames] = useState<(Game | null)[]>([null, null, null, null]);
@@ -213,6 +215,12 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         }
     };
 
+
+    const handleProfileUpdate = (updatedUser: any) => {
+        setProfileUser(updatedUser);
+        setIsEditProfileOpen(false);
+    };
+
     // Helper for Social Icons
     const SocialIcon = ({ platform, url }: { platform: string, url: string }) => {
         if (!url) return null;
@@ -259,7 +267,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         avatar: getImageUrl(profileUser.avatar, profileUser.username),
         cover: profileUser.cover_image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop",
         bio: profileUser.bio || "No bio yet.",
-        location: profileUser.location || "Unknown Location",
+        location: profileUser.location,
         joined: profileUser.date_joined ? new Date(profileUser.date_joined).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : "Recently",
         birth_date: profileUser.birth_date,
         show_birth_date: profileUser.show_birth_date,
@@ -338,13 +346,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                             </span>
                                         </h1>
                                         {isOwnProfile ? (
-                                            <Link
-                                                href="/settings?tab=account"
+                                            <button
+                                                onClick={() => setIsEditProfileOpen(true)}
                                                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-all text-sm font-medium"
                                             >
                                                 <Pencil className="h-3.5 w-3.5" />
                                                 <span>Edit Profile</span>
-                                            </Link>
+                                            </button>
                                         ) : (
                                             <div className="flex items-center gap-2">
                                                 <button
@@ -462,10 +470,11 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                             </p>
 
                             <div className="flex flex-col gap-3 text-sm text-zinc-400">
-                                {displayUser.location && (
-                                    <div className="flex items-center gap-3">
-                                        <MapPin className="h-4 w-4 text-zinc-500" />
-                                        {displayUser.location}
+                                {/* Ensure user.location exists AND is not just whitespace */}
+                                {displayUser.location && displayUser.location.trim().length > 0 && (
+                                    <div className="flex items-center text-zinc-400 mt-2">
+                                        <MapPin className="h-4 w-4 mr-2 shrink-0" />
+                                        <span className="truncate">{displayUser.location}</span>
                                     </div>
                                 )}
                                 {displayUser.show_birth_date && displayUser.birth_date && (
@@ -638,6 +647,17 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 onClose={() => setIsModalOpen(false)}
                 onSelectGame={handleSelectGame}
             />
+
+            {
+                profileUser && (
+                    <EditProfileModal
+                        isOpen={isEditProfileOpen}
+                        onClose={() => setIsEditProfileOpen(false)}
+                        user={profileUser as any}
+                        onUpdate={handleProfileUpdate}
+                    />
+                )
+            }
         </div >
     );
 }
