@@ -257,3 +257,12 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
         if obj.playtime_forever:
             return round(obj.playtime_forever / 60, 1)
         return 0.0
+
+from core.models import News
+class NewsSerializer(serializers.ModelSerializer):
+    source_name = serializers.CharField(source='source.name', read_only=True)
+    source_icon = serializers.URLField(source='source.icon', read_only=True)
+
+    class Meta:
+        model = News
+        fields = ['id', 'title', 'link', 'image_url', 'description', 'pub_date', 'category', 'source_name', 'source_icon']

@@ -57,3 +57,34 @@ class Post(models.Model):
         return f"Post by {self.user.username} at {self.timestamp}"
 
 
+
+class NewsSource(models.Model):
+    CATEGORY_CHOICES = [
+        ('invest', 'Investment'),
+        ('devs', 'Development'),
+        ('hardware', 'Hardware'),
+        ('general', 'General'),
+    ]
+    name = models.CharField(max_length=255)
+    rss_url = models.URLField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='general')
+    icon = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+class News(models.Model):
+    source = models.ForeignKey(NewsSource, on_delete=models.CASCADE, related_name='news')
+    title = models.CharField(max_length=500)
+    link = models.URLField(unique=True, max_length=1000)
+    image_url = models.URLField(blank=True, null=True, max_length=1000)
+    description = models.TextField(blank=True)
+    pub_date = models.DateTimeField()
+    category = models.CharField(max_length=20, db_index=True)
+
+    class Meta:
+        ordering = ['-pub_date']
+        verbose_name_plural = "News"
+
+    def __str__(self):
+        return self.title

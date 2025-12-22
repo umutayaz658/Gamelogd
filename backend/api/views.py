@@ -253,3 +253,15 @@ class LibraryViewSet(viewsets.ModelViewSet):
     filterset_fields = ['user__username', 'platform', 'status']
     ordering_fields = ['playtime_forever', 'game__title']
     ordering = ['-playtime_forever']
+
+from core.models import News
+from .serializers import NewsSerializer
+
+class NewsViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = News.objects.all().select_related('source')
+    serializer_class = NewsSerializer
+    permission_classes = [permissions.AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['category']
+    ordering_fields = ['pub_date']
+    ordering = ['-pub_date']
