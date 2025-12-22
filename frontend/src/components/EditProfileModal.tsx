@@ -87,11 +87,10 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
             });
 
             onUpdate(res.data);
-            if (updateUser) {
-                // Refresh auth context user just in case, though usually manual update is enough
-                // But simply calling updateUser might not exist in context type if it's not exposed
-                // Assuming onUpdate handles parent state.
-            }
+
+            // Sync global auth state
+            updateUser(res.data);
+
             onClose();
         } catch (error) {
             console.error("Failed to update profile:", error);
