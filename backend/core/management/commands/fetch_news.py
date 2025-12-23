@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from core.models import News, NewsSource
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from time import mktime
 
@@ -13,10 +13,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Auto-seed sources
         sources_data = [
-            {'category': 'invest', 'name': 'GamesIndustry.biz', 'url': 'https://www.gamesindustry.biz/rss/gamesindustry/feed', 'icon': 'https://assets.gamesindustry.biz/favicon.ico'},
+            {'category': 'invest', 'name': 'GamesIndustry.biz', 'url': 'https://www.gamesindustry.biz/feed', 'icon': 'https://www.google.com/s2/favicons?domain=gamesindustry.biz&sz=256'},
             {'category': 'devs', 'name': 'Game Developer', 'url': 'https://www.gamedeveloper.com/rss.xml', 'icon': 'https://www.gamedeveloper.com/favicon.ico'},
             {'category': 'hardware', 'name': 'Tom\'s Hardware', 'url': 'https://www.tomshardware.com/feeds/all', 'icon': 'https://www.tomshardware.com/favicon.ico'},
-            {'category': 'general', 'name': 'IGN', 'url': 'https://www.ign.com/rss/articles/feed?tags=games', 'icon': 'https://assets1.ignimgs.com/2015/05/27/ign-logo-jpg__thumb.jpg'},
+            {'category': 'general', 'name': 'IGN', 'url': 'https://www.ign.com/rss/articles/feed?tags=games', 'icon': 'https://www.google.com/s2/favicons?domain=ign.com&sz=256'},
         ]
 
         for s in sources_data:
@@ -52,6 +52,9 @@ class Command(BaseCommand):
                     soup = BeautifulSoup(entry.description, 'html.parser')
                     description = soup.get_text()[:500] + "..." if len(soup.get_text()) > 500 else soup.get_text()
 
+                    # Smart Categorization
+                    final_category = self.classify_news(entry.title, description, source.category)
+
                     # Parse date
                     pub_date = timezone.now()
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
@@ -66,10 +69,37 @@ class Command(BaseCommand):
                         image_url=image_url,
                         description=description,
                         pub_date=pub_date,
-                        category=source.category
+                        category=final_category
                     )
-                    self.stdout.write(f"  Saved: {entry.title}")
+                    self.stdout.write(f"  Saved: {entry.title} [{final_category}]")
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Error fetching {source.name}: {e}"))
 
         self.stdout.write(self.style.SUCCESS('Successfully fetched news'))
+
+        # Retention Policy
+        cutoff_date = timezone.now() - timedelta(days=90)
+        deleted_count, _ = News.objects.filter(pub_date__lt=cutoff_date).delete()
+        if deleted_count > 0:
+            self.stdout.write(self.style.WARNING(f'Cleaned up {deleted_count} old articles (older than 90 days).'))
+
+    def classify_news(self, title, description, default_category):
+        # Keywords
+        KEYWORDS_INVEST = ['stock', 'share', 'market cap', 'revenue', 'acquisition', 'merger', 'quarterly report', 'earnings', 'funding', 'ipo', 'layoff']
+        KEYWORDS_DEVS = ['unreal engine', 'unity', 'godot', 'programming', 'c++', 'python', 'source code', 'developer', 'gdc', 'postmortem', 'devlog', 'api', 'sdk']
+        KEYWORDS_HARDWARE = ['nvidia', 'rtx', 'amd', 'ryzen', 'intel', 'core i', 'gpu', 'cpu', 'graphics card', 'monitor', 'keyboard', 'mouse', 'console', 'ps5', 'xbox series', 'switch 2', 'specs', 'benchmark']
+        KEYWORDS_ESPORTS = ['tournament', 'championship', 'finals', 'esports', 'roster', 'team', 'winner', 'league of legends', 'counter-strike', 'valorant', 'dota']
+
+        text = (title + " " + description).lower()
+
+        # Priority Check
+        if any(k in text for k in KEYWORDS_INVEST):
+            return 'invest'
+        if any(k in text for k in KEYWORDS_DEVS):
+            return 'devs'
+        if any(k in text for k in KEYWORDS_HARDWARE):
+            return 'hardware'
+        if any(k in text for k in KEYWORDS_ESPORTS):
+            return 'general' # Redirect content like 'tournaments' to General instead of source default
+
+        return default_category

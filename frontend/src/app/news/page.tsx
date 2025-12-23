@@ -79,7 +79,7 @@ export default function NewsPage() {
                         {!loading && heroNews.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[400px]">
                                 {/* Main Hero */}
-                                <div className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800">
+                                <a href={heroNews[0].link} target="_blank" rel="noopener noreferrer" className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 block">
                                     <img
                                         src={heroNews[0].image_url || "/placeholder-news.jpg"}
                                         alt={heroNews[0].title}
@@ -95,22 +95,20 @@ export default function NewsPage() {
                                                 {new Date(heroNews[0].pub_date).toLocaleDateString()}
                                             </span>
                                         </div>
-                                        <a href={heroNews[0].link} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                                            <h2 className="text-2xl md:text-3xl font-bold leading-tight mb-2 line-clamp-2">
-                                                {heroNews[0].title}
-                                            </h2>
-                                        </a>
+                                        <h2 className="text-2xl md:text-3xl font-bold leading-tight mb-2 line-clamp-2 hover:text-emerald-400 transition-colors">
+                                            {heroNews[0].title}
+                                        </h2>
                                         <div className="flex items-center gap-2 text-sm text-zinc-400">
                                             {heroNews[0].source_icon && <img src={heroNews[0].source_icon} className="w-4 h-4 rounded-full" />}
                                             <span>{heroNews[0].source_name}</span>
                                         </div>
                                     </div>
-                                </div>
+                                </a>
 
                                 {/* Side Hero Stack */}
                                 <div className="grid grid-rows-2 gap-6 h-full">
                                     {heroNews.slice(1, 3).map((item) => (
-                                        <div key={item.id} className="relative group rounded-2xl overflow-hidden border border-zinc-800">
+                                        <a key={item.id} href={item.link} target="_blank" rel="noopener noreferrer" className="relative group rounded-2xl overflow-hidden border border-zinc-800 block">
                                             <img
                                                 src={item.image_url || "/placeholder-news.jpg"}
                                                 alt={item.title}
@@ -122,16 +120,14 @@ export default function NewsPage() {
                                                         {item.category}
                                                     </span>
                                                 </div>
-                                                <a href={item.link} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                                                    <h3 className="text-lg font-bold leading-tight mb-1 line-clamp-2">
-                                                        {item.title}
-                                                    </h3>
-                                                </a>
+                                                <h3 className="text-lg font-bold leading-tight mb-1 line-clamp-2 hover:text-emerald-400 transition-colors">
+                                                    {item.title}
+                                                </h3>
                                                 <div className="flex items-center gap-2 text-xs text-zinc-400">
                                                     <span>{item.source_name}</span>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </a>
                                     ))}
                                 </div>
                             </div>
@@ -163,7 +159,7 @@ export default function NewsPage() {
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {gridNews.map((item) => (
-                                    <div key={item.id} className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group">
+                                    <a key={item.id} href={item.link} target="_blank" rel="noopener noreferrer" className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group block">
                                         <div className="relative h-48 overflow-hidden">
                                             <img
                                                 src={item.image_url || "/placeholder-news.jpg"}
@@ -183,24 +179,17 @@ export default function NewsPage() {
                                                 <span>•</span>
                                                 <span>{new Date(item.pub_date).toLocaleDateString()}</span>
                                             </div>
-                                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="block mb-3 group-hover:text-emerald-400 transition-colors">
-                                                <h3 className="text-xl font-bold leading-snug line-clamp-2">
-                                                    {item.title}
-                                                </h3>
-                                            </a>
+                                            <h3 className="text-xl font-bold leading-snug line-clamp-2 mb-3 group-hover:text-emerald-400 transition-colors">
+                                                {item.title}
+                                            </h3>
                                             <p className="text-zinc-400 text-sm line-clamp-3 mb-4 flex-1">
                                                 {item.description.replace(/<[^>]*>/g, '').replace('...', '')}
                                             </p>
-                                            <a
-                                                href={item.link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto"
-                                            >
+                                            <div className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto">
                                                 Read Article <ExternalLink className="h-4 w-4" />
-                                            </a>
+                                            </div>
                                         </div>
-                                    </div>
+                                    </a>
                                 ))}
                             </div>
                         )}
