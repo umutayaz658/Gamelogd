@@ -542,7 +542,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                     <div className="col-span-12 lg:col-span-8">
 
                         <div className="flex gap-6 border-b border-zinc-800 mb-6 overflow-x-auto">
-                            {['Activity', 'Reviews', 'Replies', 'Diary', 'Portfolio'].map((tab) => (
+                            {['Activity', 'Reviews', 'Replies', 'Opinions', 'Portfolio'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab.toLowerCase())}
@@ -631,7 +631,20 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                 })()
                             )}
 
-                            {activeTab !== 'activity' && activeTab !== 'reviews' && activeTab !== 'replies' && (
+                            {activeTab === 'opinions' && (
+                                (() => {
+                                    const opinions = userPosts.filter((p: any) => p.news_parent || p.news_details);
+                                    return opinions.length > 0 ? (
+                                        <Feed initialItems={opinions} />
+                                    ) : (
+                                        <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                            No opinions (news comments) yet.
+                                        </div>
+                                    );
+                                })()
+                            )}
+
+                            {activeTab !== 'activity' && activeTab !== 'reviews' && activeTab !== 'replies' && activeTab !== 'opinions' && (
                                 <div className="py-12 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
                                     <span className="capitalize">{activeTab}</span> content coming soon...
                                 </div>

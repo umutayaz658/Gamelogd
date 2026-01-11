@@ -26,7 +26,10 @@ const CATEGORIES = [
     { id: 'general', label: 'General' },
 ];
 
+import { useRouter } from 'next/navigation';
+
 export default function NewsPage() {
+    const router = useRouter();
     const [news, setNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState('all');
@@ -49,6 +52,14 @@ export default function NewsPage() {
 
     const heroNews = news.slice(0, 3);
     const gridNews = news.slice(3);
+
+    const handleCardClick = (id: number) => {
+        router.push(`/news/${id}`);
+    };
+
+    const handleExternalLink = (e: React.MouseEvent) => {
+        e.stopPropagation();
+    };
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -79,7 +90,7 @@ export default function NewsPage() {
                         {!loading && heroNews.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[400px]">
                                 {/* Main Hero */}
-                                <a href={heroNews[0].link} target="_blank" rel="noopener noreferrer" className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 block">
+                                <div onClick={() => handleCardClick(heroNews[0].id)} className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block">
                                     <img
                                         src={heroNews[0].image_url || "/placeholder-news.jpg"}
                                         alt={heroNews[0].title}
@@ -103,12 +114,12 @@ export default function NewsPage() {
                                             <span>{heroNews[0].source_name}</span>
                                         </div>
                                     </div>
-                                </a>
+                                </div>
 
                                 {/* Side Hero Stack */}
                                 <div className="grid grid-rows-2 gap-6 h-full">
                                     {heroNews.slice(1, 3).map((item) => (
-                                        <a key={item.id} href={item.link} target="_blank" rel="noopener noreferrer" className="relative group rounded-2xl overflow-hidden border border-zinc-800 block">
+                                        <div key={item.id} onClick={() => handleCardClick(item.id)} className="relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block">
                                             <img
                                                 src={item.image_url || "/placeholder-news.jpg"}
                                                 alt={item.title}
@@ -127,7 +138,7 @@ export default function NewsPage() {
                                                     <span>{item.source_name}</span>
                                                 </div>
                                             </div>
-                                        </a>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -159,7 +170,7 @@ export default function NewsPage() {
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {gridNews.map((item) => (
-                                    <a key={item.id} href={item.link} target="_blank" rel="noopener noreferrer" className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group block">
+                                    <div key={item.id} onClick={() => handleCardClick(item.id)} className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group cursor-pointer block">
                                         <div className="relative h-48 overflow-hidden">
                                             <img
                                                 src={item.image_url || "/placeholder-news.jpg"}
@@ -185,11 +196,17 @@ export default function NewsPage() {
                                             <p className="text-zinc-400 text-sm line-clamp-3 mb-4 flex-1">
                                                 {item.description.replace(/<[^>]*>/g, '').replace('...', '')}
                                             </p>
-                                            <div className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto">
+                                            <a
+                                                href={item.link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={handleExternalLink}
+                                                className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto w-fit"
+                                            >
                                                 Read Article <ExternalLink className="h-4 w-4" />
-                                            </div>
+                                            </a>
                                         </div>
-                                    </a>
+                                    </div>
                                 ))}
                             </div>
                         )}

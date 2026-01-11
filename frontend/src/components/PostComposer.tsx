@@ -13,7 +13,7 @@ interface PostComposerProps {
     onPostCreated: (post: Post) => void;
     replyingTo?: { username: string };
     parentId?: number;
-    parentType?: 'post' | 'review';
+    parentType?: 'post' | 'review' | 'news';
 }
 
 export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
@@ -119,13 +119,20 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             const formData = new FormData();
             formData.append('content', content);
 
-            if (replyingTo && parentId) {
+            if (parentId) {
                 if (parentType === 'review') {
                     formData.append('review_parent', parentId.toString());
+                    formData.append('type', 'reply');
+                } else if (parentType === 'news') {
+                    formData.append('news_parent', parentId.toString());
+                    // We treat news comments as root posts linked to news, 
+                    // unless they are replies to other comments (which would be handled differently if intended, 
+                    // but for now, direct news comments are cleaner as is)
                 } else {
+                    // Standard post reply
                     formData.append('parent', parentId.toString());
+                    formData.append('type', 'reply');
                 }
-                formData.append('type', 'reply'); // Force strict type
             }
 
             if (selectedFile) {
