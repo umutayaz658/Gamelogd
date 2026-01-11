@@ -13,8 +13,9 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'conversations', ConversationViewSet, basename='conversation')
 router.register(r'messages', MessageViewSet, basename='message')
 router.register(r'library', LibraryViewSet, basename='library')
-from .views import NewsViewSet
+from .views import NewsViewSet, LikeViewSet
 router.register(r'news', NewsViewSet, basename='news')
+router.register(r'likes', LikeViewSet, basename='like')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),

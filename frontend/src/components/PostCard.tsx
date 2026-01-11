@@ -8,9 +8,10 @@ import { useReplyModal } from '@/context/ReplyModalContext';
 interface PostCardProps {
     post: Post;
     isDetailView?: boolean;
+    hideNewsQuote?: boolean;
 }
 
-export default function PostCard({ post, isDetailView = false }: PostCardProps) {
+export default function PostCard({ post, isDetailView = false, hideNewsQuote = false }: PostCardProps) {
     const router = useRouter();
     const { openReplyModal } = useReplyModal();
 
@@ -37,7 +38,7 @@ export default function PostCard({ post, isDetailView = false }: PostCardProps) 
                     </Link>
                 </div>
                 <div className="flex-1 min-w-0">
-                    {post.reply_to_username && (
+                    {post.reply_to_username && !post.news_details && (
                         <div className="mb-1 flex items-center gap-1 text-sm">
                             <span className="text-zinc-500">Replying to</span>
                             <Link
@@ -49,6 +50,7 @@ export default function PostCard({ post, isDetailView = false }: PostCardProps) 
                             </Link>
                         </div>
                     )}
+
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Link
@@ -69,6 +71,11 @@ export default function PostCard({ post, isDetailView = false }: PostCardProps) 
                             <span className="text-zinc-500 text-sm hover:underline">
                                 {new Date(post.timestamp).toLocaleDateString()}
                             </span>
+                            {post.news_details && !hideNewsQuote && (
+                                <span className="ml-2 text-zinc-500 text-sm font-normal">
+                                    • Commented on this news
+                                </span>
+                            )}
                         </div>
                         <button
                             className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
@@ -129,6 +136,38 @@ export default function PostCard({ post, isDetailView = false }: PostCardProps) 
                             ))}
                             <div className="p-2 bg-zinc-900 text-center text-xs text-zinc-500 border-t border-zinc-800">
                                 0 votes • Final results
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Render News Quote Card */}
+                    {post.news_details && !hideNewsQuote && (
+                        <div
+                            className="mb-3 border border-zinc-800 rounded-xl overflow-hidden hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/news/${post.news_details!.id}`);
+                            }}
+                        >
+                            <div className="flex bg-zinc-950/50">
+                                {post.news_details.image_url && (
+                                    <div className="w-24 h-24 flex-shrink-0">
+                                        <img
+                                            src={post.news_details.image_url}
+                                            alt={post.news_details.title}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                )}
+                                <div className="p-3 flex flex-col justify-center min-w-0">
+                                    <div className="flex items-center gap-1.5 mb-1 text-xs text-zinc-500">
+                                        {post.news_details.source_icon && (
+                                            <img src={post.news_details.source_icon} className="w-3 h-3 rounded-full" />
+                                        )}
+                                        <span>{post.news_details.source_name}</span>
+                                    </div>
+                                    <h4 className="text-sm font-bold leading-tight text-white line-clamp-2">{post.news_details.title}</h4>
+                                </div>
                             </div>
                         </div>
                     )}

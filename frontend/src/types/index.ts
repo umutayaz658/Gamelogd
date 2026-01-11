@@ -52,10 +52,18 @@ export interface Post {
     replies_count?: number;
     parent?: number | null;
     review_parent?: number | null;
+    news_parent?: number | null;
     parent_details?: Post | Review;
+    news_details?: {
+        id: number;
+        title: string;
+        image_url: string | null;
+        source_name: string;
+        source_icon: string | null;
+    };
     reply_to_username?: string | null;
     is_liked?: boolean;
-    type?: 'post' | 'reply';
+    type?: 'post' | 'reply' | 'news';
 }
 
 export interface Reply extends Post {

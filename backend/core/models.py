@@ -50,11 +50,25 @@ class Post(models.Model):
     # Reply Support
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     review_parent = models.ForeignKey('Review', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    news_parent = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
     
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Post by {self.user.username} at {self.timestamp}"
+
+class Like(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='likes')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    news = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news']]
+
+    def __str__(self):
+        return f"{self.user} liked something"
 
 
 
