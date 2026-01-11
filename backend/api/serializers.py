@@ -24,9 +24,9 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id'
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined'
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'date_joined']
 
     def validate_username(self, value):
         if value.lower() in RESERVED_USERNAMES:
@@ -114,24 +114,100 @@ class ReviewSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     game = GameSerializer(read_only=True)
     game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
+    type = serializers.CharField(default='review', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'text_comment', 'timestamp']
+        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
         read_only_fields = ['id', 'user', 'timestamp']
 
+    def validate(self, data):
+        request = self.context.get('request')
+        if request and request.method == 'POST':
+            game = data.get('game')
+            # If game is looked up via game_id, it might be in validated_data as 'game' object
+            if Review.objects.filter(user=request.user, game=game).exists():
+                raise serializers.ValidationError("You have already reviewed this game.")
+        return data
+
+
+class SimplePostSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    type = serializers.CharField(default='post', read_only=True)
+    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
+    reply_to_username = serializers.SerializerMethodField()
+    news_details = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Post
+        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'replies_count', 'type', 'reply_to_username', 'news_details']
+
+    def get_reply_to_username(self, obj):
+        if obj.parent:
+            return obj.parent.user.username
+        if obj.review_parent:
+            return obj.review_parent.user.username
+        return None
+
+    def get_news_details(self, obj):
+        if obj.news_parent:
+            return {
+                'id': obj.news_parent.id,
+                'title': obj.news_parent.title,
+                'image_url': obj.news_parent.image_url,
+                'source_name': obj.news_parent.source.name,
+                'source_icon': obj.news_parent.source.icon
+            }
+        return None
 
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    reply_to_username = serializers.SerializerMethodField()
+    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
+    parent_details = serializers.SerializerMethodField()
+    news_details = serializers.SerializerMethodField()
+    type = serializers.CharField(default='post', read_only=True)
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp']
-        read_only_fields = ['id', 'user', 'timestamp']
+        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'type']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'type']
+
+    def get_news_details(self, obj):
+        if obj.news_parent:
+            return {
+                'id': obj.news_parent.id,
+                'title': obj.news_parent.title,
+                'image_url': obj.news_parent.image_url,
+                'source_name': obj.news_parent.source.name,
+                'source_icon': obj.news_parent.source.icon
+            }
+        return None
+
+    def get_parent_details(self, obj):
+        if obj.review_parent:
+            return ReviewSerializer(obj.review_parent, context=self.context).data
+        if obj.parent:
+            return SimplePostSerializer(obj.parent, context=self.context).data
+        return None
+
+    def get_reply_to_username(self, obj):
+        if obj.parent:
+            return obj.parent.user.username
+        if obj.review_parent:
+            return obj.review_parent.user.username
+        return None
 
     def validate_poll_options(self, value):
         if value:
+            if isinstance(value, str):
+                import json
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    raise serializers.ValidationError("Poll options must be a valid JSON list.")
+
             if not isinstance(value, list):
                 raise serializers.ValidationError("Poll options must be a list of strings.")
             if len(value) < 2:
@@ -205,3 +281,35 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
         if obj.playtime_forever:
             return round(obj.playtime_forever / 60, 1)
         return 0.0
+
+from core.models import News, Like
+
+class LikeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Like
+        fields = ['id', 'user', 'post', 'review', 'news', 'timestamp']
+        read_only_fields = ['id', 'user', 'timestamp']
+
+    def create(self, validated_data):
+        # Ensure only one target is set
+        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news')]
+        if sum(x is not None for x in targets) != 1:
+            raise serializers.ValidationError("Like must target exactly one item (post, review, or news).")
+        return super().create(validated_data)
+
+class NewsSerializer(serializers.ModelSerializer):
+    source_name = serializers.CharField(source='source.name', read_only=True)
+    source_icon = serializers.URLField(source='source.icon', read_only=True)
+    is_liked = serializers.SerializerMethodField()
+    like_count = serializers.IntegerField(read_only=True)
+    comment_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = News
+        fields = ['id', 'title', 'link', 'image_url', 'description', 'pub_date', 'category', 'source_name', 'source_icon', 'is_liked', 'like_count', 'comment_count']
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Like.objects.filter(user=request.user, news=obj).exists()
+        return False

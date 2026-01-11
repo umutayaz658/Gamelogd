@@ -129,20 +129,52 @@ class ReviewViewSet(viewsets.ModelViewSet):
     serializer_class = ReviewSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+    def get_queryset(self):
+        queryset = Review.objects.all()
+        username = self.request.query_params.get('username', None)
+        if username is not None:
+            queryset = queryset.filter(user__username=username)
+        return queryset
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
 
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all().order_by('-timestamp')
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filterset_fields = ['news_parent']
 
     def get_queryset(self):
         queryset = Post.objects.all().order_by('-timestamp')
         username = self.request.query_params.get('username', None)
+        parent_id = self.request.query_params.get('parent', None)
+
         if username is not None:
             queryset = queryset.filter(user__username=username)
+        
+        if parent_id is not None:
+            queryset = queryset.filter(parent_id=parent_id)
+
+        review_parent_id = self.request.query_params.get('review_parent', None)
+        if review_parent_id is not None:
+            queryset = queryset.filter(review_parent_id=review_parent_id)
+        
+        news_parent_id = self.request.query_params.get('news_parent', None)
+        if news_parent_id is not None:
+            queryset = queryset.filter(news_parent_id=news_parent_id)
+        
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            print("VALIDATION ERROR:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -226,3 +258,48 @@ class LibraryViewSet(viewsets.ModelViewSet):
     filterset_fields = ['user__username', 'platform', 'status']
     ordering_fields = ['playtime_forever', 'game__title']
     ordering = ['-playtime_forever']
+
+from core.models import News
+from .serializers import NewsSerializer
+
+from django.db.models import Count
+
+class NewsViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = News.objects.all().select_related('source').annotate(
+        like_count=Count('likes', distinct=True),
+        comment_count=Count('comments', distinct=True)
+    )
+    serializer_class = NewsSerializer
+    permission_classes = [permissions.AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['category']
+    ordering_fields = ['pub_date', 'like_count', 'comment_count']
+    ordering = ['-pub_date']
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+from .serializers import LikeSerializer
+from core.models import Like
+
+class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, viewsets.mixins.DestroyModelMixin):
+    queryset = Like.objects.all()
+    serializer_class = LikeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        # Check for existence to toggle or prevent duplicates
+        user = request.user
+        post_id = request.data.get('post')
+        review_id = request.data.get('review')
+        news_id = request.data.get('news')
+        
+        existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id).first()
+        
+        if existing:
+            existing.delete()
+            return Response({'status': 'unliked'}, status=status.HTTP_200_OK)
+            
+        return super().create(request, *args, **kwargs)
