@@ -42,16 +42,13 @@ class GameAdmin(admin.ModelAdmin):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ('user', 'timestamp', 'content_preview')
+    list_display = ('user', 'timestamp', 'parent', 'content_preview')
     list_filter = ('timestamp',)
 
     def content_preview(self, obj):
         return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
 
-@admin.register(Review)
-class ReviewAdmin(admin.ModelAdmin):
-    list_display = ('user', 'game', 'rating', 'timestamp')
-    list_filter = ('rating', 'timestamp')
+
 
 @admin.register(Follow)
 class FollowAdmin(admin.ModelAdmin):
@@ -61,3 +58,8 @@ class FollowAdmin(admin.ModelAdmin):
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ('recipient', 'actor', 'verb', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ('user', 'game', 'rating', 'timestamp')
+    list_filter = ('timestamp', 'rating')
