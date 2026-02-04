@@ -51,6 +51,9 @@ export default function Navbar() {
                         <Link href="/devs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
                             Devs
                         </Link>
+                        <Link href="/collabs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                            Collabs
+                        </Link>
                         <Link href="/invest" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
                             Invest
                         </Link>

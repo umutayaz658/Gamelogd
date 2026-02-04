@@ -3,6 +3,8 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions, filters, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post
 from api.models import User, Notification
@@ -144,7 +146,11 @@ class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all().order_by('-timestamp')
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filterset_fields = ['news_parent']
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = {
+        'news_parent': ['exact', 'isnull'],
+        'project_parent': ['exact', 'isnull'],
+    }
 
     def get_queryset(self):
         queryset = Post.objects.all().order_by('-timestamp')
@@ -301,5 +307,56 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         if existing:
             existing.delete()
             return Response({'status': 'unliked'}, status=status.HTTP_200_OK)
-            
+        
         return super().create(request, *args, **kwargs)
+
+from core.models import Project, JobPosting
+from .serializers import ProjectSerializer, JobPostingSerializer
+
+class ProjectViewSet(viewsets.ModelViewSet):
+    queryset = Project.objects.all().order_by('-created_at')
+    serializer_class = ProjectSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['title', 'description', 'tech_stack']
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+class JobPostingViewSet(viewsets.ModelViewSet):
+    queryset = JobPosting.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = JobPostingSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['job_type', 'location_type', 'experience_level']
+    search_fields = ['title', 'description']
+
+    def perform_create(self, serializer):
+        serializer.save(recruiter=self.request.user)
+            
+from core.models import Pitch, InvestorCall
+from .serializers import PitchSerializer, InvestorCallSerializer
+
+class PitchViewSet(viewsets.ModelViewSet):
+    queryset = Pitch.objects.all().order_by('-created_at')
+    serializer_class = PitchSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['genre', 'platform', 'stage']
+    search_fields = ['title']
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class InvestorCallViewSet(viewsets.ModelViewSet):
+    queryset = InvestorCall.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = InvestorCallSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['investor_type', 'ticket_size']
+    search_fields = ['organization_name', 'looking_for']
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+            
+
