@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post
-from api.models import User, Interest, Follow, Notification, Conversation, Message
+from core.models import Game, Review, Post, Project, JobPosting, PostMedia, News, Like, Pitch, InvestorCall
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -140,7 +140,7 @@ class SimplePostSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Post
-        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'replies_count', 'type', 'reply_to_username', 'news_details']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'replies_count', 'type', 'reply_to_username', 'news_details']
 
     def get_reply_to_username(self, obj):
         if obj.parent:
@@ -161,18 +161,90 @@ class SimplePostSerializer(serializers.ModelSerializer):
         return None
 
 
+# from core.models import Game, Review, Post, Project, JobPosting, PostMedia (Imported at top)
+
+class PostMediaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PostMedia
+        fields = ['id', 'file', 'media_type', 'order']
+
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     reply_to_username = serializers.SerializerMethodField()
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
+    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    is_liked = serializers.SerializerMethodField()
     parent_details = serializers.SerializerMethodField()
+    review_details = serializers.SerializerMethodField()
     news_details = serializers.SerializerMethodField()
+    project_details = serializers.SerializerMethodField()
     type = serializers.CharField(default='post', read_only=True)
+    
+    # Media Handling
+    media = PostMediaSerializer(many=True, read_only=True)
+    uploaded_media = serializers.ListField(
+        child=serializers.FileField(max_length=100000, allow_empty_file=False, use_url=False),
+        write_only=True,
+        required=False
+    )
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'type']
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'type']
+        fields = [
+            'id', 'user', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
+            'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked',
+            'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
+            'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
+            'media', 'uploaded_media'
+        ]
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media']
+
+    def create(self, validated_data):
+        uploaded_media = validated_data.pop('uploaded_media', [])
+        # Legacy single-file support (optional, can be inferred from first media item)
+        # But frontend might still send media_file for now.
+        
+        post = super().create(validated_data)
+
+        # Handle Multiple Media
+        if uploaded_media:
+            for index, file in enumerate(uploaded_media):
+                media_type = 'video' if file.content_type.startswith('video') else 'image'
+                PostMedia.objects.create(post=post, file=file, media_type=media_type, order=index)
+            
+            # Legacy Backfill: Set the first item as the main media_file for backward compatibility
+            first_media = post.media.first()
+            if first_media:
+                 post.media_file = first_media.file
+                 post.media_type = first_media.media_type
+                 post.save()
+        
+        return post
+        if obj.parent:
+            return obj.parent.user.username
+        if obj.review_parent:
+            return obj.review_parent.user.username
+        return None
+
+    def get_is_liked(self, obj):
+        user = self.context.get('request').user
+        if user.is_authenticated:
+            return obj.likes.filter(id=user.id).exists()
+        return False
+
+    def get_review_details(self, obj):
+        if obj.review_parent:
+            return ReviewSerializer(obj.review_parent, context=self.context).data
+        return None
+
+    def get_project_details(self, obj):
+        if obj.project_parent:
+            return {
+                'id': obj.project_parent.id,
+                'title': obj.project_parent.title,
+                'cover_image': obj.project_parent.cover_image.url if obj.project_parent.cover_image else None
+            }
+        return None
 
     def get_news_details(self, obj):
         if obj.news_parent:
@@ -266,7 +338,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
         return 0
 
-from api.models import LibraryEntry
+
 
 class LibraryEntrySerializer(serializers.ModelSerializer):
     game = GameSerializer(read_only=True)
@@ -282,7 +354,7 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
             return round(obj.playtime_forever / 60, 1)
         return 0.0
 
-from core.models import News, Like
+
 
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -313,3 +385,45 @@ class NewsSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return Like.objects.filter(user=request.user, news=obj).exists()
         return False
+
+class ProjectSerializer(serializers.ModelSerializer):
+    owner = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = Project
+        fields = ['id', 'owner', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+class JobPostingSerializer(serializers.ModelSerializer):
+    recruiter = UserSerializer(read_only=True)
+    project_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobPosting
+        fields = ['id', 'recruiter', 'project', 'project_details', 'title', 'description', 'job_type', 'location_type', 'experience_level', 'is_active', 'created_at']
+        read_only_fields = ['id', 'recruiter', 'created_at', 'project_details']
+
+    def get_project_details(self, obj):
+        if obj.project:
+            return {
+                'id': obj.project.id,
+                'title': obj.project.title,
+                'cover_image': obj.project.cover_image.url if obj.project.cover_image else None
+            }
+        return None
+
+class PitchSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Pitch
+        fields = ['id', 'user', 'title', 'description', 'genre', 'platform', 'funding_goal', 'stage', 'image', 'pitch_deck_url', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']
+
+class InvestorCallSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = InvestorCall
+        fields = ['id', 'user', 'organization_name', 'investor_type', 'looking_for', 'ticket_size', 'deadline', 'is_active', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']

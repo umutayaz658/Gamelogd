@@ -13,9 +13,14 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'conversations', ConversationViewSet, basename='conversation')
 router.register(r'messages', MessageViewSet, basename='message')
 router.register(r'library', LibraryViewSet, basename='library')
-from .views import NewsViewSet, LikeViewSet
+from .views import NewsViewSet, LikeViewSet, ProjectViewSet, JobPostingViewSet
 router.register(r'news', NewsViewSet, basename='news')
 router.register(r'likes', LikeViewSet, basename='like')
+router.register(r'projects', ProjectViewSet, basename='project')
+router.register(r'job-postings', JobPostingViewSet, basename='job-posting')
+from .views import PitchViewSet, InvestorCallViewSet
+router.register(r'pitches', PitchViewSet, basename='pitch')
+router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),
