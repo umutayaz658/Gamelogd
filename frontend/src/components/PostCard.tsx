@@ -1,3 +1,4 @@
+import React from 'react';
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2 } from 'lucide-react';
 import { Post } from '@/types';
@@ -85,25 +86,86 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         </button>
                     </div>
 
-                    <p className={`text-zinc-300 mt-2 mb-3 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-xl' : ''}`}>
+
+                    {/* Devlog Header (Title & Project) */}
+                    {post.title && (
+                        <div className="mb-2">
+                            {/* Project Badge if available */}
+                            {post.project_parent && (
+                                <Link
+                                    href={`/projects/${post.project_parent}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-block px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider mb-2 hover:bg-emerald-500/20 transition-colors"
+                                >
+                                    Devlog
+                                </Link>
+                            )}
+                            <h3 className={`font-bold text-white mb-1 ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
+                                {post.title}
+                            </h3>
+                        </div>
+                    )}
+
+                    <p className={`text-zinc-300 mb-3 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : ''}`}>
                         {post.content}
                     </p>
 
-                    {/* Render Media */}
-                    {(post.media_file || post.image) && (
-                        <div className="rounded-xl overflow-hidden border border-zinc-800 mb-3 bg-black">
+                    {/* Render Media: Gallery or Single */}
+                    {(post.media && post.media.length > 0) ? (
+                        <div className={`grid gap-1 mb-3 rounded-xl overflow-hidden border border-zinc-800 ${post.media.length === 1 ? 'grid-cols-1' :
+                            post.media.length === 2 ? 'grid-cols-2' :
+                                post.media.length === 3 ? 'grid-cols-2' : 'grid-cols-2'
+                            }`}>
+                            {post.media.slice(0, 4).map((media, index) => (
+                                <div
+                                    key={media.id}
+                                    className={`relative bg-black ${post.media!.length === 3 && index === 0 ? 'row-span-2' : ''
+                                        } ${post.media!.length > 0 ? 'aspect-video' : ''}`}
+                                >
+                                    {media.media_type === 'video' ? (
+                                        <video
+                                            src={getImageUrl(media.file)}
+                                            controls
+                                            className="w-full h-full object-cover"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <img
+                                            src={getImageUrl(media.file)}
+                                            alt={`Post media ${index + 1}`}
+                                            className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                // TODO: Open lightbox
+                                                if (media.file) {
+                                                    window.open(getImageUrl(media.file), '_blank');
+                                                }
+                                            }}
+                                        />
+                                    )}
+                                    {/* Overlay for +N more images if length > 4 */}
+                                    {index === 3 && post.media!.length > 4 && (
+                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-xl">
+                                            +{post.media!.length - 4}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (post.media_file || post.image) && (
+                        <div className={`rounded-xl overflow-hidden border border-zinc-800 mb-3 bg-black ${post.title ? 'aspect-video' : ''}`}>
                             {post.media_type === 'video' ? (
                                 <video
                                     src={post.media_file || post.image || ''}
                                     controls
-                                    className="w-full max-h-[500px] object-contain"
+                                    className="w-full h-full object-contain bg-black"
                                     onClick={(e) => e.stopPropagation()}
                                 />
                             ) : (
                                 <img
                                     src={post.media_file || post.image || ''}
-                                    alt="Post content"
-                                    className="w-full h-auto object-cover max-h-[500px]"
+                                    alt="Post media"
+                                    className={`w-full h-full ${post.title ? 'object-cover' : 'object-contain'} max-h-[500px]`}
                                 />
                             )}
                         </div>

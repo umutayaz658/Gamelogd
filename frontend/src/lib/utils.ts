@@ -9,7 +9,9 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     // 1. If path exists and is valid
     if (path) {
         // Check if it's already a full web URL
-        if (path.startsWith("http")) return path;
+        if (path.startsWith("http")) {
+            return path.replace('http://localhost:8000', 'http://127.0.0.1:8000');
+        }
 
         // CRITICAL: Fix double slashes or filesystem paths if any
         if (path.includes("\\")) {
@@ -22,7 +24,7 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
 
         // Ensure path starts with / if appending
         const cleanPath = path.startsWith("/") ? path : `/${path}`;
-        return `http://localhost:8000${cleanPath}`;
+        return `http://127.0.0.1:8000${cleanPath}`;
     }
 
     // 2. Fallback: Use Name for Avatar
