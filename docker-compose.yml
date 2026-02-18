@@ -20,16 +20,8 @@ services:
       - "8000:8000"
     depends_on:
       - db
-    environment:
-      - DEBUG=1
-      - SECRET_KEY=dev_secret_key
-      - DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
-      - DB_ENGINE=django.db.backends.postgresql
-      - DB_NAME=gamelogd
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_HOST=db
-      - DB_PORT=5432
+    env_file:
+      - ./backend/.env
 
   frontend:
     build:
