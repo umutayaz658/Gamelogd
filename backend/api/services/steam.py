@@ -9,16 +9,22 @@ def fetch_steam_library(user_id, steam_id):
     Fetches user's owned games from Steam and updates their LibraryEntry.
     Auto-creates games if they don't exist locally.
     """
-    # In production, this should be in settings
-    api_key = '156950A4EAAE233930E8347C38DE3849'
+    # Fetch from settings
+    api_key = settings.STEAM_API_KEY
     if not api_key:
-        print("STEAM_API_KEY not found.")
+        print("STEAM_API_KEY not found in environment settings.")
         return
 
     url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=1"
     
     try:
         response = requests.get(url, timeout=10)
+        
+        if response.status_code == 403:
+             print(f"Steam API 403 Forbidden. Check API Key or Profile Privacy for {steam_id}")
+             # We might want to raise here to let the view know
+             raise Exception("Steam API Key invalid or Profile Private")
+
         response.raise_for_status()
         data = response.json()
         

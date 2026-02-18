@@ -58,14 +58,24 @@ class UserViewSet(viewsets.ModelViewSet):
         if not steam_id:
             return Response({"error": "Steam ID is required"}, status=status.HTTP_400_BAD_REQUEST)
         
+        from django.conf import settings
+        if not settings.STEAM_API_KEY:
+            return Response({"error": "Server configuration error: STEAM_API_KEY not set."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         # Save Steam ID
         request.user.steam_id = steam_id
         request.user.save()
         
         # Trigger Sync
         from api.services.steam import fetch_steam_library
-        # In production, use Celery: fetch_steam_library.delay(request.user.id, steam_id)
-        fetch_steam_library(request.user.id, steam_id)
+        try:
+             # In production, use Celery: fetch_steam_library.delay(request.user.id, steam_id)
+            fetch_steam_library(request.user.id, steam_id)
+        except Exception as e:
+            # If sync fails immediately (synchronous), let the user know, but we already saved the ID.
+            # Maybe we should return a warning?
+            print(f"Sync trigger failed: {e}")
+            return Response({"status": "Steam ID saved, but sync failed. Check privacy settings or try again later.", "warning": str(e)}, status=status.HTTP_200_OK)
         
         return Response({"status": "Sync started"}, status=status.HTTP_200_OK)
 
