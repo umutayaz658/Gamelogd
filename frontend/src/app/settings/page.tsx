@@ -202,7 +202,11 @@ function SettingsContent() {
                                                         <div>
                                                             <div className="font-bold">{platform.name}</div>
                                                             <div className="text-sm text-zinc-500">
-                                                                {platform.connected ? 'Connected as umutayaz' : platform.description}
+                                                                {platform.connected
+                                                                    ? (platform.id === 'steam' && user?.steam_id
+                                                                        ? `Connected (ID: ${user.steam_id})`
+                                                                        : 'Connected')
+                                                                    : platform.description}
                                                             </div>
                                                         </div>
                                                     </div>
