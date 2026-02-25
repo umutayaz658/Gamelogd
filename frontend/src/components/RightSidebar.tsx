@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, ArrowUpRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import RecommendedGames from '@/components/RecommendedGames';
 
 interface NewsItem {
     id: number;
@@ -12,6 +14,7 @@ interface NewsItem {
 
 export default function RightSidebar() {
     const router = useRouter();
+    const { user } = useAuth();
     const [trendingNews, setTrendingNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -89,6 +92,11 @@ export default function RightSidebar() {
                     Show more
                 </button>
             </div>
+
+            {/* You Might Like These - Recommended Games Carousel */}
+            {user && user.username && (
+                <RecommendedGames username={user.username} />
+            )}
         </div>
     );
 }

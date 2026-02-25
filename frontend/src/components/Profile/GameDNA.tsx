@@ -12,6 +12,22 @@ interface GameDNAProps {
     username?: string;
 }
 
+const getHexColor = (colorStr: string) => {
+    if (!colorStr) return '#10b981';
+    if (colorStr.startsWith('#')) return colorStr;
+    const colorMap: Record<string, string> = {
+        'bg-emerald-500': '#10b981',
+        'bg-blue-500': '#3b82f6',
+        'bg-purple-500': '#a855f7',
+        'bg-amber-500': '#f59e0b',
+        'bg-rose-500': '#f43f5e',
+        'bg-cyan-500': '#06b6d4',
+        'bg-pink-500': '#ec4899',
+        'bg-indigo-500': '#6366f1'
+    };
+    return colorMap[colorStr] || '#10b981';
+};
+
 export default function GameDNA({ stats, username }: GameDNAProps) {
     return (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
@@ -40,8 +56,8 @@ export default function GameDNA({ stats, username }: GameDNAProps) {
                         </div>
                         <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
                             <div
-                                className={`h-full rounded-full ${stat.color} transition-all duration-1000 ease-out`}
-                                style={{ width: `${stat.percentage}%` }}
+                                className="h-full rounded-full transition-all duration-1000 ease-out"
+                                style={{ width: `${stat.percentage}%`, backgroundColor: getHexColor(stat.color) }}
                             />
                         </div>
                     </div>

@@ -77,11 +77,15 @@ class Command(BaseCommand):
                     release_date = datetime.fromtimestamp(release_timestamp).date()
 
                 # Create or Update Game
+                # Extract genre names from IGDB response
+                genres = [g['name'] for g in game_data.get('genres', [])]
+
                 game, created = Game.objects.update_or_create(
                     igdb_id=igdb_id,
                     defaults={
                         'title': title,
                         'release_date': release_date,
+                        'genres': genres,
                     }
                 )
 
