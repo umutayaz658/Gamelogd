@@ -9,6 +9,30 @@ from rest_framework import status
 from core.models import Game, Review, Post
 from api.models import User, Notification
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer
+from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.authtoken.models import Token
+from django.db.models import Q
+
+class CustomAuthToken(ObtainAuthToken):
+    def post(self, request, *args, **kwargs):
+        username_or_email = request.data.get('username')
+        password = request.data.get('password')
+
+        if not username_or_email or not password:
+            return Response({'error': 'Please provide both username/email and password'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Find the user by email or username
+        user = User.objects.filter(Q(email=username_or_email) | Q(username=username_or_email)).first()
+
+        if user and user.check_password(password):
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user_id': user.pk,
+                'email': user.email
+            })
+        
+        return Response({'non_field_errors': ['Unable to log in with provided credentials.']}, status=status.HTTP_400_BAD_REQUEST)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -90,6 +114,126 @@ class UserViewSet(viewsets.ModelViewSet):
         LibraryEntry.objects.filter(user=request.user, platform__iexact='steam').delete()
         
         return Response({'status': 'disconnected'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='game-dna')
+    def game_dna(self, request, username=None):
+        user = self.get_object()
+        from api.models import LibraryEntry
+        
+        # Sadece aktif oynanan oyunları filtrele
+        active_statuses = ['playing', 'completed', 'replaying']
+        entries = LibraryEntry.objects.filter(
+            user=user,
+            status__in=active_statuses
+        ).select_related('game')
+
+        # Tür sayımı
+        genre_counts = {}
+        for entry in entries:
+            for genre in (entry.game.genres or []):
+                genre_counts[genre] = genre_counts.get(genre, 0) + 1
+
+        total = sum(genre_counts.values())
+        if total == 0:
+            return Response([])
+
+        # Yüzde hesapla ve sırala
+        colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
+        result = []
+        for i, (genre, count) in enumerate(sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)):
+            result.append({
+                "genre": genre,
+                "percentage": round((count / total) * 100),
+                "color": colors[i % len(colors)]
+            })
+
+        return Response(result)
+
+    @action(detail=True, methods=['get'], url_path='recommended-games')
+    def recommended_games(self, request, username=None):
+        user = self.get_object()
+        from api.models import LibraryEntry
+        from core.models import Game
+        
+        # 1. Calculate user's top genres (Game DNA)
+        active_statuses = ['playing', 'completed', 'replaying']
+        entries = LibraryEntry.objects.filter(
+            user=user,
+            status__in=active_statuses
+        ).select_related('game')
+
+        genre_counts = {}
+        played_game_ids = set()
+        for entry in entries:
+            played_game_ids.add(entry.game.id)
+            for genre in (entry.game.genres or []):
+                genre_counts[genre] = genre_counts.get(genre, 0) + 1
+
+        # Also get all other game IDs the user has to exclude them
+        all_user_entries = LibraryEntry.objects.filter(user=user)
+        all_played_ids = set([e.game_id for e in all_user_entries])
+        
+        # Exclude reviewed games to ensure completely unlogged discovery
+        from core.models import Review
+        reviewed_game_ids = set(Review.objects.filter(user=user).values_list('game_id', flat=True))
+        all_played_ids = all_played_ids.union(reviewed_game_ids)
+
+        # If no genres found, return random popular games
+        if not genre_counts:
+            recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
+        else:
+            # Get top 3 genres
+            top_genres = [g[0] for g in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]]
+            
+            # 2. Query games that matching any of top genres
+            # using Postgres jsonb array filtering or Q objects
+            genre_query = Q()
+            # MySQL/SQLite json contains is tricky, we can do list filtering in python if small, 
+            # but icontains on the JSON string works for simple genre names
+            for genre in top_genres:
+                genre_query |= Q(genres__icontains=genre)
+                
+            recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
+            
+            # Fill up to 20 if we didn't find enough
+            if recommended.count() < 20:
+                needed = 20 - recommended.count()
+                found_ids = set([g.id for g in recommended])
+                extras = Game.objects.exclude(id__in=all_played_ids.union(found_ids)).order_by('?')[:needed]
+                recommended = list(recommended) + list(extras)
+
+        # 3. Serialize output
+        result = []
+        for g in recommended:
+            image_url = None
+            if g.cover_image:
+                # If cover_image is a URL (like standard Steam URLs), use it directly
+                # If it's a file path, we need to return the media URL. 
+                # Since django might add backend:8000 internally if we use build_absolute_uri,
+                # we return the relative url (e.g. /media/games/...) and let the frontend prefix it 
+                # if necessary, or we can construct it using a known host.
+                
+                if str(g.cover_image).startswith('http'):
+                    image_url = str(g.cover_image)
+                elif hasattr(g.cover_image, 'url'):
+                    # The frontend expects standard absolute paths or relative paths it proxies
+                    image_url = g.cover_image.url
+                    # To ensure it always points to localhost/127.0.0.1 for local dev:
+                    if request and not str(image_url).startswith('http'):
+                        host = request.get_host() # Might be localhost:8000 or 127.0.0.1:8000
+                        scheme = request.scheme
+                        # If the host is 'backend:8000' (docker internal), replace it with localhost
+                        if 'backend' in host:
+                            host = host.replace('backend', '127.0.0.1')
+                        image_url = f"{scheme}://{host}{image_url}"
+            
+            result.append({
+                "id": g.id,
+                "title": g.title,
+                "cover_image": image_url
+            })
+
+        return Response(result)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def unfollow(self, request, username=None):
