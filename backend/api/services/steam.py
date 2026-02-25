@@ -1,8 +1,32 @@
 import requests
+import time
 from django.conf import settings
 from django.core.files.base import ContentFile
 from api.models import LibraryEntry, User
 from core.models import Game
+
+
+def fetch_steam_genres(appid):
+    """
+    Fetches genre names for a game from the Steam Store API.
+    Returns a list of genre name strings, e.g. ["Strategy", "Simulation"].
+    """
+    try:
+        url = f"https://store.steampowered.com/api/appdetails?appids={appid}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        app_data = data.get(str(appid), {})
+        if not app_data.get('success'):
+            return []
+
+        genres_raw = app_data.get('data', {}).get('genres', [])
+        return [g['description'] for g in genres_raw if 'description' in g]
+    except Exception as e:
+        print(f"Failed to fetch genres for appid {appid}: {e}")
+        return []
+
 
 def fetch_steam_library(user_id, steam_id):
     """
@@ -46,9 +70,14 @@ def fetch_steam_library(user_id, steam_id):
             # 2. If not found, create it
             if not game:
                 print(f"Creating new game from Steam: {title}")
+                # Fetch genres from Steam Store API
+                genres = fetch_steam_genres(appid)
+                time.sleep(0.3)  # Rate limit protection
+
                 game = Game.objects.create(
                     title=title,
-                    igdb_id=None # We don't have IGDB ID yet
+                    igdb_id=None,  # We don't have IGDB ID yet
+                    genres=genres,
                 )
                 
                 # Fetch Cover Image
@@ -62,6 +91,15 @@ def fetch_steam_library(user_id, steam_id):
                         print(f"Failed to fetch cover for {title}: {img_response.status_code}")
                 except Exception as e:
                     print(f"Error fetching cover for {title}: {e}")
+            else:
+                # Backfill genres if the existing game has none
+                if not game.genres:
+                    genres = fetch_steam_genres(appid)
+                    if genres:
+                        game.genres = genres
+                        game.save(update_fields=['genres'])
+                        print(f"Backfilled genres for {title}: {genres}")
+                    time.sleep(0.3)  # Rate limit protection
 
             # 3. Determine Status
             # Default to 'unplayed'
@@ -74,7 +112,6 @@ def fetch_steam_library(user_id, steam_id):
                 playtime_2weeks = steam_game.get('playtime_2weeks', 0)
                 rtime_last_played = steam_game.get('rtime_last_played', 0)
                 
-                import time
                 current_timestamp = int(time.time())
                 two_weeks_ago = current_timestamp - (14 * 24 * 60 * 60)
                 

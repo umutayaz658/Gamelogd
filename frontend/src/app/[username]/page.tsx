@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
 import Navbar from "@/components/Navbar";
 import GameDNA from "@/components/Profile/GameDNA";
@@ -54,6 +54,9 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [topGames, setTopGames] = useState<(Game | null)[]>([null, null, null, null]);
     const [userPosts, setUserPosts] = useState<any[]>([]);
     const [isPostsLoading, setIsPostsLoading] = useState(true);
+
+    // Game DNA
+    const [gameDNA, setGameDNA] = useState<any[]>([]);
 
     // Follow State
     const [isFollowing, setIsFollowing] = useState(false);
@@ -131,6 +134,31 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             fetchUserFeed();
         }
     }, [username]);
+
+    // Fetch Game DNA
+    const fetchGameDNA = useCallback(() => {
+        if (username) {
+            api.get(`/users/${username}/game-dna/`)
+                .then(res => setGameDNA(res.data))
+                .catch(err => {
+                    console.error("Failed to fetch Game DNA:", err);
+                    setGameDNA([]);
+                });
+        }
+    }, [username]);
+
+    useEffect(() => {
+        fetchGameDNA();
+
+        // Re-fetch when user returns to tab (e.g. after changing status on games page)
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                fetchGameDNA();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, [fetchGameDNA]);
 
     const handleSlotClick = (index: number) => {
         if (!isOwnProfile) return;
@@ -278,24 +306,6 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         },
         social_links: profileUser.social_links || {}
     };
-
-    // Game DNA Logic
-    let gameDNA = [
-        { genre: "RPG", percentage: 60, color: "bg-emerald-500" },
-        { genre: "Platformer", percentage: 25, color: "bg-blue-500" },
-        { genre: "Strategy", percentage: 15, color: "bg-purple-500" }
-    ];
-
-    if (profileUser.interests && profileUser.interests.length > 0) {
-        const share = Math.floor(100 / profileUser.interests.length);
-        const colors = ["bg-emerald-500", "bg-blue-500", "bg-purple-500", "bg-amber-500", "bg-rose-500"];
-
-        gameDNA = profileUser.interests.map((interest: string, index: number) => ({
-            genre: interest,
-            percentage: share,
-            color: colors[index % colors.length]
-        }));
-    }
 
     // Mock Currently Playing
     const currentlyPlaying = {

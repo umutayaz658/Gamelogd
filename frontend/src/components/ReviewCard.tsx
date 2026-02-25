@@ -6,7 +6,7 @@ import { Review } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 
 interface ReviewCardProps {
     review: Review;
@@ -17,6 +17,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     const router = useRouter();
     const { openReplyModal } = useReplyModal();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
+    const baseId = useId().replace(/:/g, '-');
 
     const handleCardClick = () => {
         router.push(`/${review.user.username}/review/${review.id}`);
@@ -93,12 +94,39 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
 
                                 {/* Rating Stars */}
                                 <div className="flex items-center gap-1 mb-2">
-                                    <div className={`flex ${Number(review.rating) >= 8 ? 'text-emerald-500' : Number(review.rating) >= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
-                                        {[...Array(5)].map((_, i) => (
-                                            <svg key={i} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={i < Math.floor(Number(review.rating) / 2) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                                            </svg>
-                                        ))}
+                                    <div className={`flex gap-0.5 ${Number(review.rating) >= 8 ? 'text-emerald-500' : Number(review.rating) >= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                        {[...Array(5)].map((_, i) => {
+                                            const ratingVal = Number(review.rating) / 2;
+                                            const fillPercentage = Math.max(0, Math.min(100, (ratingVal - i) * 100));
+
+                                            // The viewBox is 0 0 24 24, so calculate absolute width
+                                            const absoluteWidth = (fillPercentage / 100) * 24;
+
+                                            // Ensure unique IDs across the entire DOM, even if the same review is rendered twice
+                                            const clipId = `star-clip-${baseId}-${review.id}-${i}`;
+
+                                            return (
+                                                <div key={i} className="relative h-4 w-4">
+                                                    {/* Empty star background */}
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute top-0 left-0 h-4 w-4 opacity-30">
+                                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                                    </svg>
+                                                    {/* Filled star foreground */}
+                                                    {fillPercentage > 0 && (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute top-0 left-0 h-4 w-4">
+                                                            <defs>
+                                                                <clipPath id={clipId}>
+                                                                    <rect x="0" y="0" width={absoluteWidth} height="24" />
+                                                                </clipPath>
+                                                            </defs>
+                                                            <g clipPath={`url(#${clipId})`}>
+                                                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                                            </g>
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                     <span className={`text-sm font-bold ${Number(review.rating) >= 8 ? 'text-emerald-500' : Number(review.rating) >= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
                                         {Number(review.rating).toFixed(1)}

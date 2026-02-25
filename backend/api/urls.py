@@ -1,7 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, LibraryViewSet
-from rest_framework.authtoken.views import obtain_auth_token
+from .views import (
+    UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView, 
+    CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, 
+    LibraryViewSet, CustomAuthToken
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
@@ -26,5 +29,5 @@ urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),
     path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
-    path('login/', obtain_auth_token, name='api_token_auth'),
+    path('login/', CustomAuthToken.as_view(), name='api_token_auth'),
 ]

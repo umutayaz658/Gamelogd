@@ -27,19 +27,6 @@ export default function LoginPage() {
 
         try {
             // 1. Call API to get token
-            // Backend expects 'username' but form has 'email'. 
-            // If backend uses username for auth, we might need to change input or backend.
-            // Assuming backend uses 'username' field for login (standard Django), 
-            // but user enters email. We should probably check if backend supports email auth.
-            // Standard Django auth token uses 'username'. 
-            // Let's send email as username for now if your backend supports it, 
-            // OR change the input to be "Username" instead of "Email".
-            // Given the Register page asks for Username AND Email, let's assume user logs in with Username.
-            // BUT the UI says "Email address". 
-            // Let's change the UI to "Username" to match standard Django Auth Token behavior 
-            // unless you have a custom backend auth backend.
-            // I will change the input placeholder/name to "Username" to be safe and consistent with default Django.
-
             const response = await api.post('/login/', {
                 username: formData.username,
                 password: formData.password
@@ -71,12 +58,12 @@ export default function LoginPage() {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-4">
-                        {/* Username Input */}
+                        {/* Username or Email Input */}
                         <div className="relative group">
                             <UserIcon className="absolute left-3 top-3 h-5 w-5 text-zinc-500 group-focus-within:text-emerald-500 transition-colors" />
                             <input
                                 type="text"
-                                placeholder="Username"
+                                placeholder="Username or Email"
                                 className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                 value={formData.username}
                                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
