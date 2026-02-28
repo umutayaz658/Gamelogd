@@ -101,7 +101,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
         }
     };
 
-    const statusOptions = ['unplayed', 'playing', 'replaying', 'completed', 'dropped'];
+    const statusOptions = ['unplayed', 'plan_to_play', 'playing', 'replaying', 'completed', 'dropped'];
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -131,7 +131,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                             <div className="flex items-center gap-4 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
                                 {/* Status Filter */}
                                 <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-                                    {['all', 'unplayed', 'playing', 'replaying', 'completed', 'dropped'].map((status) => (
+                                    {['all', 'unplayed', 'plan_to_play', 'playing', 'replaying', 'completed', 'dropped'].map((status) => (
                                         <button
                                             key={status}
                                             onClick={() => setFilterStatus(status)}
@@ -140,7 +140,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                 : 'text-zinc-400 hover:text-zinc-200'
                                                 }`}
                                         >
-                                            {status}
+                                            {status.replace(/_/g, ' ')}
                                         </button>
                                     ))}
                                 </div>
@@ -256,7 +256,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                                         ? 'bg-emerald-600 text-white'
                                                                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
                                                                 >
-                                                                    {status}
+                                                                    {status.replace(/_/g, ' ')}
                                                                 </button>
                                                             ))}
                                                             <button
@@ -268,7 +268,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4">{entry.status}</span>
+                                                            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4">{entry.status.replace(/_/g, ' ')}</span>
                                                             <button
                                                                 onClick={() => setEditingId(entry.id)}
                                                                 className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-bold hover:bg-zinc-200 transition-colors"
@@ -300,7 +300,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                         <span className="uppercase text-xs">{entry.platform}</span>
                                                     </div>
                                                     <span>•</span>
-                                                    <span className="capitalize text-emerald-400 text-xs font-bold">{entry.status}</span>
+                                                    <span className="capitalize text-emerald-400 text-xs font-bold">{entry.status.replace(/_/g, ' ')}</span>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4">
@@ -327,7 +327,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                                 ? 'bg-emerald-600 text-white'
                                                                 : 'text-zinc-300 hover:bg-zinc-800'}`}
                                                         >
-                                                            {status}
+                                                            {status.replace(/_/g, ' ')}
                                                         </button>
                                                     ))}
                                                 </div>

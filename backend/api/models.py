@@ -69,6 +69,7 @@ class User(AbstractUser):
 class LibraryEntry(models.Model):
     STATUS_CHOICES = (
         ('unplayed', 'Unplayed'),
+        ('plan_to_play', 'Plan to Play'),
         ('playing', 'Playing'),
         ('replaying', 'Replaying'),
         ('completed', 'Completed'),
