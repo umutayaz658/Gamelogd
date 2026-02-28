@@ -178,8 +178,30 @@ class UserViewSet(viewsets.ModelViewSet):
         reviewed_game_ids = set(Review.objects.filter(user=user).values_list('game_id', flat=True))
         all_played_ids = all_played_ids.union(reviewed_game_ids)
 
+        # New parameter for genre filtering
+        target_genre = request.query_params.get('genre', 'all')
+        
+        translation_map = {
+            'aksiyon': 'action',
+            'macera': 'adventure',
+            'basit eğlence': 'casual',
+            'bağımsız yapım': 'indie',
+            'devasa çok oyunculu': 'massively multiplayer',
+            'yarış': 'racing',
+            'rvo': 'rpg',
+            'simülasyon': 'simulation',
+            'spor': 'sports',
+            'strateji': 'strategy',
+            'erken erişim': 'early access'
+        }
+        
         # If no genres found, return random popular games
-        if not genre_counts:
+        if target_genre != 'all':
+            english_genre = translation_map.get(target_genre.lower(), target_genre)
+            genre_query = Q(genres__icontains=target_genre) | Q(genres__icontains=english_genre)
+            recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
+                
+        elif not genre_counts:
             recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
         else:
             # Get top 3 genres
@@ -188,19 +210,11 @@ class UserViewSet(viewsets.ModelViewSet):
             # 2. Query games that matching any of top genres
             # using Postgres jsonb array filtering or Q objects
             genre_query = Q()
-            # MySQL/SQLite json contains is tricky, we can do list filtering in python if small, 
-            # but icontains on the JSON string works for simple genre names
             for genre in top_genres:
-                genre_query |= Q(genres__icontains=genre)
+                english_genre = translation_map.get(genre.lower(), genre)
+                genre_query |= Q(genres__icontains=genre) | Q(genres__icontains=english_genre)
                 
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
-            
-            # Fill up to 20 if we didn't find enough
-            if recommended.count() < 20:
-                needed = 20 - recommended.count()
-                found_ids = set([g.id for g in recommended])
-                extras = Game.objects.exclude(id__in=all_played_ids.union(found_ids)).order_by('?')[:needed]
-                recommended = list(recommended) + list(extras)
 
         # 3. Serialize output
         result = []
@@ -233,6 +247,67 @@ class UserViewSet(viewsets.ModelViewSet):
                 "cover_image": image_url
             })
 
+        return Response(result)
+
+    def _format_image_url(self, request, cover_image):
+        if not cover_image: return None
+        if str(cover_image).startswith('http'): return str(cover_image)
+        if hasattr(cover_image, 'url'):
+            url = cover_image.url
+            if request and not str(url).startswith('http'):
+                host = request.get_host()
+                if 'backend' in host: host = host.replace('backend', '127.0.0.1')
+                return f"{request.scheme}://{host}{url}"
+        return None
+
+    @action(detail=True, methods=['get'])
+    def backlog(self, request, username=None):
+        user = self.get_object()
+        from api.models import LibraryEntry
+        
+        entries = LibraryEntry.objects.filter(
+            user=user, status='plan_to_play'
+        ).select_related('game').order_by('-added_at')[:10]
+        
+        result = []
+        for e in entries:
+            g = e.game
+            result.append({
+                "id": g.id,
+                "title": g.title,
+                "cover_image": self._format_image_url(request, g.cover_image)
+            })
+        return Response(result)
+
+    @action(detail=True, methods=['get'], url_path='friends-playing')
+    def friends_playing(self, request, username=None):
+        user = self.get_object()
+        from api.models import Follow, LibraryEntry
+        
+        following_users = Follow.objects.filter(follower=user).values_list('following_id', flat=True)
+        if not following_users:
+            return Response([])
+            
+        recent_entries = LibraryEntry.objects.filter(
+            user_id__in=following_users,
+            status__in=['playing', 'completed', 'replaying']
+        ).select_related('game', 'user').order_by('-added_at')[:15]
+        
+        seen_games = set()
+        result = []
+        for e in recent_entries:
+            if e.game.id in seen_games: continue
+            seen_games.add(e.game.id)
+            g = e.game
+            result.append({
+                "id": g.id,
+                "title": g.title,
+                "cover_image": self._format_image_url(request, g.cover_image),
+                "friend_username": e.user.username,
+                "status": e.status
+            })
+            if len(result) >= 10: break
+                
         return Response(result)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -279,6 +354,34 @@ class GameViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ['title']
+
+    @action(detail=False, methods=['get'])
+    def trending(self, request):
+        from django.db.models import Count
+        trending_games = Game.objects.annotate(
+            entry_count=Count('library_entries')
+        ).filter(entry_count__gt=0).order_by('-entry_count')[:10]
+        
+        result = []
+        for g in trending_games:
+            image_url = None
+            if g.cover_image:
+                if str(g.cover_image).startswith('http'):
+                    image_url = str(g.cover_image)
+                elif hasattr(g.cover_image, 'url'):
+                    url = g.cover_image.url
+                    if request and not str(url).startswith('http'):
+                        host = request.get_host()
+                        if 'backend' in host: host = host.replace('backend', '127.0.0.1')
+                        image_url = f"{request.scheme}://{host}{url}"
+            
+            result.append({
+                "id": g.id,
+                "title": g.title,
+                "cover_image": image_url,
+                "entry_count": getattr(g, 'entry_count', 0)
+            })
+        return Response(result)
 
 class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all()
