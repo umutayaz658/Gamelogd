@@ -14,26 +14,17 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options['dry_run']
 
-        # Find games with empty genres that have at least one Steam library entry
-        games_without_genres = Game.objects.filter(genres=[]).filter(
-            library_entries__platform__iexact='Steam'
-        ).distinct()
-
-        total = games_without_genres.count()
-        self.stdout.write(f"Found {total} games without genres to backfill.")
+        # Find ALL games that have a cover image ending in .jpg 
+        # (This is how Steam appids are stored in this project)
+        games_to_update = Game.objects.filter(cover_image__endswith='.jpg')
+        
+        total = games_to_update.count()
+        self.stdout.write(f"Found {total} potential steam games to re-fetch genres for.")
 
         updated = 0
         skipped = 0
 
-        for game in games_without_genres:
-            # Get the Steam appid from the library entry
-            entry = LibraryEntry.objects.filter(
-                game=game, platform__iexact='Steam'
-            ).first()
-
-            if not entry:
-                skipped += 1
-                continue
+        for game in games_to_update:
 
             # We need the appid - try to find it via Steam API by title
             # Since we don't store appid directly, we'll use the cover image filename

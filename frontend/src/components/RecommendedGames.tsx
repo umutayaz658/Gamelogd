@@ -52,19 +52,33 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
             return;
         }
         try {
-            const cacheKey = `gamelogd_recommended_${username}`;
+            const cacheKey = `recommended_games_${username}_all`;
             if (!forceRefresh) {
                 const cached = localStorage.getItem(cacheKey);
                 if (cached) {
-                    setGames(JSON.parse(cached));
-                    setLoading(false);
-                    return;
+                    try {
+                        const parsed = JSON.parse(cached);
+                        const cachedGames = parsed.games || parsed; // Fallback for old cache format
+                        // Only use cache if it actually contains games
+                        if (cachedGames && cachedGames.length > 0) {
+                            setGames(cachedGames);
+                            setLoading(false);
+                            return;
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse cached games', e);
+                    }
                 }
             }
             if (forceRefresh) setIsRefreshing(true);
             const res = await api.get(`/users/${username}/recommended-games/`);
             setGames(res.data);
-            localStorage.setItem(cacheKey, JSON.stringify(res.data));
+
+            // Save in the new standardized format shared with the RecommendedGamesPage
+            localStorage.setItem(cacheKey, JSON.stringify({
+                timestamp: Date.now(),
+                games: res.data
+            }));
             setActiveIndex(0);
         } catch (err) {
             console.error("Failed to fetch recommended games", err);
