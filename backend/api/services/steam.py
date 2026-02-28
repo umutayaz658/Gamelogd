@@ -22,7 +22,7 @@ def fetch_steam_genres(appid):
             return []
 
         genres_raw = app_data.get('data', {}).get('genres', [])
-        return [g['description'] for g in genres_raw if 'description' in g]
+        return [g['description'] for g in genres_raw if 'description' in g][:5]
     except Exception as e:
         print(f"Failed to fetch genres for appid {appid}: {e}")
         return []
