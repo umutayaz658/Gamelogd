@@ -617,3 +617,259 @@ class InvestorCallViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
             
 
+# ─────────────────────────────────────────────────────────────
+# Recommendation & Feed Ranking Views
+# ─────────────────────────────────────────────────────────────
+
+from rest_framework.views import APIView
+from api.recommendation_models import PostInteraction
+from api.recommendation_serializers import PostInteractionSerializer, FriendSuggestionSerializer
+
+
+class RankedFeedView(APIView):
+    """
+    GET /api/feed/ranked/?page=1&page_size=20
+    Kişiselleştirilmiş sıralı feed döndürür.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 20))
+        page_size = min(page_size, 50)  # max limit
+
+        from api.services.feed_ranking import get_ranked_feed
+        from .serializers import PostSerializer
+
+        posts = get_ranked_feed(request.user, page=page, page_size=page_size)
+        serializer = PostSerializer(posts, many=True, context={'request': request})
+        return Response({
+            'page': page,
+            'page_size': page_size,
+            'count': len(posts),
+            'results': serializer.data,
+        })
+
+
+class FriendSuggestionView(APIView):
+    """
+    GET /api/users/suggestions/?count=20
+    Arkadaş / takım arkadaşı önerileri döndürür.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        count = int(request.query_params.get('count', 20))
+        count = min(count, 50)
+
+        from api.services.friend_suggestion import get_friend_suggestions
+        suggestions = get_friend_suggestions(request.user, count=count)
+        serializer = FriendSuggestionSerializer(
+            suggestions, many=True, context={'request': request}
+        )
+        return Response({
+            'count': len(suggestions),
+            'results': serializer.data,
+        })
+
+
+class PostInteractionView(APIView):
+    """
+    POST /api/posts/<id>/interact/
+    Body: {"interaction_type": "view"|"share"|"play_request"}
+
+    Etkileşim kaydeder ve cold start sayacını artırır.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, post_id):
+        interaction_type = request.data.get('interaction_type')
+        valid_types = ['view', 'share', 'play_request']
+
+        if interaction_type not in valid_types:
+            return Response(
+                {'error': f'interaction_type must be one of: {valid_types}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        post_obj = get_object_or_404(Post, id=post_id)
+
+        interaction = PostInteraction.objects.create(
+            user=request.user,
+            post=post_obj,
+            interaction_type=interaction_type,
+        )
+
+        # Cold start sayacını artır
+        from api.services.cold_start import increment_interaction_count
+        increment_interaction_count(request.user)
+
+        serializer = PostInteractionSerializer(interaction)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PostScoreDebugView(APIView):
+    """
+    GET /api/posts/<id>/debug-score/
+    Postun algoritmadaki puanını ve tüm bileşen detaylarını döndürür.
+    Geliştirici araçları / debug amaçlı kullanılır.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, post_id):
+        import math
+        from datetime import timedelta
+
+        post = get_object_or_404(
+            Post.objects.select_related('user', 'game_tag', 'score_cache'),
+            id=post_id
+        )
+        user = request.user
+        author = post.user
+
+        # ── Cold Start Info ──
+        from api.services.cold_start import should_use_cold_start, _get_blend_alpha, _score_cold_start
+        is_cold = should_use_cold_start(user)
+        alpha = _get_blend_alpha(user)
+
+        # ── Affinity Score (bileşenleriyle) ──
+        from api.models import Follow
+        from api.recommendation_models import PostInteraction, PostScoreCache
+
+        is_following = Follow.objects.filter(follower=user, following=author).exists()
+        is_following_val = 1.0 if is_following else 0.0
+
+        recent_cutoff = timezone.now() - timedelta(days=30)
+        interaction_count_raw = PostInteraction.objects.filter(
+            user=user,
+            post__user=author,
+            created_at__gte=recent_cutoff,
+        ).count()
+        interaction_ratio = min(interaction_count_raw / 50, 1.0)
+
+        user_games = set(user.library.values_list('game_id', flat=True))
+        author_games = set(author.library.values_list('game_id', flat=True))
+        union = user_games | author_games
+        common_game_ratio = len(user_games & author_games) / len(union) if union else 0.0
+
+        affinity_total = 0.30 * is_following_val + 0.45 * interaction_ratio + 0.25 * common_game_ratio
+
+        # ── Engagement Weight (bileşenleriyle) ──
+        from api.services.feed_ranking import ENGAGEMENT_WEIGHTS, _compute_interaction_counts
+        try:
+            cache = post.score_cache
+            counts = {
+                'view': cache.view_count,
+                'like': cache.like_count,
+                'comment': cache.comment_count,
+                'share': cache.share_count,
+                'play_request': cache.play_request_count,
+            }
+        except PostScoreCache.DoesNotExist:
+            counts = _compute_interaction_counts(post)
+
+        raw_weighted = sum(ENGAGEMENT_WEIGHTS[k] * counts.get(k, 0) for k in ENGAGEMENT_WEIGHTS)
+        engagement_total = math.log1p(raw_weighted)
+
+        # ── Content Relevance (bileşenleriyle) ──
+        user_genre_slugs = set(user.interests.values_list('slug', flat=True))
+        post_genres = set()
+        game_tag_title = None
+        if post.game_tag_id:
+            try:
+                game_tag_title = post.game_tag.title
+                post_genres = set(g.lower() for g in (post.game_tag.genres or []))
+            except Exception:
+                pass
+        genre_union = user_genre_slugs | post_genres
+        genre_match = len(user_genre_slugs & post_genres) / len(genre_union) if genre_union else 0.3
+
+        user_platforms = set(p.lower() for p in (user.platforms or []))
+        post_platform = (post.platform_tag or '').lower().strip()
+        if post_platform and user_platforms:
+            platform_match = 1.0 if post_platform in user_platforms else 0.3
+        else:
+            platform_match = 0.5
+
+        from api.services.feed_ranking import _user_media_preference
+        media_pref = _user_media_preference(user, post.media_type)
+
+        relevance_total = genre_match * 0.5 + platform_match * 0.2 + media_pref * 0.3
+
+        # ── Time Decay ──
+        hours_age = (timezone.now() - post.timestamp).total_seconds() / 3600.0
+        time_decay_lambda = 0.035
+        decay_total = math.exp(-time_decay_lambda * max(hours_age, 0))
+
+        # ── Virality Boost ──
+        one_hour_ago = timezone.now() - timedelta(hours=1)
+        recent_1h = PostInteraction.objects.filter(
+            post=post,
+            created_at__gte=one_hour_ago,
+        ).count()
+        expected_avg = 5
+        if recent_1h <= expected_avg:
+            virality_total = 0.0
+        else:
+            virality_total = max(0, math.log2(recent_1h / expected_avg) - 1) * 0.15
+
+        # ── Final Score ──
+        final_score = (affinity_total * engagement_total * relevance_total * decay_total) + virality_total
+
+        # ── Cold Start Score (varsa) ──
+        cold_start_score = None
+        if is_cold:
+            try:
+                cold_start_score = round(_score_cold_start(user, post), 4)
+            except Exception:
+                cold_start_score = None
+
+        return Response({
+            'post_id': post.id,
+            'post_author': author.username,
+            'game_tag': game_tag_title,
+            'post_age_hours': round(hours_age, 1),
+            'is_cold_start': is_cold,
+            'cold_start_alpha': round(alpha, 3),
+            'cold_start_score': cold_start_score,
+            'scores': {
+                'affinity': {
+                    'total': round(affinity_total, 4),
+                    'is_following': is_following_val,
+                    'interaction_count_30d': interaction_count_raw,
+                    'interaction_ratio': round(interaction_ratio, 4),
+                    'common_games': len(user_games & author_games),
+                    'common_game_ratio': round(common_game_ratio, 4),
+                },
+                'engagement': {
+                    'total': round(engagement_total, 4),
+                    'raw_weighted_sum': round(raw_weighted, 4),
+                    'counts': counts,
+                    'weights': ENGAGEMENT_WEIGHTS,
+                },
+                'content_relevance': {
+                    'total': round(relevance_total, 4),
+                    'genre_match': round(genre_match, 4),
+                    'user_genres': list(user_genre_slugs),
+                    'post_genres': list(post_genres),
+                    'platform_match': platform_match,
+                    'user_platforms': list(user_platforms),
+                    'post_platform': post_platform or None,
+                    'media_preference': round(media_pref, 4),
+                    'post_media_type': post.media_type,
+                },
+                'time_decay': {
+                    'total': round(decay_total, 4),
+                    'hours_age': round(hours_age, 1),
+                    'lambda': time_decay_lambda,
+                    'half_life_hours': round(math.log(2) / time_decay_lambda, 1),
+                },
+                'virality': {
+                    'total': round(virality_total, 4),
+                    'recent_1h_interactions': recent_1h,
+                    'expected_avg': expected_avg,
+                },
+            },
+            'final_score': round(final_score, 6),
+            'formula': 'affinity × engagement × relevance × decay + virality',
+        })

@@ -24,7 +24,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined'
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined',
+            'segment',
         ]
         read_only_fields = ['id', 'date_joined']
 
@@ -38,6 +39,7 @@ class UserSerializer(serializers.ModelSerializer):
     followers_count = serializers.IntegerField(source='followers.count', read_only=True)
     following_count = serializers.IntegerField(source='following.count', read_only=True)
     is_following = serializers.SerializerMethodField()
+    segment = serializers.SerializerMethodField()
 
     def get_is_following(self, obj):
         request = self.context.get('request')
@@ -47,6 +49,13 @@ class UserSerializer(serializers.ModelSerializer):
             from api.models import Follow
             return Follow.objects.filter(follower=request.user, following=obj).exists()
         return False
+
+    def get_segment(self, obj):
+        try:
+            from api.services.segmentation import get_user_segment
+            return get_user_segment(obj)
+        except Exception:
+            return None
 
 class NotificationSerializer(serializers.ModelSerializer):
     actor = UserSerializer(read_only=True)
@@ -188,6 +197,8 @@ class PostSerializer(serializers.ModelSerializer):
         required=False
     )
 
+    segment = serializers.SerializerMethodField()
+
     class Meta:
         model = Post
         fields = [
@@ -195,9 +206,9 @@ class PostSerializer(serializers.ModelSerializer):
             'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
-            'media', 'uploaded_media'
+            'media', 'uploaded_media', 'segment'
         ]
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'segment']
 
     def create(self, validated_data):
         uploaded_media = validated_data.pop('uploaded_media', [])
@@ -270,6 +281,15 @@ class PostSerializer(serializers.ModelSerializer):
         if obj.review_parent:
             return obj.review_parent.user.username
         return None
+
+    def get_segment(self, obj):
+        try:
+            from api.services.segmentation import get_post_segment
+            request = self.context.get('request')
+            request_user = request.user if request and request.user.is_authenticated else None
+            return get_post_segment(obj, request_user=request_user)
+        except Exception:
+            return None
 
     def validate_poll_options(self, value):
         if value:

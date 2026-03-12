@@ -37,6 +37,12 @@ interface UserProfile {
     followers_count?: number;
     following_count?: number;
     is_following?: boolean;
+    segment?: {
+        segment: string;
+        label: string;
+        color: string;
+        bg: string;
+    };
 }
 
 export default function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -354,6 +360,18 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                             <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 text-xs font-bold rounded-lg border border-emerald-500/20 uppercase tracking-wide">
                                                 {displayUser.role}
                                             </span>
+                                            {profileUser.segment && profileUser.segment.label && (
+                                                <span
+                                                    className="px-2 py-1 text-xs font-bold rounded-lg border uppercase tracking-wide"
+                                                    style={{
+                                                        color: profileUser.segment.color,
+                                                        backgroundColor: profileUser.segment.bg,
+                                                        borderColor: `${profileUser.segment.color}30`,
+                                                    }}
+                                                >
+                                                    {profileUser.segment.label}
+                                                </span>
+                                            )}
                                         </h1>
                                         {isOwnProfile ? (
                                             <button
