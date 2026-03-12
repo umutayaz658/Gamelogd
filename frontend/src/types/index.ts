@@ -1,3 +1,10 @@
+export interface Segment {
+    segment: string;
+    label: string;
+    color: string;
+    bg: string;
+}
+
 export interface User {
     id: number;
     username: string;
@@ -14,6 +21,7 @@ export interface User {
     date_joined?: string;
     birth_date?: string;
     show_birth_date?: boolean;
+    segment?: Segment;
 }
 
 export interface Game {
@@ -95,6 +103,7 @@ export interface Post {
     reply_to_username?: string | null;
     is_liked?: boolean;
     type?: 'post' | 'reply' | 'news';
+    segment?: Segment;
     media?: {
         id: number;
         file: string;

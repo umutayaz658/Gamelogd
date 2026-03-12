@@ -53,7 +53,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     )}
 
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <Link
                                 href={`/${post.user.username}`}
                                 className="font-bold text-white hover:underline"
@@ -61,6 +61,18 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             >
                                 {post.user.username}
                             </Link>
+                            {post.user.segment && post.user.segment.label && (
+                                <span
+                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border leading-none"
+                                    style={{
+                                        color: post.user.segment.color,
+                                        backgroundColor: post.user.segment.bg,
+                                        borderColor: `${post.user.segment.color}30`,
+                                    }}
+                                >
+                                    {post.user.segment.label}
+                                </span>
+                            )}
                             <Link
                                 href={`/${post.user.username}`}
                                 className="text-zinc-500 text-sm hover:text-zinc-400"
@@ -78,12 +90,26 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </span>
                             )}
                         </div>
-                        <button
-                            className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <MoreHorizontal className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {post.segment && post.segment.label && (
+                                <span
+                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border leading-none whitespace-nowrap"
+                                    style={{
+                                        color: post.segment.color,
+                                        backgroundColor: post.segment.bg,
+                                        borderColor: `${post.segment.color}30`,
+                                    }}
+                                >
+                                    {post.segment.label}
+                                </span>
+                            )}
+                            <button
+                                className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                        </div>
                     </div>
 
 

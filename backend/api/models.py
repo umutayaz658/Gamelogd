@@ -146,3 +146,6 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message from {self.sender} in {self.conversation}"
+
+# Recommendation modelleri Django tarafından keşfedilsin
+from api.recommendation_models import PostInteraction, UserActivityProfile, PostScoreCache  # noqa: E402, F401
