@@ -10,7 +10,8 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     if (path) {
         // Check if it's already a full web URL
         if (path.startsWith("http")) {
-            return path.replace('http://localhost:8000', 'http://127.0.0.1:8000');
+            const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
+            return path.replace('http://localhost:8000', apiBase);
         }
 
         // CRITICAL: Fix double slashes or filesystem paths if any
@@ -24,7 +25,8 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
 
         // Ensure path starts with / if appending
         const cleanPath = path.startsWith("/") ? path : `/${path}`;
-        return `http://127.0.0.1:8000${cleanPath}`;
+        const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
+        return `${apiBase}${cleanPath}`;
     }
 
     // 2. Fallback: Use Name for Avatar
