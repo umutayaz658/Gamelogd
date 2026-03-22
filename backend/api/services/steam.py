@@ -13,7 +13,9 @@ def fetch_steam_genres(appid):
     """
     try:
         url = f"https://store.steampowered.com/api/appdetails?appids={appid}"
-        response = requests.get(url, timeout=10)
+        # mature games (like Elden Ring) require age check cookies
+        cookies = {'birthtime': '283993201', 'lastagecheckage': '1-January-1980', 'wants_mature_content': '1'}
+        response = requests.get(url, cookies=cookies, timeout=10)
         response.raise_for_status()
         data = response.json()
 

@@ -10,8 +10,13 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     if (path) {
         // Check if it's already a full web URL
         if (path.startsWith("http")) {
+            let finalUrl = path;
+            // Force HTTPS for Cloudinary to prevent Mixed Content errors
+            if (finalUrl.startsWith("http://res.cloudinary.com")) {
+                finalUrl = finalUrl.replace("http://", "https://");
+            }
             const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
-            return path.replace('http://localhost:8000', apiBase);
+            return finalUrl.replace('http://localhost:8000', apiBase);
         }
 
         // CRITICAL: Fix double slashes or filesystem paths if any
