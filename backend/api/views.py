@@ -12,6 +12,7 @@ from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostS
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
+from api.permissions import IsOwnerOrReadOnly
 
 class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
@@ -384,12 +385,12 @@ class GameViewSet(viewsets.ModelViewSet):
         return Response(result)
 
 class ReviewViewSet(viewsets.ModelViewSet):
-    queryset = Review.objects.all()
+    queryset = Review.objects.all().select_related('user', 'game')
     serializer_class = ReviewSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
     def get_queryset(self):
-        queryset = Review.objects.all()
+        queryset = Review.objects.all().select_related('user', 'game')
         username = self.request.query_params.get('username', None)
         if username is not None:
             queryset = queryset.filter(user__username=username)
@@ -400,9 +401,9 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
 
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all().order_by('-timestamp')
+    queryset = Post.objects.all().select_related('user').order_by('-timestamp')
     serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = {
         'news_parent': ['exact', 'isnull'],
@@ -410,7 +411,7 @@ class PostViewSet(viewsets.ModelViewSet):
     }
 
     def get_queryset(self):
-        queryset = Post.objects.all().order_by('-timestamp')
+        queryset = Post.objects.all().select_related('user').order_by('-timestamp')
         username = self.request.query_params.get('username', None)
         parent_id = self.request.query_params.get('parent', None)
 
@@ -516,7 +517,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 class LibraryViewSet(viewsets.ModelViewSet):
     queryset = LibraryEntry.objects.all().select_related('game', 'user')
     serializer_class = LibraryEntrySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['user__username', 'platform', 'status']
     ordering_fields = ['playtime_forever', 'game__title']
@@ -571,9 +572,9 @@ from core.models import Project, JobPosting
 from .serializers import ProjectSerializer, JobPostingSerializer
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    queryset = Project.objects.all().order_by('-created_at')
+    queryset = Project.objects.all().select_related('owner').order_by('-created_at')
     serializer_class = ProjectSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ['title', 'description', 'tech_stack']
 
@@ -581,9 +582,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         serializer.save(owner=self.request.user)
 
 class JobPostingViewSet(viewsets.ModelViewSet):
-    queryset = JobPosting.objects.filter(is_active=True).order_by('-created_at')
+    queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')
     serializer_class = JobPostingSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['job_type', 'location_type', 'experience_level']
     search_fields = ['title', 'description']
@@ -595,9 +596,9 @@ from core.models import Pitch, InvestorCall
 from .serializers import PitchSerializer, InvestorCallSerializer
 
 class PitchViewSet(viewsets.ModelViewSet):
-    queryset = Pitch.objects.all().order_by('-created_at')
+    queryset = Pitch.objects.all().select_related('user').order_by('-created_at')
     serializer_class = PitchSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['genre', 'platform', 'stage']
     search_fields = ['title']
@@ -606,9 +607,9 @@ class PitchViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 class InvestorCallViewSet(viewsets.ModelViewSet):
-    queryset = InvestorCall.objects.filter(is_active=True).order_by('-created_at')
+    queryset = InvestorCall.objects.filter(is_active=True).select_related('user').order_by('-created_at')
     serializer_class = InvestorCallSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['investor_type', 'ticket_size']
     search_fields = ['organization_name', 'looking_for']
