@@ -79,8 +79,8 @@ class LibraryEntry(models.Model):
     game = models.ForeignKey('core.Game', related_name='library_entries', on_delete=models.CASCADE)
     playtime_forever = models.IntegerField(default=0) # In minutes
     platform = models.CharField(max_length=50, default='Steam')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='unplayed')
-    added_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='unplayed', db_index=True)
+    added_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ('user', 'game')
