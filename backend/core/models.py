@@ -5,7 +5,7 @@ from django.conf import settings
 # We import them or use settings.AUTH_USER_MODEL where appropriate
 
 class Game(models.Model):
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, db_index=True)
     cover_image = models.ImageField(upload_to='games/', blank=True, null=True)
     release_date = models.DateField(null=True, blank=True)
     igdb_id = models.IntegerField(unique=True, null=True, blank=True)
@@ -107,7 +107,7 @@ class Post(models.Model):
     news_parent = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
     project_parent = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True, related_name='devlogs')
     
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self):
         return f"Post by {self.user.username} at {self.timestamp}"
@@ -161,7 +161,7 @@ class News(models.Model):
     link = models.URLField(unique=True, max_length=1000)
     image_url = models.URLField(blank=True, null=True, max_length=1000)
     description = models.TextField(blank=True)
-    pub_date = models.DateTimeField()
+    pub_date = models.DateTimeField(db_index=True)
     category = models.CharField(max_length=20, db_index=True)
 
     class Meta:
