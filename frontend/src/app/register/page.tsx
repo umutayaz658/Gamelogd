@@ -38,6 +38,20 @@ export default function RegisterPage() {
 
     const handleNext = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Validation on Step 1
+        if (currentStep === 1) {
+            if (formData.password !== formData.confirmPassword) {
+                setError("Passwords do not match!");
+                return;
+            }
+            if (formData.password.length < 8) {
+                setError("Password must be at least 8 characters long.");
+                return;
+            }
+            setError(null); // Clear errors if valid
+        }
+
         if (currentStep < 3) {
             setCurrentStep(prev => prev + 1);
         } else {
