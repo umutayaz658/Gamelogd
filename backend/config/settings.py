@@ -161,3 +161,4 @@ REST_FRAMEWORK = {
 }
 
 STEAM_API_KEY = os.environ.get('STEAM_API_KEY')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com')

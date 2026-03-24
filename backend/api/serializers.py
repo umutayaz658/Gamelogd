@@ -78,6 +78,11 @@ class RegisterSerializer(serializers.ModelSerializer):
              raise serializers.ValidationError("Username contains invalid characters.")
         return value
 
+    def validate_password(self, value):
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(value)
+        return value
+
     def create(self, validated_data):
         print("DEBUG: Validated Data received:", validated_data)
         
