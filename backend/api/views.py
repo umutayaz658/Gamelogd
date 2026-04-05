@@ -145,15 +145,22 @@ class UserViewSet(viewsets.ModelViewSet):
         # Trigger Sync
         from api.services.steam import fetch_steam_library
         try:
-             # In production, use Celery: fetch_steam_library.delay(request.user.id, steam_id)
-            fetch_steam_library(request.user.id, steam_id)
+            stats = fetch_steam_library(request.user.id, steam_id)
         except Exception as e:
-            # If sync fails immediately (synchronous), let the user know, but we already saved the ID.
-            # Maybe we should return a warning?
             print(f"Sync trigger failed: {e}")
-            return Response({"status": "Steam ID saved, but sync failed. Check privacy settings or try again later.", "warning": str(e)}, status=status.HTTP_200_OK)
+            return Response({
+                "status": "Steam ID saved, but sync failed. Check privacy settings or try again later.",
+                "warning": str(e)
+            }, status=status.HTTP_200_OK)
         
-        return Response({"status": "Sync started"}, status=status.HTTP_200_OK)
+        return Response({
+            "status": "Sync completed",
+            "total_games": stats.get('total', 0),
+            "synced": stats.get('synced', 0),
+            "created": stats.get('created', 0),
+            "covers_fixed": stats.get('cover_fixed', 0),
+            "errors": stats.get('errors', 0),
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def disconnect_steam(self, request):
