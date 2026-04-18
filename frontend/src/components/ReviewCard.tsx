@@ -20,13 +20,15 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     const baseId = useId().replace(/:/g, '-');
 
     const handleCardClick = () => {
-        router.push(`/${review.user.username}/review/${review.id}`);
+        if (!isDetailView) {
+            router.push(`/${review.user.username}/review/${review.id}`);
+        }
     };
 
     return (
         <div
             onClick={handleCardClick}
-            className={`bg-zinc-900 border border-zinc-800 rounded-2xl hover:bg-zinc-900/80 p-4 transition-colors cursor-pointer`}
+            className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
         >
             <div className="flex gap-4">
                 {/* User Avatar */}

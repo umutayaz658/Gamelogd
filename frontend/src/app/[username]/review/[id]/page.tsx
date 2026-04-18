@@ -79,8 +79,8 @@ export default function SingleReviewPage() {
                             </div>
                         ) : review ? (
                             <div className="flex flex-col gap-4">
-                                <div className="pointer-events-none">
-                                    <ReviewCard review={review} />
+                                <div className="z-10 bg-zinc-950">
+                                    <ReviewCard review={review} isDetailView={true} />
                                 </div>
 
                                 {/* Reply Composer */}

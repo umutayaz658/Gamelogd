@@ -17,13 +17,15 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const { openReplyModal } = useReplyModal();
 
     const handleCardClick = () => {
-        router.push(`/${post.user.username}/status/${post.id}`);
+        if (!isDetailView) {
+            router.push(`/${post.user.username}/status/${post.id}`);
+        }
     };
 
     return (
         <div
             onClick={handleCardClick}
-            className={`bg-zinc-900 border border-zinc-800 rounded-2xl hover:bg-zinc-900/80 p-4 transition-colors cursor-pointer`}
+            className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
         >
             <div className="flex gap-4">
                 <div className="flex flex-col items-center flex-shrink-0 w-fit">
