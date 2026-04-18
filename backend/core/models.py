@@ -9,6 +9,7 @@ class Game(models.Model):
     cover_image = models.ImageField(upload_to='games/', blank=True, null=True)
     release_date = models.DateField(null=True, blank=True)
     igdb_id = models.IntegerField(unique=True, null=True, blank=True)
+    steam_appid = models.IntegerField(unique=True, null=True, blank=True)
     genres = models.JSONField(default=list, blank=True)
 
     def __str__(self):
