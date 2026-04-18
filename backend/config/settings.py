@@ -53,6 +53,10 @@ CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False') == 'T
 
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://gamelogd.*\.vercel\.app$",
+]
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
