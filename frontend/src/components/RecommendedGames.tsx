@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Gamepad2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Gamepad2, RefreshCw, LinkIcon, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 interface RecommendedGame {
     id: number;
@@ -41,13 +42,16 @@ const GameCardContent = ({ game, isCenter }: { game: RecommendedGame, isCenter: 
 
 export default function RecommendedGames({ username }: RecommendedGamesProps) {
     const router = useRouter();
+    const { user } = useAuth();
     const [games, setGames] = useState<RecommendedGame[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeIndex, setActiveIndex] = useState(0);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
+    const hasPlatformLinked = !!user?.steam_id;
+
     const fetchGames = async (forceRefresh = false) => {
-        if (!username) {
+        if (!username || !hasPlatformLinked) {
             setLoading(false);
             return;
         }
@@ -90,7 +94,40 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
 
     useEffect(() => {
         fetchGames();
-    }, [username]);
+    }, [username, hasPlatformLinked]);
+
+    // Show "connect platform" warning if no platform is linked
+    if (!hasPlatformLinked) {
+        return (
+            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 mt-6 overflow-hidden relative">
+                <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Gamepad2 className="h-5 w-5 text-indigo-500" />
+                        You Might Like These
+                    </h2>
+                </div>
+
+                <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                    <div className="p-4 rounded-full bg-indigo-500/10 mb-4">
+                        <LinkIcon className="h-8 w-8 text-indigo-400" />
+                    </div>
+                    <p className="text-sm text-zinc-400 leading-relaxed mb-1">
+                        To receive personalized recommendations,
+                    </p>
+                    <p className="text-sm font-semibold text-zinc-300 mb-4">
+                        please link a platform to your account.
+                    </p>
+                    <button
+                        onClick={() => router.push('/settings?tab=connected')}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 border border-indigo-500/20 rounded-lg text-sm font-medium transition-all"
+                    >
+                        <Settings className="h-4 w-4" />
+                        Link Account
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (loading) {
         return (
