@@ -140,7 +140,17 @@ export default function LoginPage() {
                                         const res = await api.post('/google-login/', {
                                             credential: credentialResponse.credential
                                         });
-                                        await login(res.data.token);
+
+                                        if (res.data.is_new_user) {
+                                            localStorage.setItem('googleSignupData', JSON.stringify({
+                                                email: res.data.email,
+                                                firstName: res.data.first_name,
+                                                lastName: res.data.last_name
+                                            }));
+                                            router.push('/register');
+                                        } else {
+                                            await login(res.data.token);
+                                        }
                                     } catch (err: any) {
                                         console.error('Google Login failed:', err);
                                         setError(err.response?.data?.error || 'Google login failed. Please try again.');
