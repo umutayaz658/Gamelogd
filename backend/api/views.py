@@ -51,7 +51,8 @@ class GoogleLoginView(generics.CreateAPIView):
             idinfo = id_token.verify_oauth2_token(
                 credential, 
                 google_requests.Request(), 
-                settings.GOOGLE_CLIENT_ID
+                settings.GOOGLE_CLIENT_ID,
+                clock_skew_in_seconds=10
             )
 
             email = idinfo.get('email')
@@ -60,21 +61,12 @@ class GoogleLoginView(generics.CreateAPIView):
 
             user = User.objects.filter(email=email).first()
             if not user:
-                username = email.split('@')[0]
-                base_username = username
-                counter = 1
-                while User.objects.filter(username=username).exists():
-                    username = f"{base_username}{counter}"
-                    counter += 1
-
-                user = User.objects.create_user(
-                    username=username,
-                    email=email,
-                    first_name=first_name,
-                    last_name=last_name,
-                    real_name=f"{first_name} {last_name}".strip(),
-                    password=User.objects.make_random_password()
-                )
+                return Response({
+                    "is_new_user": True,
+                    "email": email,
+                    "first_name": first_name,
+                    "last_name": last_name
+                }, status=status.HTTP_200_OK)
 
             token, created = Token.objects.get_or_create(user=user)
             return Response({
