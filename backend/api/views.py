@@ -56,6 +56,17 @@ class UserViewSet(viewsets.ModelViewSet):
             
         return Response({"message": f"You are now following {target_user.username}"}, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['delete'], permission_classes=[permissions.IsAuthenticated])
+    def unfollow(self, request, username=None):
+        target_user = self.get_object()
+        from api.models import Follow
+        
+        deleted, _ = Follow.objects.filter(follower=request.user, following=target_user).delete()
+        
+        if deleted:
+            return Response({"message": f"You unfollowed {target_user.username}"}, status=status.HTTP_200_OK)
+        return Response({"error": "You are not following this user."}, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def counts(self, request):
         # Unread Messages (from others)
@@ -336,6 +347,13 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         self.get_queryset().update(is_read=True)
         return Response({'status': 'marked all read'})
 
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save(update_fields=['is_read'])
+        return Response({'status': 'marked read'})
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
@@ -440,7 +458,66 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        post = serializer.save(user=self.request.user)
+        
+        try:
+            # --- Notification: Reply ---
+            from django.contrib.contenttypes.models import ContentType
+            post_ct = ContentType.objects.get_for_model(Post)
+            
+            if post.parent and post.parent.user != self.request.user:
+                preview = post.content[:100] if post.content else ''
+                Notification.objects.create(
+                    recipient=post.parent.user,
+                    actor=self.request.user,
+                    verb='replied to your post',
+                    target_type=post_ct,
+                    target_id=post.parent.id,
+                    preview_text=preview,
+                )
+            elif post.review_parent and post.review_parent.user != self.request.user:
+                from django.contrib.contenttypes.models import ContentType
+                review_ct = ContentType.objects.get_for_model(Review)
+                preview = post.content[:100] if post.content else ''
+                Notification.objects.create(
+                    recipient=post.review_parent.user,
+                    actor=self.request.user,
+                    verb='commented on your review',
+                    target_type=review_ct,
+                    target_id=post.review_parent.id,
+                    preview_text=preview,
+                )
+            elif post.news_parent:
+                pass  # News has no single owner to notify
+            
+            # --- Notification: @Mention detection ---
+            import re
+            mentions = re.findall(r'@(\w+)', post.content or '')
+            if mentions:
+                mentioned_users = User.objects.filter(username__in=mentions).exclude(id=self.request.user.id)
+                for mentioned_user in mentioned_users:
+                    # Don't duplicate if already notified as reply recipient
+                    if post.parent and post.parent.user == mentioned_user:
+                        continue
+                    if post.review_parent and post.review_parent.user == mentioned_user:
+                        continue
+                    Notification.objects.create(
+                        recipient=mentioned_user,
+                        actor=self.request.user,
+                        verb='mentioned you',
+                        target_type=post_ct,
+                        target_id=post.id,
+                        preview_text=post.content[:100] if post.content else '',
+                    )
+        except Exception as e:
+            print(f"Error creating notification: {e}")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.user != request.user:
+            return Response({'error': 'You can only delete your own posts.'}, status=status.HTTP_403_FORBIDDEN)
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 from api.models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
@@ -508,6 +585,26 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Update conversation timestamp
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=['updated_at'])
+        
+        # --- Create message notification ---
+        from django.contrib.contenttypes.models import ContentType
+        conv_ct = ContentType.objects.get_for_model(Conversation)
+        recipients = conversation.participants.exclude(id=self.request.user.id)
+        preview = message.content[:100] if message.content else ''
+        if message.shared_post:
+            preview = 'Shared a post with you'
+        elif message.shared_review:
+            preview = 'Shared a review with you'
+        
+        for recipient in recipients:
+            Notification.objects.create(
+                recipient=recipient,
+                actor=self.request.user,
+                verb='sent you a message',
+                target_type=conv_ct,
+                target_id=conversation.id,
+                preview_text=preview,
+            )
 
 from api.models import LibraryEntry
 from .serializers import LibraryEntrySerializer
@@ -552,6 +649,9 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
     serializer_class = LikeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
     def create(self, request, *args, **kwargs):
         # Check for existence to toggle or prevent duplicates
         user = request.user
@@ -565,7 +665,41 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
             existing.delete()
             return Response({'status': 'unliked'}, status=status.HTTP_200_OK)
         
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        
+        # --- Create like notification ---
+        from django.contrib.contenttypes.models import ContentType
+        try:
+            if post_id:
+                post = Post.objects.select_related('user').get(id=post_id)
+                if post.user != user:
+                    post_ct = ContentType.objects.get_for_model(Post)
+                    preview = post.content[:100] if post.content else ''
+                    Notification.objects.create(
+                        recipient=post.user,
+                        actor=user,
+                        verb='liked your post',
+                        target_type=post_ct,
+                        target_id=post.id,
+                        preview_text=preview,
+                    )
+            elif review_id:
+                review = Review.objects.select_related('user').get(id=review_id)
+                if review.user != user:
+                    review_ct = ContentType.objects.get_for_model(Review)
+                    preview = f'{review.game.title} - {review.content[:80]}' if review.content else review.game.title
+                    Notification.objects.create(
+                        recipient=review.user,
+                        actor=user,
+                        verb='liked your review',
+                        target_type=review_ct,
+                        target_id=review.id,
+                        preview_text=preview,
+                    )
+        except Exception as e:
+            print(f'Notification creation failed: {e}')
+        
+        return response
 
 from core.models import Project, JobPosting
 from .serializers import ProjectSerializer, JobPostingSerializer

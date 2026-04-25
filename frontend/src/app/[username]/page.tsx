@@ -11,6 +11,7 @@ import api from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
+import { useToast } from "@/context/ToastContext";
 import EditProfileModal from "@/components/EditProfileModal";
 
 interface Game {
@@ -49,6 +50,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const { username } = use(params);
     const { user: currentUser } = useAuth();
     const { items: feedItems } = useFeed();
+    const { showToast } = useToast();
     const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('activity');
@@ -202,13 +204,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             await api.patch('/users/me/', { top_favorites: favoritesPayload });
         } catch (error) {
             console.error("Failed to save favorites:", error);
-            alert("Failed to save changes. Please try again.");
+            showToast('Failed to save changes. Please try again.', 'error');
         }
     };
 
     const handleMessage = async () => {
         if (!currentUser) {
-            alert("Please login to send messages.");
+            showToast('Please login to send messages.', 'info');
             return;
         }
         try {
@@ -217,13 +219,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             window.location.href = `/messages?chatId=${res.data.id}`;
         } catch (error) {
             console.error("Failed to start chat:", error);
-            alert("Failed to start chat.");
+            showToast('Failed to start chat.', 'error');
         }
     };
 
     const handleFollowToggle = async () => {
         if (!currentUser) {
-            alert("Please login to follow users.");
+            showToast('Please login to follow users.', 'info');
             return;
         }
 
@@ -236,7 +238,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
         try {
             if (previousIsFollowing) {
-                await api.post(`/users/${username}/unfollow/`);
+                await api.delete(`/users/${username}/unfollow/`);
             } else {
                 await api.post(`/users/${username}/follow/`);
             }
@@ -245,7 +247,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             // Revert on failure
             setIsFollowing(previousIsFollowing);
             setFollowersCount(previousCount);
-            alert("Failed to update follow status.");
+            showToast('Failed to update follow status.', 'error');
         }
     };
 
@@ -416,7 +418,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                 </div>
 
                                 {/* Stats */}
-                                <div className="flex items-center gap-6 md:gap-8 bg-zinc-900/50 px-6 py-3 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
+                                <div className="flex items-center gap-6 md:gap-8 glass px-6 py-3 rounded-2xl backdrop-blur-md">
                                     <div className="text-center">
                                         <div className="text-xl font-bold text-white">{followersCount}</div>
                                         <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Followers</div>
