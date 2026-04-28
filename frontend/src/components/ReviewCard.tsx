@@ -130,28 +130,60 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     };
 
     const handleCardClick = () => {
-        router.push(`/${review.user.username}/review/${review.id}`);
+        if (!isDetailView) {
+            router.push(`/${review.user.username}/review/${review.id}`);
+        }
     };
 
     return (
-        <>
-            <div
-                onClick={handleCardClick}
-                className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 cursor-pointer card-hover`}
-            >
-                <div className="flex gap-4">
-                    {/* User Avatar */}
-                    <div className="flex flex-col items-center flex-shrink-0 w-fit">
-                        <Link
-                            href={`/${review.user.username}`}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <img
-                                src={getImageUrl(review.user.avatar, review.user.username)}
-                                alt={review.user.username}
-                                className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
-                            />
-                        </Link>
+        <div
+            onClick={handleCardClick}
+            className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
+        >
+            <div className="flex gap-4">
+                {/* User Avatar */}
+                <div className="flex flex-col items-center flex-shrink-0 w-fit">
+                    <Link
+                        href={`/${review.user.username}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <img
+                            src={getImageUrl(review.user.avatar, review.user.username)}
+                            alt={review.user.username}
+                            className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
+                        />
+                    </Link>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                    {/* Header: Name, Username, Date, More Button */}
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <Link
+                                href={`/${review.user.username}`}
+                                className="font-bold text-white hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {review.user.username}
+                            </Link>
+                            <Link
+                                href={`/${review.user.username}`}
+                                className="text-zinc-500 text-sm hover:text-zinc-400"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                @{review.user.username.toLowerCase()}
+                            </Link>
+                            <span className="text-zinc-700 text-sm">•</span>
+                            <span className="text-zinc-500 text-sm hover:underline">
+                                {new Date(review.timestamp).toLocaleDateString()}
+                            </span>
+                        </div>
+                        <button
+    className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
+    onClick={(e) => e.stopPropagation()}
+>
+    <MoreHorizontal className="h-4 w-4" />
+</button>
                     </div>
 
                     <div className="flex-1 min-w-0">

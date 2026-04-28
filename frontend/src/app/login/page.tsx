@@ -8,6 +8,9 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { User as UserIcon, Loader2, Lock } from 'lucide-react';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+
+const GOOGLE_CLIENT_ID = "47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -181,8 +184,53 @@ export default function LoginPage() {
                                 Discord
                             </button>
                         </div>
-                    </form>
-                </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-zinc-900 px-2 text-zinc-500">Or continue with</span>
+                        </div>
+                    </div>
+
+                    {/* Social Login */}
+                    <div className="w-full">
+                        <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+                            <GoogleLogin
+                                onSuccess={async (credentialResponse) => {
+                                    if (!credentialResponse.credential) return;
+                                    try {
+                                        setIsLoading(true);
+                                        setError(null);
+                                        const res = await api.post('/google-login/', {
+                                            credential: credentialResponse.credential
+                                        });
+
+                                        if (res.data.is_new_user) {
+                                            localStorage.setItem('googleSignupData', JSON.stringify({
+                                                email: res.data.email,
+                                                firstName: res.data.first_name,
+                                                lastName: res.data.last_name
+                                            }));
+                                            router.push('/register');
+                                        } else {
+                                            await login(res.data.token);
+                                        }
+                                    } catch (err: any) {
+                                        console.error('Google Login failed:', err);
+                                        setError(err.response?.data?.error || 'Google login failed. Please try again.');
+                                        setIsLoading(false);
+                                    }
+                                }}
+                                onError={() => {
+                                    console.log('Login Failed');
+                                    setError('Google login was cancelled or failed.');
+                                }}
+                                theme="filled_black"
+                                size="large"
+                                shape="pill"
+                                text="continue_with"
+                                width="360"
+                            />
+                        </GoogleOAuthProvider>
+                    </div>
+                </form>
 
                 {/* Footer */}
                 <div className="mt-8 text-center text-sm text-zinc-500 animate-fade-up" style={{ animationDelay: '0.2s' }}>
