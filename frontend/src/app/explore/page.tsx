@@ -93,22 +93,30 @@ export default function ExplorePage() {
                     <div className="col-span-12 lg:col-span-6">
                         <div className="min-h-[calc(100vh-6rem)]">
 
+                            {/* Animated Gradient Header */}
+                            <div className="relative overflow-hidden rounded-2xl mb-4 p-6 bg-gradient-to-br from-emerald-600/20 via-teal-600/10 to-cyan-600/20 border border-emerald-500/10 animate-gradient-shift" style={{ backgroundSize: '200% 200%' }}>
+                                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-teal-500/5" />
+                                <div className="relative z-10">
+                                    <h1 className="text-2xl font-bold gradient-text mb-1">Discover Gaming</h1>
+                                    <p className="text-sm text-zinc-400">Explore trending posts, reviews, and gaming communities</p>
+                                </div>
+                                {/* Decorative orb */}
+                                <div className="absolute -top-10 -right-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl" />
+                            </div>
+
                             {/* Sticky Tab Bar */}
-                            <div className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 -mx-4 px-4 mb-4">
-                                <div className="flex overflow-x-auto scrollbar-thin-dark pb-2">
+                            <div className="sticky top-16 z-10 bg-zinc-950/90 backdrop-blur-xl -mx-4 px-4 mb-4 py-3">
+                                <div className="flex overflow-x-auto scrollbar-none gap-1.5 pb-0.5">
                                     {tabs.map((tab) => (
                                         <button
                                             key={tab}
                                             onClick={() => setActiveTab(tab)}
-                                            className={`px-4 py-4 text-sm font-bold whitespace-nowrap transition-all relative ${activeTab === tab
-                                                ? 'text-white'
-                                                : 'text-zinc-500 hover:text-zinc-300'
+                                            className={`px-4 py-2 text-sm font-bold whitespace-nowrap transition-all rounded-full ${activeTab === tab
+                                                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
+                                                : 'text-zinc-500 hover:text-white hover:bg-zinc-800/60 bg-zinc-900/50'
                                                 }`}
                                         >
                                             {tab}
-                                            {activeTab === tab && (
-                                                <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
-                                            )}
                                         </button>
                                     ))}
                                 </div>
