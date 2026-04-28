@@ -92,10 +92,6 @@ class Post(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     title = models.CharField(max_length=255, blank=True, null=True) # For Devlogs
     content = models.TextField(blank=True)
-
-    # Recommendation algorithm: oyun ve platform etiketleri
-    game_tag = models.ForeignKey('Game', null=True, blank=True, on_delete=models.SET_NULL, related_name='tagged_posts')
-    platform_tag = models.CharField(max_length=50, blank=True, default='')
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
     
     # Media Support

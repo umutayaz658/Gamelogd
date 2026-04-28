@@ -199,7 +199,7 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
     };
 
     return (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 mt-6 overflow-hidden relative z-0">
+        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 mt-6 overflow-hidden relative">
             <div className="flex items-center justify-between mb-2 relative z-30">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                     <Gamepad2 className="h-5 w-5 text-indigo-500" />
