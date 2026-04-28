@@ -3,11 +3,14 @@
 import { useState, useRef } from 'react';
 import { Image as ImageIcon, ImagePlay, FileImage, X, Smile, BarChart2, Plus, Trash2, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import { getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { Post } from '@/types';
+
+const MAX_CHARS = 500;
 
 interface PostComposerProps {
     onPostCreated: (post: Post) => void;
@@ -18,6 +21,7 @@ interface PostComposerProps {
 
 export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
     const { user } = useAuth();
+    const { showToast } = useToast();
 
     // Create Post State
     const [content, setContent] = useState('');
@@ -166,20 +170,22 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             setShowGifPicker(false);
         } catch (error) {
             console.error('Failed to create post:', error);
-            alert('Failed to create post. Please try again.');
+            showToast('Failed to create post. Please try again.', 'error');
         } finally {
             setIsPosting(false);
         }
     };
 
     return (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4">
+        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 transition-all duration-300 focus-within:border-zinc-700 focus-within:glow-emerald">
             <div className="flex gap-4">
-                <img
-                    src={getImageUrl(user?.avatar, user?.username)}
-                    alt="User"
-                    className="h-10 w-10 rounded-full bg-zinc-800 object-cover"
-                />
+                <div className="h-10 w-10 rounded-full ring-2 ring-emerald-500/20 overflow-hidden flex-shrink-0">
+                    <img
+                        src={getImageUrl(user?.avatar, user?.username)}
+                        alt="User"
+                        className="h-full w-full rounded-full bg-zinc-800 object-cover"
+                    />
+                </div>
                 <div className="flex-1 relative">
                     {replyingTo && (
                         <div className="mb-2">
@@ -305,10 +311,34 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             </button>
                         </div>
 
+                        {/* Character Counter */}
+                        {content.length > 0 && (
+                            <div className="flex items-center gap-2 mr-2">
+                                <div className="relative h-6 w-6">
+                                    <svg className="h-6 w-6 -rotate-90" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" fill="none" stroke="#27272a" strokeWidth="2" />
+                                        <circle
+                                            cx="12" cy="12" r="10" fill="none"
+                                            stroke={content.length > MAX_CHARS ? '#ef4444' : content.length > MAX_CHARS * 0.8 ? '#f59e0b' : '#10b981'}
+                                            strokeWidth="2"
+                                            strokeDasharray={`${(content.length / MAX_CHARS) * 62.83} 62.83`}
+                                            strokeLinecap="round"
+                                            className="transition-all duration-200"
+                                        />
+                                    </svg>
+                                </div>
+                                {content.length > MAX_CHARS * 0.8 && (
+                                    <span className={`text-xs font-bold ${content.length > MAX_CHARS ? 'text-red-500' : 'text-amber-500'}`}>
+                                        {MAX_CHARS - content.length}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
                         <button
                             onClick={handlePost}
-                            disabled={isPosting || (!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2))}
-                            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
+                            disabled={isPosting || content.length > MAX_CHARS || (!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2))}
+                            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-700 disabled:to-zinc-700 disabled:cursor-not-allowed text-white px-5 py-1.5 rounded-full font-bold text-sm transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40 hover:scale-[1.02] active:scale-[0.98]"
                         >
                             {isPosting ? (
                                 <>

@@ -25,8 +25,18 @@ from .views import PitchViewSet, InvestorCallViewSet
 router.register(r'pitches', PitchViewSet, basename='pitch')
 router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call')
 
+# Recommendation & Feed Ranking endpoints
+from .views import RankedFeedView, FriendSuggestionView, PostInteractionView, PostScoreDebugView
+
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),
+
+    # Recommendation API (router'dan ONCE tanimlanmali)
+    path('feed/ranked/', RankedFeedView.as_view(), name='ranked-feed'),
+    path('users/suggestions/', FriendSuggestionView.as_view(), name='friend-suggestions'),
+    path('posts/<int:post_id>/interact/', PostInteractionView.as_view(), name='post-interact'),
+    path('posts/<int:post_id>/debug-score/', PostScoreDebugView.as_view(), name='post-debug-score'),
+
     path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
     path('google-login/', GoogleLoginView.as_view(), name='google-login'),
