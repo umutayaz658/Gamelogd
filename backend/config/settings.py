@@ -62,6 +62,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 
 CSRF_TRUSTED_ORIGINS = [
     "https://gamelogd-coral.vercel.app",
+    "https://gamelogd-production.up.railway.app",
 ]
 
 ROOT_URLCONF = 'config.urls'
