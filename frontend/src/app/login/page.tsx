@@ -184,10 +184,6 @@ export default function LoginPage() {
                                 Discord
                             </button>
                         </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-zinc-900 px-2 text-zinc-500">Or continue with</span>
-                        </div>
-                    </div>
 
                     {/* Social Login */}
                     <div className="w-full">
@@ -231,6 +227,7 @@ export default function LoginPage() {
                         </GoogleOAuthProvider>
                     </div>
                 </form>
+            </div>
 
                 {/* Footer */}
                 <div className="mt-8 text-center text-sm text-zinc-500 animate-fade-up" style={{ animationDelay: '0.2s' }}>

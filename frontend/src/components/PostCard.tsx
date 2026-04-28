@@ -143,7 +143,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     };
 
     return (
-        <div
+        <>
+            <div
             onClick={handleCardClick}
             className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
         >
@@ -160,48 +161,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         />
                     </Link>
                 </div>
-                <div className="flex-1 min-w-0">
-                    {post.reply_to_username && !post.news_details && (
-                        <div className="mb-1 flex items-center gap-1 text-sm">
-                            <span className="text-zinc-500">Replying to</span>
-                            <Link
-                                href={`/${post.reply_to_username}`}
-                                className="text-emerald-500 hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                @{post.reply_to_username}
-                            </Link>
-                        </div>
-                    )}
 
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Link
-                                href={`/${post.user.username}`}
-                                className="font-bold text-white hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {post.user.username}
-                            </Link>
-                            <Link
-                                href={`/${post.user.username}`}
-                                className="text-zinc-500 text-sm hover:text-zinc-400"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                @{post.user.username.toLowerCase()}
-                            </Link>
-                            <span className="text-zinc-700 text-sm">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline">
-                                {new Date(post.timestamp).toLocaleDateString()}
-                            </span>
-                            {post.news_details && !hideNewsQuote && (
-                                <span className="ml-2 text-zinc-500 text-sm font-normal">
-                                    • Commented on this news
-                                </span>
-                            )}
-                        </div>
-                        <button
-                            className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
                     <div className="flex-1 min-w-0">
                         {post.reply_to_username && !post.news_details && (
                             <div className="mb-1 flex items-center gap-1 text-sm">

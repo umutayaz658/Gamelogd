@@ -136,7 +136,8 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     };
 
     return (
-        <div
+        <>
+            <div
             onClick={handleCardClick}
             className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
         >
@@ -154,37 +155,6 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                         />
                     </Link>
                 </div>
-
-                <div className="flex-1 min-w-0">
-                    {/* Header: Name, Username, Date, More Button */}
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                            <Link
-                                href={`/${review.user.username}`}
-                                className="font-bold text-white hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {review.user.username}
-                            </Link>
-                            <Link
-                                href={`/${review.user.username}`}
-                                className="text-zinc-500 text-sm hover:text-zinc-400"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                @{review.user.username.toLowerCase()}
-                            </Link>
-                            <span className="text-zinc-700 text-sm">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline">
-                                {new Date(review.timestamp).toLocaleDateString()}
-                            </span>
-                        </div>
-                        <button
-    className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
-    onClick={(e) => e.stopPropagation()}
->
-    <MoreHorizontal className="h-4 w-4" />
-</button>
-                    </div>
 
                     <div className="flex-1 min-w-0">
                         {/* Header: Name, Username, Date, More Button */}
