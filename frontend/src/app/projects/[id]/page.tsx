@@ -165,7 +165,7 @@ export default function ProjectDetailPage() {
                         {/* Content Area */}
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                             {activeTab === 'devlogs' ? (
-                                <div className="flex flex-col gap-6 max-w-3xl">
+                                <div className="flex flex-col gap-6 w-full">
                                     {devlogs.length > 0 ? (
                                         devlogs.map((post) => (
                                             <PostCard key={post.id} post={post} />
