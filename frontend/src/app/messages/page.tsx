@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import Navbar from "@/components/Navbar";
-import { Search, Plus, MoreVertical, Phone, Video, Info, Image as ImageIcon, Send, Smile, Loader2, CheckCheck, Check, ArrowUpRight, Gamepad2, Star } from 'lucide-react';
+import { Search, Plus, MoreVertical, Phone, Video, Info, Image as ImageIcon, Send, Smile, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { getImageUrl } from '@/lib/utils';
@@ -12,24 +11,6 @@ import NewChatModal from '@/components/NewChatModal';
 import { useNotifications } from '@/context/NotificationContext';
 
 // API Data Types
-interface SharedPostDetails {
-    id: number;
-    user: { username: string; avatar: string | null };
-    content: string;
-    media_url: string | null;
-    timestamp: string;
-}
-
-interface SharedReviewDetails {
-    id: number;
-    user: { username: string; avatar: string | null };
-    game_title: string;
-    game_cover: string | null;
-    rating: number;
-    content: string;
-    timestamp: string;
-}
-
 interface Message {
     id: number;
     conversation: number;
@@ -39,10 +20,6 @@ interface Message {
         avatar: string | null;
     };
     content: string;
-    shared_post?: number | null;
-    shared_review?: number | null;
-    shared_post_details?: SharedPostDetails | null;
-    shared_review_details?: SharedReviewDetails | null;
     is_read: boolean;
     created_at: string;
     is_me: boolean;
@@ -66,95 +43,6 @@ interface Conversation {
     updated_at: string;
 }
 
-function SharedPostCard({ details, isMe }: { details: SharedPostDetails; isMe: boolean }) {
-    return (
-        <Link
-            href={`/${details.user.username}/status/${details.id}`}
-            className={`block rounded-xl border overflow-hidden mt-1 hover:opacity-90 transition-opacity ${
-                isMe ? 'border-emerald-500/20 bg-emerald-700/20' : 'border-zinc-700 bg-zinc-800/50'
-            }`}
-            onClick={(e) => e.stopPropagation()}
-        >
-            {details.media_url && (
-                <div className="aspect-video max-h-32 overflow-hidden">
-                    <img src={details.media_url} alt="" className="w-full h-full object-cover" />
-                </div>
-            )}
-            <div className="p-2.5">
-                <div className="flex items-center gap-2 mb-1">
-                    <img
-                        src={getImageUrl(details.user.avatar, details.user.username)}
-                        alt=""
-                        className="h-4 w-4 rounded-full"
-                    />
-                    <span className={`text-xs font-bold ${isMe ? 'text-emerald-200' : 'text-white'}`}>
-                        @{details.user.username}
-                    </span>
-                </div>
-                <p className={`text-xs line-clamp-2 ${isMe ? 'text-emerald-100/80' : 'text-zinc-400'}`}>
-                    {details.content}
-                </p>
-            </div>
-            <div className={`px-2.5 py-1.5 flex items-center gap-1 text-[10px] font-medium border-t ${
-                isMe ? 'border-emerald-500/20 text-emerald-300' : 'border-zinc-700 text-zinc-500'
-            }`}>
-                <ArrowUpRight className="h-3 w-3" />
-                View Post
-            </div>
-        </Link>
-    );
-}
-
-function SharedReviewCard({ details, isMe }: { details: SharedReviewDetails; isMe: boolean }) {
-    return (
-        <Link
-            href={`/${details.user.username}/review/${details.id}`}
-            className={`block rounded-xl border overflow-hidden mt-1 hover:opacity-90 transition-opacity ${
-                isMe ? 'border-emerald-500/20 bg-emerald-700/20' : 'border-zinc-700 bg-zinc-800/50'
-            }`}
-            onClick={(e) => e.stopPropagation()}
-        >
-            <div className="flex gap-2.5 p-2.5">
-                {details.game_cover && (
-                    <div className="w-10 aspect-[2/3] rounded overflow-hidden flex-shrink-0 bg-zinc-700">
-                        <img src={details.game_cover} alt="" className="w-full h-full object-cover" />
-                    </div>
-                )}
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                        <Gamepad2 className={`h-3 w-3 ${isMe ? 'text-emerald-300' : 'text-emerald-500'}`} />
-                        <span className={`text-xs font-bold truncate ${isMe ? 'text-emerald-200' : 'text-white'}`}>
-                            {details.game_title}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-1 mb-1">
-                        <Star className={`h-3 w-3 fill-current ${
-                            details.rating >= 8 ? 'text-emerald-500' : details.rating >= 5 ? 'text-yellow-500' : 'text-red-500'
-                        }`} />
-                        <span className={`text-[10px] font-bold ${
-                            details.rating >= 8 ? 'text-emerald-500' : details.rating >= 5 ? 'text-yellow-500' : 'text-red-500'
-                        }`}>{details.rating.toFixed(1)}</span>
-                        <span className={`text-[10px] ${isMe ? 'text-emerald-200/60' : 'text-zinc-500'}`}>
-                            by @{details.user.username}
-                        </span>
-                    </div>
-                    {details.content && (
-                        <p className={`text-[10px] line-clamp-2 ${isMe ? 'text-emerald-100/70' : 'text-zinc-500'}`}>
-                            {details.content}
-                        </p>
-                    )}
-                </div>
-            </div>
-            <div className={`px-2.5 py-1.5 flex items-center gap-1 text-[10px] font-medium border-t ${
-                isMe ? 'border-emerald-500/20 text-emerald-300' : 'border-zinc-700 text-zinc-500'
-            }`}>
-                <ArrowUpRight className="h-3 w-3" />
-                View Review
-            </div>
-        </Link>
-    );
-}
-
 function MessagesContent() {
     const { user } = useAuth();
     const { markMessagesRead } = useNotifications();
@@ -168,7 +56,6 @@ function MessagesContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isMessagesLoading, setIsMessagesLoading] = useState(false);
     const [isNewChatOpen, setIsNewChatOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Fetch Conversations
@@ -206,8 +93,10 @@ function MessagesContent() {
             }
         };
 
-        fetchMessages(true);
-        const intervalId = setInterval(() => fetchMessages(false), 3000);
+        fetchMessages(true); // Initial fetch
+
+        const intervalId = setInterval(() => fetchMessages(false), 3000); // Poll every 3s
+
         return () => clearInterval(intervalId);
     }, [selectedChatId]);
 
@@ -228,7 +117,10 @@ function MessagesContent() {
 
             setMessages([...messages, res.data]);
             setInputText('');
+
+            // Refresh conversations to update last message
             fetchConversations();
+
         } catch (error) {
             console.error("Failed to send message:", error);
             alert("Failed to send message.");
@@ -236,6 +128,7 @@ function MessagesContent() {
     };
 
     const handleChatStarted = (newConversation: Conversation) => {
+        // Check if conversation already exists in list
         const exists = conversations.find(c => c.id === newConversation.id);
         if (!exists) {
             setConversations([newConversation, ...conversations]);
@@ -245,30 +138,13 @@ function MessagesContent() {
 
     const handleChatClick = (chatId: number) => {
         setSelectedChatId(chatId);
+        // Optimistically mark as read
         setConversations(prev => prev.map(c =>
             c.id === chatId ? { ...c, unread_count: 0 } : c
         ));
     };
 
     const activeChat = conversations.find(c => c.id === selectedChatId);
-
-    const filteredConversations = conversations.filter(c =>
-        !searchQuery ||
-        c.other_user?.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.other_user?.real_name?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const formatTime = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (diffDays === 1) return 'Yesterday';
-        if (diffDays < 7) return date.toLocaleDateString([], { weekday: 'short' });
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    };
 
     if (isLoading) {
         return (
@@ -309,8 +185,6 @@ function MessagesContent() {
                             <input
                                 type="text"
                                 placeholder="Search messages..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 transition-all"
                             />
                             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-zinc-500" />
@@ -319,20 +193,12 @@ function MessagesContent() {
 
                     {/* Conversation List */}
                     <div className="flex-1 overflow-y-auto">
-                        {filteredConversations.length === 0 ? (
-                            <div className="p-6 text-center text-zinc-500 text-sm">
-                                {searchQuery ? 'No conversations found.' : 'No conversations yet.'}
-                                {!searchQuery && (
-                                    <button
-                                        onClick={() => setIsNewChatOpen(true)}
-                                        className="block mx-auto mt-3 text-emerald-500 hover:underline text-sm font-medium"
-                                    >
-                                        Start a new conversation
-                                    </button>
-                                )}
+                        {conversations.length === 0 ? (
+                            <div className="p-4 text-center text-zinc-500 text-sm">
+                                No conversations yet.
                             </div>
                         ) : (
-                            filteredConversations.map((chat) => (
+                            conversations.map((chat) => (
                                 <button
                                     key={chat.id}
                                     onClick={() => handleChatClick(chat.id)}
@@ -351,7 +217,7 @@ function MessagesContent() {
                                         <div className="flex justify-between items-baseline mb-1">
                                             <span className="font-bold truncate text-sm">{chat.other_user?.real_name || chat.other_user?.username}</span>
                                             <span className="text-xs text-zinc-500 whitespace-nowrap ml-2">
-                                                {chat.last_message ? formatTime(chat.last_message.created_at) : ''}
+                                                {chat.last_message ? new Date(chat.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
@@ -359,7 +225,7 @@ function MessagesContent() {
                                                 {chat.last_message ? (
                                                     <>
                                                         {chat.last_message.sender_username === user?.username ? 'You: ' : ''}
-                                                        {chat.last_message.content || 'Shared a post'}
+                                                        {chat.last_message.content}
                                                     </>
                                                 ) : (
                                                     <span className="italic text-zinc-600">No messages yet</span>
@@ -391,23 +257,27 @@ function MessagesContent() {
                                     >
                                         ←
                                     </button>
-                                    <Link href={`/${activeChat.other_user?.username}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                                        <div className="relative">
-                                            <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-800">
-                                                <img
-                                                    src={getImageUrl(activeChat.other_user?.avatar, activeChat.other_user?.username)}
-                                                    alt={activeChat.other_user?.username}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
+                                    <div className="relative">
+                                        <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-800">
+                                            <img
+                                                src={getImageUrl(activeChat.other_user?.avatar, activeChat.other_user?.username)}
+                                                alt={activeChat.other_user?.username}
+                                                className="w-full h-full object-cover"
+                                            />
                                         </div>
-                                        <div>
-                                            <h2 className="font-bold text-sm">{activeChat.other_user?.real_name || activeChat.other_user?.username}</h2>
-                                            <p className="text-xs text-zinc-500">@{activeChat.other_user?.username}</p>
-                                        </div>
-                                    </Link>
+                                    </div>
+                                    <div>
+                                        <h2 className="font-bold text-sm">{activeChat.other_user?.real_name || activeChat.other_user?.username}</h2>
+                                        <p className="text-xs text-zinc-500">@{activeChat.other_user?.username}</p>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-1 text-zinc-400">
+                                <div className="flex items-center gap-2 text-zinc-400">
+                                    <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+                                        <Phone className="h-5 w-5" />
+                                    </button>
+                                    <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+                                        <Video className="h-5 w-5" />
+                                    </button>
                                     <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
                                         <Info className="h-5 w-5" />
                                     </button>
@@ -415,67 +285,25 @@ function MessagesContent() {
                             </div>
 
                             {/* Messages Area */}
-                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                 {isMessagesLoading ? (
                                     <div className="flex justify-center py-4">
                                         <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
                                     </div>
                                 ) : (
-                                    <>
-                                        {/* Chat start indicator */}
-                                        <div className="text-center py-6">
-                                            <div className="h-16 w-16 rounded-full overflow-hidden bg-zinc-800 mx-auto mb-3">
-                                                <img
-                                                    src={getImageUrl(activeChat.other_user?.avatar, activeChat.other_user?.username)}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                />
+                                    messages.map((msg) => (
+                                        <div key={msg.id} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
+                                            <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${msg.is_me
+                                                ? 'bg-emerald-600 text-white rounded-tr-none'
+                                                : 'bg-zinc-800 text-zinc-200 rounded-tl-none'
+                                                }`}>
+                                                <p className="text-sm">{msg.content}</p>
+                                                <p className={`text-[10px] mt-1 text-right ${msg.is_me ? 'text-emerald-200' : 'text-zinc-500'}`}>
+                                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
                                             </div>
-                                            <p className="font-bold text-white">{activeChat.other_user?.real_name || activeChat.other_user?.username}</p>
-                                            <p className="text-xs text-zinc-500">@{activeChat.other_user?.username}</p>
-                                            <p className="text-xs text-zinc-600 mt-1">This is the beginning of your conversation</p>
                                         </div>
-
-                                        {messages.map((msg) => (
-                                            <div key={msg.id} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`max-w-[75%] ${msg.shared_post_details || msg.shared_review_details ? 'w-72' : ''}`}>
-                                                    {/* Text content */}
-                                                    {msg.content && (
-                                                        <div className={`rounded-2xl px-4 py-2 ${msg.is_me
-                                                            ? 'bg-emerald-600 text-white rounded-tr-none'
-                                                            : 'bg-zinc-800 text-zinc-200 rounded-tl-none'
-                                                        }`}>
-                                                            <p className="text-sm">{msg.content}</p>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {/* Shared Post */}
-                                                    {msg.shared_post_details && (
-                                                        <SharedPostCard details={msg.shared_post_details} isMe={msg.is_me} />
-                                                    )}
-                                                    
-                                                    {/* Shared Review */}
-                                                    {msg.shared_review_details && (
-                                                        <SharedReviewCard details={msg.shared_review_details} isMe={msg.is_me} />
-                                                    )}
-                                                    
-                                                    {/* Timestamp + Read receipt */}
-                                                    <div className={`flex items-center gap-1 mt-0.5 ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
-                                                        <span className={`text-[10px] ${msg.is_me ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                        {msg.is_me && (
-                                                            msg.is_read ? (
-                                                                <CheckCheck className="h-3 w-3 text-emerald-500" />
-                                                            ) : (
-                                                                <Check className="h-3 w-3 text-zinc-500" />
-                                                            )
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </>
+                                    ))
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
@@ -508,14 +336,14 @@ function MessagesContent() {
                         </>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 p-8 text-center">
-                            <div className="h-20 w-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-zinc-800">
+                            <div className="h-20 w-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4">
                                 <Send className="h-8 w-8 text-zinc-600" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-2">Your Messages</h3>
-                            <p className="max-w-xs text-sm">Select a conversation from the list to start chatting, or start a new one.</p>
+                            <p className="max-w-xs">Select a conversation from the list to start chatting or start a new one.</p>
                             <button
                                 onClick={() => setIsNewChatOpen(true)}
-                                className="mt-6 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold transition-colors"
+                                className="mt-6 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold transition-colors"
                             >
                                 New Message
                             </button>

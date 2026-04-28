@@ -11,7 +11,6 @@ import api from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
-import { useToast } from "@/context/ToastContext";
 import EditProfileModal from "@/components/EditProfileModal";
 
 interface Game {
@@ -38,19 +37,12 @@ interface UserProfile {
     followers_count?: number;
     following_count?: number;
     is_following?: boolean;
-    segment?: {
-        segment: string;
-        label: string;
-        color: string;
-        bg: string;
-    };
 }
 
 export default function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
     const { username } = use(params);
     const { user: currentUser } = useAuth();
     const { items: feedItems } = useFeed();
-    const { showToast } = useToast();
     const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('activity');
@@ -204,13 +196,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             await api.patch('/users/me/', { top_favorites: favoritesPayload });
         } catch (error) {
             console.error("Failed to save favorites:", error);
-            showToast('Failed to save changes. Please try again.', 'error');
+            alert("Failed to save changes. Please try again.");
         }
     };
 
     const handleMessage = async () => {
         if (!currentUser) {
-            showToast('Please login to send messages.', 'info');
+            alert("Please login to send messages.");
             return;
         }
         try {
@@ -219,13 +211,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             window.location.href = `/messages?chatId=${res.data.id}`;
         } catch (error) {
             console.error("Failed to start chat:", error);
-            showToast('Failed to start chat.', 'error');
+            alert("Failed to start chat.");
         }
     };
 
     const handleFollowToggle = async () => {
         if (!currentUser) {
-            showToast('Please login to follow users.', 'info');
+            alert("Please login to follow users.");
             return;
         }
 
@@ -238,7 +230,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
         try {
             if (previousIsFollowing) {
-                await api.delete(`/users/${username}/unfollow/`);
+                await api.post(`/users/${username}/unfollow/`);
             } else {
                 await api.post(`/users/${username}/follow/`);
             }
@@ -247,7 +239,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             // Revert on failure
             setIsFollowing(previousIsFollowing);
             setFollowersCount(previousCount);
-            showToast('Failed to update follow status.', 'error');
+            alert("Failed to update follow status.");
         }
     };
 
@@ -362,18 +354,6 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                             <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 text-xs font-bold rounded-lg border border-emerald-500/20 uppercase tracking-wide">
                                                 {displayUser.role}
                                             </span>
-                                            {profileUser.segment && profileUser.segment.label && (
-                                                <span
-                                                    className="px-2 py-1 text-xs font-bold rounded-lg border uppercase tracking-wide"
-                                                    style={{
-                                                        color: profileUser.segment.color,
-                                                        backgroundColor: profileUser.segment.bg,
-                                                        borderColor: `${profileUser.segment.color}30`,
-                                                    }}
-                                                >
-                                                    {profileUser.segment.label}
-                                                </span>
-                                            )}
                                         </h1>
                                         {isOwnProfile ? (
                                             <button
@@ -418,7 +398,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                 </div>
 
                                 {/* Stats */}
-                                <div className="flex items-center gap-6 md:gap-8 glass px-6 py-3 rounded-2xl backdrop-blur-md">
+                                <div className="flex items-center gap-6 md:gap-8 bg-zinc-900/50 px-6 py-3 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
                                     <div className="text-center">
                                         <div className="text-xl font-bold text-white">{followersCount}</div>
                                         <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Followers</div>
