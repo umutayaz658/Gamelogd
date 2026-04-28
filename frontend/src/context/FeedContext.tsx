@@ -1,13 +1,12 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Post, FeedItem } from '@/types';
 
 interface FeedContextType {
     items: FeedItem[];
     setItems: (items: FeedItem[]) => void;
     addFeedItem: (item: FeedItem) => void;
-    removeFeedItem: (id: number) => void;
 }
 
 const FeedContext = createContext<FeedContextType | undefined>(undefined);
@@ -15,16 +14,12 @@ const FeedContext = createContext<FeedContextType | undefined>(undefined);
 export function FeedProvider({ children }: { children: ReactNode }) {
     const [items, setItems] = useState<FeedItem[]>([]);
 
-    const addFeedItem = useCallback((item: FeedItem) => {
+    const addFeedItem = (item: FeedItem) => {
         setItems((prevItems) => [item, ...prevItems]);
-    }, []);
-
-    const removeFeedItem = useCallback((id: number) => {
-        setItems((prevItems) => prevItems.filter(item => item.id !== id));
-    }, []);
+    };
 
     return (
-        <FeedContext.Provider value={{ items, setItems, addFeedItem, removeFeedItem }}>
+        <FeedContext.Provider value={{ items, setItems, addFeedItem }}>
             {children}
         </FeedContext.Provider>
     );
@@ -37,4 +32,3 @@ export function useFeed() {
     }
     return context;
 }
-

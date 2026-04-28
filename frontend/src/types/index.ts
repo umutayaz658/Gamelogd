@@ -1,10 +1,3 @@
-export interface Segment {
-    segment: string;
-    label: string;
-    color: string;
-    bg: string;
-}
-
 export interface User {
     id: number;
     username: string;
@@ -21,7 +14,6 @@ export interface User {
     date_joined?: string;
     birth_date?: string;
     show_birth_date?: boolean;
-    segment?: Segment;
 }
 
 export interface Game {
@@ -43,8 +35,6 @@ export interface Review {
     contains_spoilers: boolean;
     timestamp: string;
     type?: 'review';
-    likes_count?: number;
-    replies_count?: number;
 }
 
 export interface Project {
@@ -82,7 +72,8 @@ export interface Post {
     gif_url?: string | null;
     poll_options?: string[] | null;
     timestamp: string;
-    likes_count?: number;
+    likes?: number;
+    comments?: number;
     replies_count?: number;
     parent?: number | null;
     review_parent?: number | null;
@@ -104,7 +95,6 @@ export interface Post {
     reply_to_username?: string | null;
     is_liked?: boolean;
     type?: 'post' | 'reply' | 'news';
-    segment?: Segment;
     media?: {
         id: number;
         file: string;
@@ -125,11 +115,8 @@ export interface Notification {
     id: number;
     actor: User;
     verb: string;
-    target_type?: number | null;
-    target_type_label?: string | null;
+    target_type?: string;
     target_id?: number;
-    preview_text?: string;
-    target_url?: string;
     is_read: boolean;
     created_at: string;
 }
@@ -152,24 +139,6 @@ export interface Message {
     conversation: number;
     sender: User;
     content: string;
-    shared_post?: number | null;
-    shared_review?: number | null;
-    shared_post_details?: {
-        id: number;
-        user: { username: string; avatar: string | null };
-        content: string;
-        media_url: string | null;
-        timestamp: string;
-    } | null;
-    shared_review_details?: {
-        id: number;
-        user: { username: string; avatar: string | null };
-        game_title: string;
-        game_cover: string | null;
-        rating: number;
-        content: string;
-        timestamp: string;
-    } | null;
     is_read: boolean;
     created_at: string;
     is_me: boolean;
