@@ -12,6 +12,7 @@ from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostS
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
+from api.permissions import IsOwnerOrReadOnly
 
 class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
@@ -33,6 +34,49 @@ class CustomAuthToken(ObtainAuthToken):
             })
         
         return Response({'non_field_errors': ['Unable to log in with provided credentials.']}, status=status.HTTP_400_BAD_REQUEST)
+
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
+class GoogleLoginView(generics.CreateAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        credential = request.data.get('credential')
+        if not credential:
+            return Response({"error": "No credential provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from django.conf import settings
+            idinfo = id_token.verify_oauth2_token(
+                credential, 
+                google_requests.Request(), 
+                settings.GOOGLE_CLIENT_ID,
+                clock_skew_in_seconds=10
+            )
+
+            email = idinfo.get('email')
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+
+            user = User.objects.filter(email=email).first()
+            if not user:
+                return Response({
+                    "is_new_user": True,
+                    "email": email,
+                    "first_name": first_name,
+                    "last_name": last_name
+                }, status=status.HTTP_200_OK)
+
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user_id': user.pk,
+                'email': user.email
+            })
+
+        except ValueError as e:
+            return Response({"error": f"Invalid token: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -104,15 +148,22 @@ class UserViewSet(viewsets.ModelViewSet):
         # Trigger Sync
         from api.services.steam import fetch_steam_library
         try:
-             # In production, use Celery: fetch_steam_library.delay(request.user.id, steam_id)
-            fetch_steam_library(request.user.id, steam_id)
+            stats = fetch_steam_library(request.user.id, steam_id)
         except Exception as e:
-            # If sync fails immediately (synchronous), let the user know, but we already saved the ID.
-            # Maybe we should return a warning?
             print(f"Sync trigger failed: {e}")
-            return Response({"status": "Steam ID saved, but sync failed. Check privacy settings or try again later.", "warning": str(e)}, status=status.HTTP_200_OK)
+            return Response({
+                "status": "Steam ID saved, but sync failed. Check privacy settings or try again later.",
+                "warning": str(e)
+            }, status=status.HTTP_200_OK)
         
-        return Response({"status": "Sync started"}, status=status.HTTP_200_OK)
+        return Response({
+            "status": "Sync completed",
+            "total_games": stats.get('total', 0),
+            "synced": stats.get('synced', 0),
+            "created": stats.get('created', 0),
+            "covers_fixed": stats.get('cover_fixed', 0),
+            "errors": stats.get('errors', 0),
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def disconnect_steam(self, request):
@@ -402,12 +453,12 @@ class GameViewSet(viewsets.ModelViewSet):
         return Response(result)
 
 class ReviewViewSet(viewsets.ModelViewSet):
-    queryset = Review.objects.all()
+    queryset = Review.objects.all().select_related('user', 'game')
     serializer_class = ReviewSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
     def get_queryset(self):
-        queryset = Review.objects.all()
+        queryset = Review.objects.all().select_related('user', 'game')
         username = self.request.query_params.get('username', None)
         if username is not None:
             queryset = queryset.filter(user__username=username)
@@ -418,9 +469,9 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
 
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all().order_by('-timestamp')
+    queryset = Post.objects.all().select_related('user').order_by('-timestamp')
     serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = {
         'news_parent': ['exact', 'isnull'],
@@ -428,7 +479,7 @@ class PostViewSet(viewsets.ModelViewSet):
     }
 
     def get_queryset(self):
-        queryset = Post.objects.all().order_by('-timestamp')
+        queryset = Post.objects.all().select_related('user').order_by('-timestamp')
         username = self.request.query_params.get('username', None)
         parent_id = self.request.query_params.get('parent', None)
 
@@ -613,7 +664,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 class LibraryViewSet(viewsets.ModelViewSet):
     queryset = LibraryEntry.objects.all().select_related('game', 'user')
     serializer_class = LibraryEntrySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['user__username', 'platform', 'status']
     ordering_fields = ['playtime_forever', 'game__title']
@@ -705,9 +756,9 @@ from core.models import Project, JobPosting
 from .serializers import ProjectSerializer, JobPostingSerializer
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    queryset = Project.objects.all().order_by('-created_at')
+    queryset = Project.objects.all().select_related('owner').order_by('-created_at')
     serializer_class = ProjectSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ['title', 'description', 'tech_stack']
 
@@ -715,9 +766,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         serializer.save(owner=self.request.user)
 
 class JobPostingViewSet(viewsets.ModelViewSet):
-    queryset = JobPosting.objects.filter(is_active=True).order_by('-created_at')
+    queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')
     serializer_class = JobPostingSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['job_type', 'location_type', 'experience_level']
     search_fields = ['title', 'description']
@@ -729,9 +780,9 @@ from core.models import Pitch, InvestorCall
 from .serializers import PitchSerializer, InvestorCallSerializer
 
 class PitchViewSet(viewsets.ModelViewSet):
-    queryset = Pitch.objects.all().order_by('-created_at')
+    queryset = Pitch.objects.all().select_related('user').order_by('-created_at')
     serializer_class = PitchSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['genre', 'platform', 'stage']
     search_fields = ['title']
@@ -740,9 +791,9 @@ class PitchViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 class InvestorCallViewSet(viewsets.ModelViewSet):
-    queryset = InvestorCall.objects.filter(is_active=True).order_by('-created_at')
+    queryset = InvestorCall.objects.filter(is_active=True).select_related('user').order_by('-created_at')
     serializer_class = InvestorCallSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['investor_type', 'ticket_size']
     search_fields = ['organization_name', 'looking_for']

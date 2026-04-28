@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView, 
-    CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, 
+    GoogleLoginView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, 
     LibraryViewSet, CustomAuthToken
 )
 
@@ -39,5 +39,6 @@ urlpatterns = [
 
     path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
+    path('google-login/', GoogleLoginView.as_view(), name='google-login'),
     path('login/', CustomAuthToken.as_view(), name='api_token_auth'),
 ]
