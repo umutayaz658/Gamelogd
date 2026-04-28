@@ -89,103 +89,99 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     </div>
 
 
-                    {/* Split Layout for Content and Media */}
-                    <div className="flex flex-col sm:flex-row gap-4 mt-2 mb-3">
-                        {/* LEFT SIDE: Media */}
-                        {((post.media && post.media.length > 0) || post.media_file || post.image || post.gif_url) && (
-                            <div className="w-full sm:w-2/5 shrink-0">
-                                {(post.media && post.media.length > 0) ? (
-                                    <div className={`grid gap-1 rounded-xl overflow-hidden border border-zinc-800 ${
-                                        post.media.length === 1 ? 'grid-cols-1' :
-                                        post.media.length === 2 ? 'grid-cols-2' :
-                                        post.media.length === 3 ? 'grid-cols-2' : 'grid-cols-2'
-                                    }`}>
-                                        {post.media.slice(0, 4).map((media, index) => (
-                                            <div
-                                                key={media.id}
-                                                className={`relative bg-black ${post.media!.length === 3 && index === 0 ? 'row-span-2' : ''} aspect-square`}
-                                            >
-                                                {media.media_type === 'video' ? (
-                                                    <video
-                                                        src={getImageUrl(media.file)}
-                                                        controls
-                                                        className="w-full h-full object-cover"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    />
-                                                ) : (
-                                                    <img
-                                                        src={getImageUrl(media.file)}
-                                                        alt={`Post media ${index + 1}`}
-                                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (media.file) window.open(getImageUrl(media.file), '_blank');
-                                                        }}
-                                                    />
-                                                )}
-                                                {index === 3 && post.media!.length > 4 && (
-                                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-xl backdrop-blur-sm">
-                                                        +{post.media!.length - 4}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (post.media_file || post.image) ? (
-                                    <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black aspect-[4/3]">
-                                        {post.media_type === 'video' ? (
-                                            <video
-                                                src={post.media_file || post.image || ''}
-                                                controls
-                                                className="w-full h-full object-contain bg-black"
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
-                                        ) : (
-                                            <img
-                                                src={post.media_file || post.image || ''}
-                                                alt="Post media"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        )}
-                                    </div>
-                                ) : post.gif_url && (
-                                    <div className="rounded-xl overflow-hidden border border-zinc-800">
-                                        <img
-                                            src={post.gif_url}
-                                            alt="GIF content"
-                                            className="w-full h-auto object-cover"
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                    {/* Devlog Header (Title & Project) */}
+                    {post.title && (
+                        <div className="mb-2">
+                            {/* Project Badge if available */}
+                            {post.project_parent && (
+                                <Link
+                                    href={`/projects/${post.project_parent}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-block px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider mb-2 hover:bg-emerald-500/20 transition-colors"
+                                >
+                                    Devlog
+                                </Link>
+                            )}
+                            <h3 className={`font-bold text-white mb-1 ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
+                                {post.title}
+                            </h3>
+                        </div>
+                    )}
 
-                        {/* RIGHT SIDE: Title and Text */}
-                        <div className="flex-1 min-w-0 flex flex-col">
-                            {post.title && (
-                                <div className="mb-2">
-                                    {post.project_parent && (
-                                        <div className="mb-1">
-                                            <Link
-                                                href={`/projects/${post.project_parent}`}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="text-emerald-500 hover:text-emerald-400 font-bold text-sm hover:underline transition-colors tracking-wide"
-                                            >
-                                                {post.project_details?.title || 'PROJECT DEVLOG'}
-                                            </Link>
+                    <p className={`text-zinc-300 mb-3 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : ''}`}>
+                        {post.content}
+                    </p>
+
+                    {/* Render Media: Gallery or Single */}
+                    {(post.media && post.media.length > 0) ? (
+                        <div className={`grid gap-1 mb-3 rounded-xl overflow-hidden border border-zinc-800 ${post.media.length === 1 ? 'grid-cols-1' :
+                            post.media.length === 2 ? 'grid-cols-2' :
+                                post.media.length === 3 ? 'grid-cols-2' : 'grid-cols-2'
+                            }`}>
+                            {post.media.slice(0, 4).map((media, index) => (
+                                <div
+                                    key={media.id}
+                                    className={`relative bg-black ${post.media!.length === 3 && index === 0 ? 'row-span-2' : ''
+                                        } ${post.media!.length > 0 ? 'aspect-video' : ''}`}
+                                >
+                                    {media.media_type === 'video' ? (
+                                        <video
+                                            src={getImageUrl(media.file)}
+                                            controls
+                                            className="w-full h-full object-cover"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <img
+                                            src={getImageUrl(media.file)}
+                                            alt={`Post media ${index + 1}`}
+                                            className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                // TODO: Open lightbox
+                                                if (media.file) {
+                                                    window.open(getImageUrl(media.file), '_blank');
+                                                }
+                                            }}
+                                        />
+                                    )}
+                                    {/* Overlay for +N more images if length > 4 */}
+                                    {index === 3 && post.media!.length > 4 && (
+                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-xl">
+                                            +{post.media!.length - 4}
                                         </div>
                                     )}
-                                    <h3 className={`font-bold text-white mb-2 leading-tight ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
-                                        {post.title}
-                                    </h3>
                                 </div>
-                            )}
-
-                            <p className={`text-zinc-300 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : 'line-clamp-6 sm:line-clamp-[10]'}`}>
-                                {post.content}
-                            </p>
+                            ))}
                         </div>
-                    </div>
+                    ) : (post.media_file || post.image) && (
+                        <div className={`rounded-xl overflow-hidden border border-zinc-800 mb-3 bg-black ${post.title ? 'aspect-video' : ''}`}>
+                            {post.media_type === 'video' ? (
+                                <video
+                                    src={post.media_file || post.image || ''}
+                                    controls
+                                    className="w-full h-full object-contain bg-black"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            ) : (
+                                <img
+                                    src={post.media_file || post.image || ''}
+                                    alt="Post media"
+                                    className={`w-full h-full ${post.title ? 'object-cover' : 'object-contain'} max-h-[500px]`}
+                                />
+                            )}
+                        </div>
+                    )}
+
+                    {post.gif_url && (
+                        <div className="rounded-xl overflow-hidden border border-zinc-800 mb-3">
+                            <img
+                                src={post.gif_url}
+                                alt="GIF content"
+                                className="w-full h-auto object-cover max-h-[500px]"
+                            />
+                        </div>
+                    )}
 
                     {/* Render Poll */}
                     {post.poll_options && post.poll_options.length > 0 && (
@@ -251,7 +247,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
                                 <MessageCircle className="h-4 w-4" />
                             </div>
-                            <span className="text-sm">{post.replies_count || 0}</span>
+                            <span className="text-sm">{post.comments || 0}</span>
                         </button>
 
                         <button
@@ -261,7 +257,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
                                 <Heart className="h-4 w-4" />
                             </div>
-                            <span className="text-sm">{post.likes_count || 0}</span>
+                            <span className="text-sm">{post.likes || 0}</span>
                         </button>
 
                         <button

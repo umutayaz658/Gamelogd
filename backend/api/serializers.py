@@ -24,8 +24,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined',
-            'segment',
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined'
         ]
         read_only_fields = ['id', 'date_joined']
 
@@ -39,7 +38,6 @@ class UserSerializer(serializers.ModelSerializer):
     followers_count = serializers.IntegerField(source='followers.count', read_only=True)
     following_count = serializers.IntegerField(source='following.count', read_only=True)
     is_following = serializers.SerializerMethodField()
-    segment = serializers.SerializerMethodField()
 
     def get_is_following(self, obj):
         request = self.context.get('request')
@@ -50,49 +48,13 @@ class UserSerializer(serializers.ModelSerializer):
             return Follow.objects.filter(follower=request.user, following=obj).exists()
         return False
 
-    def get_segment(self, obj):
-        try:
-            from api.services.segmentation import get_user_segment
-            return get_user_segment(obj)
-        except Exception:
-            return None
-
 class NotificationSerializer(serializers.ModelSerializer):
     actor = UserSerializer(read_only=True)
-    target_type_label = serializers.SerializerMethodField()
-    target_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
-        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_type_label', 'target_id', 'preview_text', 'target_url', 'is_read', 'created_at']
+        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_id', 'is_read', 'created_at']
         read_only_fields = ['id', 'recipient', 'actor', 'created_at']
-
-    def get_target_type_label(self, obj):
-        if obj.target_type:
-            return obj.target_type.model  # returns 'post', 'review', 'message', etc.
-        return None
-
-    def get_target_url(self, obj):
-        """Return a frontend-friendly URL to navigate to when notification is clicked."""
-        if not obj.target_type or not obj.target_id:
-            # Follow notifications have no target — go to actor profile
-            return f'/{obj.actor.username}'
-        
-        model_name = obj.target_type.model
-        try:
-            if model_name == 'post':
-                from core.models import Post
-                post = Post.objects.select_related('user').get(id=obj.target_id)
-                return f'/{post.user.username}/status/{post.id}'
-            elif model_name == 'review':
-                from core.models import Review
-                review = Review.objects.select_related('user').get(id=obj.target_id)
-                return f'/{review.user.username}/review/{review.id}'
-            elif model_name == 'conversation':
-                return f'/messages?chatId={obj.target_id}'
-        except Exception:
-            pass
-        return f'/{obj.actor.username}'
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -163,13 +125,11 @@ class ReviewSerializer(serializers.ModelSerializer):
     game = GameSerializer(read_only=True)
     game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
     type = serializers.CharField(default='review', read_only=True)
-    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
-    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_completed', 'contains_spoilers', 'timestamp', 'type', 'likes_count', 'replies_count']
-        read_only_fields = ['id', 'user', 'timestamp', 'likes_count', 'replies_count']
+        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
+        read_only_fields = ['id', 'user', 'timestamp']
 
     def validate(self, data):
         request = self.context.get('request')
@@ -238,8 +198,6 @@ class PostSerializer(serializers.ModelSerializer):
         required=False
     )
 
-    segment = serializers.SerializerMethodField()
-
     class Meta:
         model = Post
         fields = [
@@ -247,9 +205,9 @@ class PostSerializer(serializers.ModelSerializer):
             'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
-            'media', 'uploaded_media', 'segment'
+            'media', 'uploaded_media'
         ]
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'segment']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media']
 
     def create(self, validated_data):
         uploaded_media = validated_data.pop('uploaded_media', [])
@@ -323,15 +281,6 @@ class PostSerializer(serializers.ModelSerializer):
             return obj.review_parent.user.username
         return None
 
-    def get_segment(self, obj):
-        try:
-            from api.services.segmentation import get_post_segment
-            request = self.context.get('request')
-            request_user = request.user if request and request.user.is_authenticated else None
-            return get_post_segment(obj, request_user=request_user)
-        except Exception:
-            return None
-
     def validate_poll_options(self, value):
         if value:
             if isinstance(value, str):
@@ -353,67 +302,17 @@ class PostSerializer(serializers.ModelSerializer):
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     is_me = serializers.SerializerMethodField()
-    shared_post_details = serializers.SerializerMethodField()
-    shared_review_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'conversation', 'sender', 'content', 'shared_post', 'shared_review',
-                  'shared_post_details', 'shared_review_details', 'is_read', 'created_at', 'is_me']
-        read_only_fields = ['id', 'sender', 'created_at', 'is_me', 'shared_post_details', 'shared_review_details']
+        fields = ['id', 'conversation', 'sender', 'content', 'is_read', 'created_at', 'is_me']
+        read_only_fields = ['id', 'sender', 'created_at', 'is_me']
 
     def get_is_me(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.sender == request.user
         return False
-
-    def get_shared_post_details(self, obj):
-        if not obj.shared_post:
-            return None
-        post = obj.shared_post
-        media_url = None
-        if post.media.exists():
-            first_media = post.media.first()
-            if first_media and first_media.file:
-                media_url = first_media.file.url
-        elif post.image:
-            media_url = post.image.url if hasattr(post.image, 'url') else str(post.image)
-        
-        return {
-            'id': post.id,
-            'user': {
-                'username': post.user.username,
-                'avatar': post.user.avatar.url if post.user.avatar else None,
-            },
-            'content': post.content[:150] if post.content else '',
-            'media_url': media_url,
-            'timestamp': post.timestamp.isoformat(),
-        }
-
-    def get_shared_review_details(self, obj):
-        if not obj.shared_review:
-            return None
-        review = obj.shared_review
-        game_cover = None
-        if review.game.cover_image:
-            if str(review.game.cover_image).startswith('http'):
-                game_cover = str(review.game.cover_image)
-            elif hasattr(review.game.cover_image, 'url'):
-                game_cover = review.game.cover_image.url
-        
-        return {
-            'id': review.id,
-            'user': {
-                'username': review.user.username,
-                'avatar': review.user.avatar.url if review.user.avatar else None,
-            },
-            'game_title': review.game.title,
-            'game_cover': game_cover,
-            'rating': float(review.rating),
-            'content': review.content[:150] if review.content else '',
-            'timestamp': review.timestamp.isoformat(),
-        }
 
 class ConversationSerializer(serializers.ModelSerializer):
     other_user = serializers.SerializerMethodField()

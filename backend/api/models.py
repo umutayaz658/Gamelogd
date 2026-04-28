@@ -108,7 +108,6 @@ class Notification(models.Model):
     target_id = models.PositiveIntegerField(null=True, blank=True)
     target = GenericForeignKey('target_type', 'target_id')
     
-    preview_text = models.CharField(max_length=300, blank=True, default='')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -138,12 +137,7 @@ class Conversation(models.Model):
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, related_name='messages', on_delete=models.CASCADE)
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='sent_messages', on_delete=models.CASCADE)
-    content = models.TextField(blank=True, default='')
-    
-    # Shared content support (Instagram-style post sharing in DMs)
-    shared_post = models.ForeignKey('core.Post', null=True, blank=True, on_delete=models.SET_NULL, related_name='shared_in_messages')
-    shared_review = models.ForeignKey('core.Review', null=True, blank=True, on_delete=models.SET_NULL, related_name='shared_in_messages')
-    
+    content = models.TextField()
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -152,6 +146,3 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message from {self.sender} in {self.conversation}"
-
-# Recommendation modelleri Django tarafından keşfedilsin
-from api.recommendation_models import PostInteraction, UserActivityProfile, PostScoreCache  # noqa: E402, F401
