@@ -17,7 +17,9 @@ application = get_wsgi_application()
 
 try:
     from django.contrib.auth.models import User
-    if not User.objects.filter(username='admin').exists():
-        User.objects.create_superuser('admin', 'admin@example.com', '12345')
+    admins = ['umutayazoglu', 'furkanergul', 'teomancolakoglu']
+    for admin_name in admins:
+        if not User.objects.filter(username=admin_name).exists():
+            User.objects.create_superuser(admin_name, f'{admin_name}@example.com', '12345')
 except Exception as e:
     pass
