@@ -179,31 +179,42 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         from api.models import LibraryEntry
         
-        # Sadece aktif oynanan oyunları filtrele
-        active_statuses = ['playing', 'completed', 'replaying']
+        # Playtime > 0 olan tüm oyunları dahil et (dropped dahil)
+        # Böylece Steam kütüphanesindeki oynanan her oyun Game DNA'ya etki eder
         entries = LibraryEntry.objects.filter(
             user=user,
-            status__in=active_statuses
+            playtime_forever__gt=0
         ).select_related('game')
 
-        # Tür sayımı
-        genre_counts = {}
+        # Playtime-ağırlıklı tür hesaplaması
+        # Her oyunun playtime'ı (dakika) o oyunun türlerine ağırlık olarak eklenir
+        # Böylece 300 saat oynanan aksiyon oyunu, 5 saat oynanan RPG'den çok daha fazla etki eder
+        from api.services.steam import normalize_genre
+        genre_weights = {}  # genre -> total playtime in minutes
+        genre_game_counts = {}  # genre -> number of games (for display)
         for entry in entries:
+            # Playtime 0 ise minimum 1 dakika ağırlık ver (oyun yine de sayılsın)
+            weight = max(entry.playtime_forever, 1)
             for genre in (entry.game.genres or []):
-                genre_counts[genre] = genre_counts.get(genre, 0) + 1
+                normalized = normalize_genre(genre)
+                genre_weights[normalized] = genre_weights.get(normalized, 0) + weight
+                genre_game_counts[normalized] = genre_game_counts.get(normalized, 0) + 1
 
-        total = sum(genre_counts.values())
-        if total == 0:
+        total_weight = sum(genre_weights.values())
+        if total_weight == 0:
             return Response([])
 
-        # Yüzde hesapla ve sırala
+        # Yüzde hesapla ve sırala (playtime ağırlığına göre)
         colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
         result = []
-        for i, (genre, count) in enumerate(sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)):
+        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)):
+            total_hours = round(weight / 60, 1)
             result.append({
                 "genre": genre,
-                "percentage": round((count / total) * 100),
-                "color": colors[i % len(colors)]
+                "percentage": round((weight / total_weight) * 100),
+                "color": colors[i % len(colors)],
+                "total_hours": total_hours,
+                "game_count": genre_game_counts.get(genre, 0)
             })
 
         return Response(result)
@@ -214,19 +225,21 @@ class UserViewSet(viewsets.ModelViewSet):
         from api.models import LibraryEntry
         from core.models import Game
         
-        # 1. Calculate user's top genres (Game DNA)
-        active_statuses = ['playing', 'completed', 'replaying']
+        # 1. Calculate user's top genres (Game DNA) — playtime > 0 olan tüm oyunlar
         entries = LibraryEntry.objects.filter(
             user=user,
-            status__in=active_statuses
+            playtime_forever__gt=0
         ).select_related('game')
 
+        from api.services.steam import normalize_genre
         genre_counts = {}
         played_game_ids = set()
         for entry in entries:
             played_game_ids.add(entry.game.id)
+            weight = max(entry.playtime_forever, 1)
             for genre in (entry.game.genres or []):
-                genre_counts[genre] = genre_counts.get(genre, 0) + 1
+                normalized = normalize_genre(genre)
+                genre_counts[normalized] = genre_counts.get(normalized, 0) + weight
 
         # Also get all other game IDs the user has to exclude them
         all_user_entries = LibraryEntry.objects.filter(user=user)
