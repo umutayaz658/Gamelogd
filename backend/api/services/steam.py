@@ -6,13 +6,93 @@ from api.models import LibraryEntry, User
 from core.models import Game
 
 
+# Genre normalization map: non-English genre names → English
+# Covers Russian, Turkish, and other common Steam locale variants
+GENRE_TRANSLATION_MAP = {
+    # Russian
+    'Экшен': 'Action',
+    'Экшн': 'Action',
+    'Приключенческая игра': 'Adventure',
+    'Приключения': 'Adventure',
+    'Казуальные игры': 'Casual',
+    'Казуальная игра': 'Casual',
+    'Инди': 'Indie',
+    'Ролевая игра': 'RPG',
+    'РПГ': 'RPG',
+    'Стратегия': 'Strategy',
+    'Стратегии': 'Strategy',
+    'Симулятор': 'Simulation',
+    'Симуляторы': 'Simulation',
+    'Симулятор жизни': 'Simulation',
+    'Спорт': 'Sports',
+    'Спортивные': 'Sports',
+    'Гонки': 'Racing',
+    'Гоночная игра': 'Racing',
+    'Массовая многопользовательская': 'Massively Multiplayer',
+    'Массовая многопользовательская игра': 'Massively Multiplayer',
+    'ММО': 'Massively Multiplayer',
+    'Бесплатная игра': 'Free to Play',
+    'Бесплатная': 'Free to Play',
+    'Ранний доступ': 'Early Access',
+    'Анимация и моделирование': 'Animation & Modeling',
+    'Дизайн и иллюстрация': 'Design & Illustration',
+    'Обработка фото': 'Photo Editing',
+    'Редактирование фото': 'Photo Editing',
+    'Аудиопроизводство': 'Audio Production',
+    'Видеопроизводство': 'Video Production',
+    'Разработка игр': 'Game Development',
+    'Разработка ПО': 'Software Training',
+    'Образование': 'Education',
+    'Утилиты': 'Utilities',
+    'Веб-публикация': 'Web Publishing',
+    'Многопользовательская': 'Multiplayer',
+    'Головоломка': 'Puzzle',
+    'Платформер': 'Platformer',
+    'Шутер': 'Shooter',
+    'Хоррор': 'Horror',
+    'Выживание': 'Survival',
+    'Песочница': 'Sandbox',
+    'Открытый мир': 'Open World',
+    'Пошаговая стратегия': 'Turn-Based Strategy',
+    'Пошаговая стратегия (TBS)': 'Turn-Based Strategy',
+    # Turkish
+    'Aksiyon': 'Action',
+    'Macera': 'Adventure',
+    'Bağımsız Yapım': 'Indie',
+    'Strateji': 'Strategy',
+    'Simülasyon': 'Simulation',
+    'Spor': 'Sports',
+    'Yarış': 'Racing',
+    'Rol Yapma': 'RPG',
+}
+
+
+def normalize_genre(genre_name):
+    """
+    Normalizes a genre name to English.
+    If the genre is in the translation map, returns the English version.
+    Otherwise returns the original name with proper title casing.
+    """
+    if not genre_name:
+        return genre_name
+    # Exact match first
+    normalized = GENRE_TRANSLATION_MAP.get(genre_name)
+    if normalized:
+        return normalized
+    # Case-insensitive match
+    for key, value in GENRE_TRANSLATION_MAP.items():
+        if key.lower() == genre_name.lower():
+            return value
+    return genre_name
+
+
 def fetch_steam_genres(appid):
     """
     Fetches genre names for a game from the Steam Store API.
-    Returns a list of genre name strings, e.g. ["Strategy", "Simulation"].
+    Returns a list of genre name strings in English, e.g. ["Strategy", "Simulation"].
     """
     try:
-        url = f"https://store.steampowered.com/api/appdetails?appids={appid}"
+        url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english"
         # mature games (like Elden Ring) require age check cookies
         cookies = {'birthtime': '283993201', 'lastagecheckage': '1-January-1980', 'wants_mature_content': '1'}
         response = requests.get(url, cookies=cookies, timeout=10)
@@ -24,7 +104,9 @@ def fetch_steam_genres(appid):
             return []
 
         genres_raw = app_data.get('data', {}).get('genres', [])
-        return [g['description'] for g in genres_raw if 'description' in g][:5]
+        genres = [g['description'] for g in genres_raw if 'description' in g][:5]
+        # Normalize all genre names to English (safety net)
+        return [normalize_genre(g) for g in genres]
     except Exception as e:
         print(f"Failed to fetch genres for appid {appid}: {e}")
         return []
