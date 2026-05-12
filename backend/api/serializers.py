@@ -410,11 +410,22 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
 class ProjectSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
     members = ProjectMemberSerializer(many=True, read_only=True)
+    followers_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
-        fields = ['id', 'owner', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'created_at', 'updated_at']
+        fields = ['id', 'owner', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+    def get_followers_count(self, obj):
+        return obj.followers.count()
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.followers.filter(user=request.user).exists()
+        return False
 
 class JobPostingSerializer(serializers.ModelSerializer):
     recruiter = UserSerializer(read_only=True)

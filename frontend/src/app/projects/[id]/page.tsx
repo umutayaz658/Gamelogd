@@ -8,7 +8,7 @@ import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
 import { Project, Post, User, ProjectMember } from '@/types';
 import { getImageUrl } from '@/lib/utils';
-import { MapPin, Calendar, Link as LinkIcon, Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, MoreHorizontal, ChevronDown, Clock } from 'lucide-react';
+import { MapPin, Calendar, Link as LinkIcon, Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, MoreHorizontal, ChevronDown, Clock, UserPlus, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 
@@ -56,6 +56,11 @@ export default function ProjectDetailPage() {
     // Status Dropdown
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
+    // Follow State
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [followersCount, setFollowersCount] = useState(0);
+    const [isFollowLoading, setIsFollowLoading] = useState(false);
+
     // Collapsible Roles
     const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>({
         admin: false,
@@ -76,6 +81,8 @@ export default function ProjectDetailPage() {
             setEditedTitle(projectRes.data.title);
             setEditedDescription(projectRes.data.description);
             setEditedTechStack(projectRes.data.tech_stack || []);
+            setIsFollowing(projectRes.data.is_following || false);
+            setFollowersCount(projectRes.data.followers_count || 0);
 
             const postsRes = await api.get(`/posts/?project_parent=${projectId}`);
             setDevlogs(postsRes.data.results || postsRes.data);
@@ -94,6 +101,26 @@ export default function ProjectDetailPage() {
     const userMember = project?.members?.find(m => m.user.id === user?.id);
     const isAdmin = isOwner || (userMember?.role === 'admin' && userMember?.status === 'active');
     const isEditor = isAdmin || (userMember?.role === 'editor' && userMember?.status === 'active');
+
+    const handleFollowToggle = async () => {
+        if (!project || isFollowLoading) return;
+        setIsFollowLoading(true);
+        try {
+            if (isFollowing) {
+                await api.post(`/projects/${project.id}/unfollow/`);
+                setIsFollowing(false);
+                setFollowersCount(prev => Math.max(0, prev - 1));
+            } else {
+                await api.post(`/projects/${project.id}/follow/`);
+                setIsFollowing(true);
+                setFollowersCount(prev => prev + 1);
+            }
+        } catch (error) {
+            console.error("Failed to toggle follow:", error);
+        } finally {
+            setIsFollowLoading(false);
+        }
+    };
 
     const handleSaveAbout = async () => {
         if (!project) return;
@@ -303,7 +330,37 @@ export default function ProjectDetailPage() {
                                         </p>
                                     </div>
                                 </Link>
+
+                                {/* Divider */}
+                                <div className="h-8 w-px bg-zinc-800" />
+
+                                {/* Followers Count */}
+                                <div className="flex items-center gap-2">
+                                    <Users className="w-4 h-4 text-zinc-500" />
+                                    <span className="text-sm font-medium text-zinc-300">
+                                        {followersCount} <span className="text-zinc-500">{followersCount === 1 ? 'follower' : 'followers'}</span>
+                                    </span>
+                                </div>
                             </div>
+
+                            {/* Follow Button */}
+                            {!isOwner && (
+                                <button
+                                    onClick={handleFollowToggle}
+                                    disabled={isFollowLoading}
+                                    className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
+                                        isFollowing
+                                            ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
+                                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
+                                    } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                                >
+                                    {isFollowing ? (
+                                        <><UserCheck className="w-4 h-4" /> Following</>
+                                    ) : (
+                                        <><UserPlus className="w-4 h-4" /> Follow</>
+                                    )}
+                                </button>
+                            )}
                         </div>
 
                         {/* Tabs */}
@@ -412,7 +469,7 @@ export default function ProjectDetailPage() {
                                                             placeholder="Project Description"
                                                         />
                                                     </div>
-                                                    <div className="space-y-2 relative">
+                                                    <div className="space-y-2 relative" style={{ overflow: 'visible' }}>
                                                         <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Tech Stack</label>
                                                         <div 
                                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white cursor-pointer min-h-[50px] flex flex-wrap gap-2 items-center hover:border-zinc-700 transition-colors"
@@ -438,7 +495,7 @@ export default function ProjectDetailPage() {
                                                         {showAboutTechDropdown && (
                                                             <>
                                                                 <div className="fixed inset-0 z-10" onClick={() => setShowAboutTechDropdown(false)} />
-                                                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto p-2 grid grid-cols-2 md:grid-cols-3 gap-1 animate-in fade-in slide-in-from-top-2 custom-scrollbar">
+                                                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-20 max-h-72 overflow-y-auto p-3 grid grid-cols-2 md:grid-cols-3 gap-1.5 animate-in fade-in slide-in-from-top-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#3f3f46 transparent' }}>
                                                                     {AVAILABLE_TECH.map(tech => (
                                                                         <button
                                                                             key={tech}
