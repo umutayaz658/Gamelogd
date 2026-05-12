@@ -4,12 +4,24 @@ import { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import PostCard from "@/components/PostCard";
-import ProjectCard from "@/components/ProjectCard"; // Make sure to export this
-import { PlusCircle, Layout, FolderKanban } from 'lucide-react';
+import ProjectCard from "@/components/ProjectCard";
+import { PlusCircle, Layout, FolderKanban, X, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
 import api from '@/lib/api';
 import { Post, Project } from '@/types';
 import CreateProjectModal from '@/components/modals/CreateProjectModal';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
+
+const AVAILABLE_TECH = [
+    'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
+    'Blender', 'Maya', 'ZBrush', 'Photoshop', 'Illustrator', 'FMOD', 'Wwise', 'Audacity', 'React', 'Next.js'
+];
+
+const STATUS_OPTIONS = [
+    { value: 'in_dev', label: 'In Development', activeClass: 'bg-amber-500/15 border-amber-500/40 text-amber-400' },
+    { value: 'alpha', label: 'Alpha', activeClass: 'bg-orange-500/15 border-orange-500/40 text-orange-400' },
+    { value: 'beta', label: 'Beta', activeClass: 'bg-blue-500/15 border-blue-500/40 text-blue-400' },
+    { value: 'released', label: 'Released', activeClass: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400' },
+];
 
 export default function DevsPage() {
     const [activeTab, setActiveTab] = useState<'devlogs' | 'projects'>('devlogs');
@@ -20,17 +32,45 @@ export default function DevsPage() {
     const [showProjectModal, setShowProjectModal] = useState(false);
     const [showDevlogModal, setShowDevlogModal] = useState(false);
 
+    // Filter states
+    const [selectedTechs, setSelectedTechs] = useState<string[]>([]);
+    const [selectedStatus, setSelectedStatus] = useState('');
+    const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+    const [showTechPicker, setShowTechPicker] = useState(false);
+
+    const hasActiveFilters = selectedTechs.length > 0 || selectedStatus !== '' || sortOrder !== 'newest';
+
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
                 if (activeTab === 'devlogs') {
-                    // Fetch posts where project_parent is not null
-                    // Using the new filter capability
-                    const res = await api.get('/posts/?project_parent__isnull=false');
-                    setDevlogs(res.data.results || res.data);
+                    const params = new URLSearchParams();
+                    params.append('project_parent__isnull', 'false');
+                    if (selectedStatus) params.append('status', selectedStatus);
+                    if (selectedTechs.length > 0) params.append('tech_stack_filter', selectedTechs.join(','));
+                    
+                    const queryStr = params.toString();
+                    const res = await api.get(`/posts/?${queryStr}`);
+                    let data = res.data.results || res.data;
+                    
+                    // Client-side sort for devlogs
+                    if (sortOrder === 'oldest') {
+                        data = [...data].sort((a: Post, b: Post) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    } else {
+                        data = [...data].sort((a: Post, b: Post) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                    }
+                    
+                    setDevlogs(data);
                 } else {
-                    const res = await api.get('/projects/');
+                    // Build query params for projects
+                    const params = new URLSearchParams();
+                    if (selectedStatus) params.append('status', selectedStatus);
+                    if (selectedTechs.length > 0) params.append('tech_stack_filter', selectedTechs.join(','));
+                    if (sortOrder === 'oldest') params.append('ordering', 'created_at');
+                    
+                    const queryStr = params.toString();
+                    const res = await api.get(`/projects/${queryStr ? '?' + queryStr : ''}`);
                     setProjects(res.data.results || res.data);
                 }
             } catch (error) {
@@ -40,7 +80,7 @@ export default function DevsPage() {
             }
         };
         fetchData();
-    }, [activeTab]);
+    }, [activeTab, selectedTechs, selectedStatus, sortOrder]);
 
     const handleCreateClick = () => {
         if (activeTab === 'devlogs') {
@@ -48,6 +88,18 @@ export default function DevsPage() {
         } else {
             setShowProjectModal(true);
         }
+    };
+
+    const toggleTech = (tech: string) => {
+        setSelectedTechs(prev =>
+            prev.includes(tech) ? prev.filter(t => t !== tech) : [...prev, tech]
+        );
+    };
+
+    const clearAllFilters = () => {
+        setSelectedTechs([]);
+        setSelectedStatus('');
+        setSortOrder('newest');
     };
 
     return (
@@ -80,7 +132,7 @@ export default function DevsPage() {
                         </div>
 
                         {/* Tabs */}
-                        <div className="flex gap-4 mb-8 border-b border-zinc-800">
+                        <div className="flex gap-4 border-b border-zinc-800">
                             <button
                                 onClick={() => setActiveTab('devlogs')}
                                 className={`flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'devlogs'
@@ -110,6 +162,107 @@ export default function DevsPage() {
                             </button>
                         </div>
 
+                        {/* ── Filter Bar ── always visible below tabs */}
+                        <div className="flex items-center gap-3 flex-wrap py-4 border-b border-zinc-800/50 mb-6">
+                            
+                            {/* Sort */}
+                            <button
+                                onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                    sortOrder !== 'newest'
+                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                                }`}
+                            >
+                                <ArrowUpDown className="w-4 h-4" />
+                                {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                            </button>
+
+                            {/* Status Filter */}
+                            {STATUS_OPTIONS.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setSelectedStatus(selectedStatus === opt.value ? '' : opt.value)}
+                                    className={`px-3.5 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                        selectedStatus === opt.value
+                                            ? opt.activeClass
+                                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                                    }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+
+                            {/* Tech Stack Picker Toggle */}
+                            <button
+                                onClick={() => setShowTechPicker(!showTechPicker)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                    showTechPicker || selectedTechs.length > 0
+                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                                }`}
+                            >
+                                <SlidersHorizontal className="w-4 h-4" />
+                                Tech Stack
+                                {selectedTechs.length > 0 && (
+                                    <span className="bg-emerald-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                                        {selectedTechs.length}
+                                    </span>
+                                )}
+                            </button>
+
+                            {/* Active Tech Chips */}
+                            {selectedTechs.map(tech => (
+                                <span
+                                    key={tech}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20"
+                                >
+                                    {tech}
+                                    <X 
+                                        className="w-3 h-3 cursor-pointer hover:text-emerald-200 transition-colors" 
+                                        onClick={() => toggleTech(tech)}
+                                    />
+                                </span>
+                            ))}
+
+                            {/* Clear All */}
+                            {hasActiveFilters && (
+                                <button
+                                    onClick={clearAllFilters}
+                                    className="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto underline underline-offset-2"
+                                >
+                                    Clear all
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Tech Stack Picker Panel — expandable */}
+                        {showTechPicker && (
+                            <div className="mb-6 p-5 bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="flex items-center justify-between mb-4">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Select Technologies</label>
+                                    <button onClick={() => setShowTechPicker(false)} className="text-zinc-500 hover:text-white p-1">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {AVAILABLE_TECH.map(tech => (
+                                        <button
+                                            key={tech}
+                                            onClick={() => toggleTech(tech)}
+                                            className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all border ${
+                                                selectedTechs.includes(tech)
+                                                    ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20'
+                                                    : 'bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:border-zinc-600 hover:text-white'
+                                            }`}
+                                        >
+                                            {tech}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Content Area */}
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                             {loading ? (
@@ -136,7 +289,7 @@ export default function DevsPage() {
                                         ))
                                     ) : (
                                         <div className="text-center py-20 text-zinc-500">
-                                            No projects found.
+                                            {hasActiveFilters ? 'No projects match your filters.' : 'No projects found.'}
                                         </div>
                                     )}
                                 </div>
@@ -153,7 +306,7 @@ export default function DevsPage() {
                 onClose={() => setShowProjectModal(false)}
                 onSuccess={(newProject) => {
                     setProjects(prev => [newProject, ...prev]);
-                    setActiveTab('projects'); // Switch to projects tab to see it
+                    setActiveTab('projects');
                 }}
             />
 

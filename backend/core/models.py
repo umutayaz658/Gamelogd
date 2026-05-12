@@ -55,6 +55,17 @@ class Project(models.Model):
     def __str__(self):
         return self.title
 
+class ProjectFollow(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='followed_projects')
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='followers')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'project')
+
+    def __str__(self):
+        return f"{self.user.username} follows {self.project.title}"
+
 class ProjectMember(models.Model):
     ROLE_CHOICES = [
         ('participant', 'Participant'),
