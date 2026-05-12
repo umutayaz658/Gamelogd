@@ -45,6 +45,15 @@ export interface Project {
     cover_image: string | null;
     tech_stack: string[];
     status: 'in_dev' | 'alpha' | 'beta' | 'released';
+    members?: ProjectMember[];
+    created_at: string;
+}
+
+export interface ProjectMember {
+    id: number;
+    user: User;
+    role: 'participant' | 'editor' | 'admin';
+    status: 'pending' | 'active';
     created_at: string;
 }
 

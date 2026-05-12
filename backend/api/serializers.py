@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post, Project, JobPosting, PostMedia, News, Like, Pitch, InvestorCall
+from core.models import Game, Review, Post, PostMedia, Like, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry
 
 RESERVED_USERNAMES = [
@@ -396,12 +396,24 @@ class NewsSerializer(serializers.ModelSerializer):
             return Like.objects.filter(user=request.user, news=obj).exists()
         return False
 
+class ProjectMemberSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), source='user', write_only=True
+    )
+
+    class Meta:
+        model = ProjectMember
+        fields = ['id', 'project', 'user', 'user_id', 'role', 'status', 'created_at']
+        read_only_fields = ['id', 'status', 'created_at']
+
 class ProjectSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
+    members = ProjectMemberSerializer(many=True, read_only=True)
     
     class Meta:
         model = Project
-        fields = ['id', 'owner', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'owner', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'created_at', 'updated_at']
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 class JobPostingSerializer(serializers.ModelSerializer):
