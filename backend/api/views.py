@@ -479,6 +479,16 @@ class PostViewSet(viewsets.ModelViewSet):
         if news_parent_id is not None:
             queryset = queryset.filter(news_parent_id=news_parent_id)
         
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(project_parent__status=status_filter)
+
+        tech_stack = self.request.query_params.get('tech_stack_filter', None)
+        if tech_stack:
+            techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
+            for tech in techs:
+                queryset = queryset.filter(project_parent__tech_stack__icontains=tech)
+
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -702,11 +712,42 @@ class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all().select_related('owner').order_by('-created_at')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, ProjectAccessPermission]
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'description', 'tech_stack']
+    filterset_fields = ['status']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        queryset = Project.objects.all().select_related('owner').order_by('-created_at')
+        # Tech stack filtering (comma-separated)
+        tech_stack = self.request.query_params.get('tech_stack_filter', None)
+        if tech_stack:
+            techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
+            for tech in techs:
+                queryset = queryset.filter(tech_stack__icontains=tech)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def follow(self, request, pk=None):
+        project = self.get_object()
+        from core.models import ProjectFollow
+        follow_obj, created = ProjectFollow.objects.get_or_create(user=request.user, project=project)
+        if not created:
+            return Response({"message": "Already following this project."}, status=status.HTTP_200_OK)
+        return Response({"message": f"Now following {project.title}"}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unfollow(self, request, pk=None):
+        project = self.get_object()
+        from core.models import ProjectFollow
+        deleted_count, _ = ProjectFollow.objects.filter(user=request.user, project=project).delete()
+        if deleted_count == 0:
+            return Response({"error": "You are not following this project."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Unfollowed {project.title}"}, status=status.HTTP_200_OK)
 
 class JobPostingViewSet(viewsets.ModelViewSet):
     queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')

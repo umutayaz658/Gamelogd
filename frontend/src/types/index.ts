@@ -46,6 +46,8 @@ export interface Project {
     tech_stack: string[];
     status: 'in_dev' | 'alpha' | 'beta' | 'released';
     members?: ProjectMember[];
+    followers_count?: number;
+    is_following?: boolean;
     created_at: string;
 }
 
