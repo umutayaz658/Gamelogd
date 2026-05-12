@@ -12,7 +12,7 @@ from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostS
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
-from api.permissions import IsOwnerOrReadOnly
+from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
 
 class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
@@ -491,6 +491,14 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
+        project_parent = serializer.validated_data.get('project_parent')
+        if project_parent:
+            user = self.request.user
+            if project_parent.owner != user:
+                is_authorized = project_parent.members.filter(user=user, role__in=['editor', 'admin']).exists()
+                if not is_authorized:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("You do not have permission to post a devlog for this project.")
         serializer.save(user=self.request.user)
 
 from api.models import Conversation, Message
@@ -618,13 +626,82 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         
         return super().create(request, *args, **kwargs)
 
-from core.models import Project, JobPosting
-from .serializers import ProjectSerializer, JobPostingSerializer
+from core.models import Project, JobPosting, ProjectMember
+from .serializers import ProjectSerializer, JobPostingSerializer, ProjectMemberSerializer
+
+class ProjectMemberViewSet(viewsets.ModelViewSet):
+    queryset = ProjectMember.objects.all()
+    serializer_class = ProjectMemberSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ProjectMember.objects.all()
+        project_id = self.request.query_params.get('project')
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        project = serializer.validated_data['project']
+        # The serializer validates user via `user_id` mapped to `user`
+        target_user = serializer.validated_data['user']
+        user = self.request.user
+        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only project admins can add members.")
+        
+        # Check if already a member or pending
+        if ProjectMember.objects.filter(project=project, user=target_user).exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("User is already a member or has a pending invite.")
+
+        member = serializer.save(status='pending')
+        
+        from api.models import Notification
+        Notification.objects.create(
+            recipient=target_user,
+            actor=user,
+            verb='invited you to join the project',
+            target=member
+        )
+
+    def perform_update(self, serializer):
+        project = serializer.instance.project
+        user = self.request.user
+        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only project admins can update members.")
+        serializer.save()
+
+    @action(detail=True, methods=['post'])
+    def accept(self, request, pk=None):
+        instance = self.get_object()
+        if instance.user != request.user:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only accept your own invites.")
+        
+        instance.status = 'active'
+        instance.save()
+        return Response({'status': 'active'}, status=status.HTTP_200_OK)
+
+    def perform_destroy(self, instance):
+        project = instance.project
+        user = self.request.user
+        
+        # Allow the user to decline/remove themselves
+        if instance.user == user:
+            instance.delete()
+            return
+
+        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only project admins can remove members.")
+        instance.delete()
 
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all().select_related('owner').order_by('-created_at')
     serializer_class = ProjectSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, ProjectAccessPermission]
     filter_backends = [filters.SearchFilter]
     search_fields = ['title', 'description', 'tech_stack']
 

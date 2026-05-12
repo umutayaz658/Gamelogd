@@ -17,3 +17,26 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return obj.recruiter == request.user
             
         return False
+
+class ProjectAccessPermission(permissions.BasePermission):
+    """
+    Custom permission for Projects:
+    - Anyone can read.
+    - Owner or Admin can update or delete.
+    - Editor can update, but NOT delete.
+    """
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+            
+        if hasattr(obj, 'owner') and hasattr(obj, 'members'):
+            if obj.owner == request.user:
+                return True
+            
+            if obj.members.filter(user=request.user, role='admin').exists():
+                return True
+                
+            if request.method in ['PUT', 'PATCH']:
+                return obj.members.filter(user=request.user, role='editor').exists()
+                
+        return False
