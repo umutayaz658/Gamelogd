@@ -9,16 +9,27 @@ interface CreateProjectModalProps {
     onSuccess: (newProject: Project) => void;
 }
 
+const AVAILABLE_TECH = [
+    'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
+    'Blender', 'Maya', 'ZBrush', 'Photoshop', 'Illustrator', 'FMOD', 'Wwise', 'Audacity', 'React', 'Next.js'
+];
+
 export default function CreateProjectModal({ isOpen, onClose, onSuccess }: CreateProjectModalProps) {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        title: string;
+        description: string;
+        status: string;
+        tech_stack: string[];
+    }>({
         title: '',
         description: '',
         status: 'in_dev',
-        tech_stack: ''
+        tech_stack: []
     });
     const [coverImage, setCoverImage] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [showTechDropdown, setShowTechDropdown] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     if (!isOpen) return null;
@@ -40,10 +51,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             data.append('title', formData.title);
             data.append('description', formData.description);
             data.append('status', formData.status);
-
-            // Process tech stack (comma separated string -> JSON array)
-            const stackArray = formData.tech_stack.split(',').map(s => s.trim()).filter(s => s.length > 0);
-            data.append('tech_stack', JSON.stringify(stackArray));
+            data.append('tech_stack', JSON.stringify(formData.tech_stack));
 
             if (coverImage) {
                 data.append('cover_image', coverImage);
@@ -56,9 +64,10 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             onSuccess(res.data);
             onClose();
             // Reset form
-            setFormData({ title: '', description: '', status: 'in_dev', tech_stack: '' });
+            setFormData({ title: '', description: '', status: 'in_dev', tech_stack: [] });
             setCoverImage(null);
             setPreviewUrl(null);
+            setShowTechDropdown(false);
         } catch (error) {
             console.error('Failed to create project:', error);
         } finally {
@@ -187,15 +196,53 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                             </div>
 
                             {/* Tech Stack Input */}
-                            <div className="space-y-2">
+                            <div className="space-y-2 relative">
                                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Tech Stack</label>
-                                <input
-                                    type="text"
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all"
-                                    value={formData.tech_stack}
-                                    onChange={e => setFormData({ ...formData, tech_stack: e.target.value })}
-                                    placeholder="Unity, C#, Blender..."
-                                />
+                                <div 
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white cursor-pointer min-h-[50px] flex flex-wrap gap-2 items-center hover:border-zinc-700 transition-colors"
+                                    onClick={() => setShowTechDropdown(!showTechDropdown)}
+                                >
+                                    {formData.tech_stack.length > 0 ? (
+                                        formData.tech_stack.map(tech => (
+                                            <span key={tech} className="bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
+                                                {tech}
+                                                <X 
+                                                    className="w-3 h-3 cursor-pointer hover:text-emerald-300" 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setFormData({...formData, tech_stack: formData.tech_stack.filter(t => t !== tech)})
+                                                    }}
+                                                />
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-zinc-700">Select technologies...</span>
+                                    )}
+                                </div>
+                                
+                                {showTechDropdown && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowTechDropdown(false)} />
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto p-2 grid grid-cols-2 gap-1 animate-in fade-in slide-in-from-top-2 custom-scrollbar">
+                                            {AVAILABLE_TECH.map(tech => (
+                                                <button
+                                                    key={tech}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (formData.tech_stack.includes(tech)) {
+                                                            setFormData({...formData, tech_stack: formData.tech_stack.filter(t => t !== tech)});
+                                                        } else {
+                                                            setFormData({...formData, tech_stack: [...formData.tech_stack, tech]});
+                                                        }
+                                                    }}
+                                                    className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${formData.tech_stack.includes(tech) ? 'bg-emerald-500 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
+                                                >
+                                                    {tech}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

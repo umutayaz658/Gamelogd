@@ -82,7 +82,7 @@ export default function SinglePostPage() {
                     </div>
 
                     {/* Main Content */}
-                    <div className="col-span-12 lg:col-span-6">
+                    <div className={`col-span-12 ${post?.project_parent ? 'lg:col-span-9' : 'lg:col-span-6'}`}>
                         <div className="flex items-center gap-4 mb-6">
                             <button
                                 onClick={() => router.back()}
@@ -161,9 +161,11 @@ export default function SinglePostPage() {
                     </div>
 
                     {/* Right Sidebar */}
-                    <div className="hidden lg:block col-span-3">
-                        <RightSidebar />
-                    </div>
+                    {!post?.project_parent && (
+                        <div className="hidden lg:block col-span-3">
+                            <RightSidebar />
+                        </div>
+                    )}
                 </div>
             </main>
         </div>

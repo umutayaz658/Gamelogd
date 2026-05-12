@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
-import { Heart, UserPlus, Shield, MessageSquare, Star, AtSign, CheckCircle2, Loader2 } from 'lucide-react';
+import { Heart, UserPlus, Shield, MessageSquare, Star, AtSign, CheckCircle2, Loader2, Users } from 'lucide-react';
 import api from "@/lib/api";
 import { getImageUrl } from "@/lib/utils";
 import { useNotifications } from "@/context/NotificationContext";
@@ -15,7 +15,7 @@ interface Notification {
     actor: {
         username: string;
         avatar: string;
-        is_verified?: boolean; // Assuming this might exist or we default to false
+        is_verified?: boolean;
     };
     verb: string;
     target_type?: string;
@@ -48,17 +48,39 @@ export default function NotificationsPage() {
         fetchNotifications();
     }, []);
 
+    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined) => {
+        e.preventDefault();
+        if (!targetId) return;
+        try {
+            await api.post(`/project-members/${targetId}/accept/`);
+            setNotifications(prev => prev.filter(n => n.target_id !== targetId));
+        } catch (error) {
+            console.error('Failed to accept invite:', error);
+        }
+    };
+
+    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined) => {
+        e.preventDefault();
+        if (!targetId) return;
+        try {
+            await api.delete(`/project-members/${targetId}/`);
+            setNotifications(prev => prev.filter(n => n.target_id !== targetId));
+        } catch (error) {
+            console.error('Failed to decline invite:', error);
+        }
+    };
+
     const getIcon = (verb: string) => {
         if (verb.includes('following')) return <UserPlus className="h-5 w-5 text-blue-500" />;
         if (verb.includes('liked')) return <Heart className="h-5 w-5 text-red-500 fill-red-500" />;
         if (verb.includes('mentioned')) return <AtSign className="h-5 w-5 text-emerald-500" />;
         if (verb.includes('replied')) return <MessageSquare className="h-5 w-5 text-purple-500" />;
+        if (verb.includes('invited')) return <Users className="h-5 w-5 text-emerald-500" />;
         return <Star className="h-5 w-5 text-yellow-500" />;
     };
 
     const filteredNotifications = notifications.filter(notif => {
         if (filter === 'all') return true;
-        // Simple filter logic based on verb for now, can be expanded
         if (filter === 'mentions') return notif.verb.includes('mentioned') || notif.verb.includes('replied');
         if (filter === 'verified') return notif.actor.is_verified;
         return true;
@@ -119,10 +141,9 @@ export default function NotificationsPage() {
                                     </div>
                                 ) : filteredNotifications.length > 0 ? (
                                     filteredNotifications.map((notif) => (
-                                        <Link
-                                            href={`/${notif.actor.username}`}
+                                        <div
                                             key={notif.id}
-                                            className={`p-4 flex gap-4 hover:bg-zinc-800/30 transition-colors cursor-pointer ${!notif.is_read ? 'bg-zinc-800/20' : ''}`}
+                                            className={`p-4 flex gap-4 transition-colors hover:bg-zinc-800/10 ${!notif.is_read ? 'bg-zinc-800/20' : ''}`}
                                         >
                                             {/* Icon Column */}
                                             <div className="pt-1">
@@ -132,22 +153,41 @@ export default function NotificationsPage() {
                                             {/* Content Column */}
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-1">
-                                                    <div className="h-8 w-8 rounded-full overflow-hidden bg-zinc-800">
+                                                    <Link href={`/${notif.actor.username}`} className="h-8 w-8 rounded-full overflow-hidden bg-zinc-800 group hover:ring-2 hover:ring-emerald-500 transition-all">
                                                         <img
                                                             src={getImageUrl(notif.actor.avatar, notif.actor.username)}
                                                             alt={notif.actor.username}
                                                             className="w-full h-full object-cover"
                                                         />
-                                                    </div>
+                                                    </Link>
 
                                                     <div className="flex flex-wrap items-baseline gap-1">
-                                                        <span className="font-bold text-white flex items-center gap-1">
+                                                        <Link href={`/${notif.actor.username}`} className="font-bold text-white hover:underline flex items-center gap-1">
                                                             {notif.actor.username}
                                                             {notif.actor.is_verified && <CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />}
-                                                        </span>
+                                                        </Link>
                                                         <span className="text-zinc-400">{notif.verb}</span>
                                                     </div>
                                                 </div>
+
+                                                {/* Action Buttons for Invites */}
+                                                {notif.verb === 'invited you to join the project' && (
+                                                    <div className="mt-3 flex gap-2 pl-10 mb-2">
+                                                        <button 
+                                                            onClick={(e) => handleAcceptInvite(e, notif.target_id)}
+                                                            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => handleDeclineInvite(e, notif.target_id)}
+                                                            className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700"
+                                                        >
+                                                            Decline
+                                                        </button>
+                                                    </div>
+                                                )}
+
                                                 <div className="text-xs text-zinc-500 font-medium pl-10">
                                                     {formatTime(notif.created_at)}
                                                 </div>
@@ -159,7 +199,7 @@ export default function NotificationsPage() {
                                                     <div className="h-2 w-2 rounded-full bg-emerald-500" />
                                                 </div>
                                             )}
-                                        </Link>
+                                        </div>
                                     ))
                                 ) : (
                                     <div className="p-12 text-center text-zinc-500">
