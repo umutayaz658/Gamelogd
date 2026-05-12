@@ -1,13 +1,48 @@
+'use client';
+
+import { useState } from 'react';
 import { Project } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import Link from 'next/link';
-import { BookmarkPlus, Code2 } from 'lucide-react';
+import { UserPlus, UserCheck, Code2, Calendar } from 'lucide-react';
+import api from '@/lib/api';
 
 interface ProjectCardProps {
     project: Project;
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
+    const [isFollowing, setIsFollowing] = useState(project.is_following || false);
+    const [followersCount, setFollowersCount] = useState(project.followers_count || 0);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleFollowToggle = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isLoading) return;
+        setIsLoading(true);
+        try {
+            if (isFollowing) {
+                await api.post(`/projects/${project.id}/unfollow/`);
+                setIsFollowing(false);
+                setFollowersCount(prev => Math.max(0, prev - 1));
+            } else {
+                await api.post(`/projects/${project.id}/follow/`);
+                setIsFollowing(true);
+                setFollowersCount(prev => prev + 1);
+            }
+        } catch (error) {
+            console.error("Failed to toggle follow:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const formatDate = (dateStr: string) => {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
+
     return (
         <Link href={`/projects/${project.id}`} className="group overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 transition-all duration-300 flex flex-col sm:flex-row h-auto sm:h-56">
             {/* Cover Image Left */}
@@ -37,16 +72,29 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                     <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors line-clamp-1">
                         {project.title}
                     </h3>
-                    <button 
-                        className="text-zinc-500 hover:text-white transition-colors p-2 rounded-full hover:bg-zinc-800 shrink-0"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            // Future: Add Bookmark Logic
-                        }}
-                        title="Follow Project"
-                    >
-                        <BookmarkPlus className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Creation Date */}
+                        <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {formatDate(project.created_at)}
+                        </span>
+                        {/* Follow Button */}
+                        <button 
+                            className={`p-2 rounded-full transition-all duration-200 ${
+                                isFollowing 
+                                    ? 'text-emerald-400 bg-emerald-500/10 hover:bg-red-500/10 hover:text-red-400' 
+                                    : 'text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10'
+                            } ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                            onClick={handleFollowToggle}
+                            title={isFollowing ? 'Unfollow Project' : 'Follow Project'}
+                        >
+                            {isFollowing ? (
+                                <UserCheck className="w-5 h-5" />
+                            ) : (
+                                <UserPlus className="w-5 h-5" />
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Developer Info */}
@@ -59,6 +107,11 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                     <span className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
                         {project.owner.username}
                     </span>
+                    {followersCount > 0 && (
+                        <span className="text-xs text-zinc-600 ml-auto">
+                            {followersCount} {followersCount === 1 ? 'follower' : 'followers'}
+                        </span>
+                    )}
                 </div>
 
                 <p className="text-sm text-zinc-400 line-clamp-3 mb-4 flex-1">
