@@ -338,29 +338,27 @@ export default function ProjectDetailPage() {
                                 <div className="flex items-center gap-2">
                                     <Users className="w-4 h-4 text-zinc-500" />
                                     <span className="text-sm font-medium text-zinc-300">
-                                        {followersCount} <span className="text-zinc-500">{followersCount === 1 ? 'follower' : 'followers'}</span>
+                                        {followersCount} <span className="text-zinc-500">followers</span>
                                     </span>
                                 </div>
                             </div>
 
                             {/* Follow Button */}
-                            {!isOwner && (
-                                <button
-                                    onClick={handleFollowToggle}
-                                    disabled={isFollowLoading}
-                                    className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
-                                        isFollowing
-                                            ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
-                                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
-                                    } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
-                                >
-                                    {isFollowing ? (
-                                        <><UserCheck className="w-4 h-4" /> Following</>
-                                    ) : (
-                                        <><UserPlus className="w-4 h-4" /> Follow</>
-                                    )}
-                                </button>
-                            )}
+                            <button
+                                onClick={handleFollowToggle}
+                                disabled={isFollowLoading}
+                                className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
+                                    isFollowing
+                                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
+                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
+                                } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                                {isFollowing ? (
+                                    <><UserCheck className="w-4 h-4" /> Following</>
+                                ) : (
+                                    <><UserPlus className="w-4 h-4" /> Follow</>
+                                )}
+                            </button>
                         </div>
 
                         {/* Tabs */}
