@@ -649,6 +649,38 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         
         return super().create(request, *args, **kwargs)
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+from .serializers import BookmarkSerializer
+from core.models import Bookmark
+
+class BookmarkViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, viewsets.mixins.ListModelMixin, viewsets.mixins.DestroyModelMixin):
+    queryset = Bookmark.objects.all()
+    serializer_class = BookmarkSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Bookmark.objects.filter(user=self.request.user).order_by('-timestamp')
+
+    def create(self, request, *args, **kwargs):
+        # Check for existence to toggle or prevent duplicates
+        user = request.user
+        post_id = request.data.get('post')
+        review_id = request.data.get('review')
+        news_id = request.data.get('news')
+        
+        existing = Bookmark.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id).first()
+        
+        if existing:
+            existing.delete()
+            return Response({'status': 'unbookmarked'}, status=status.HTTP_200_OK)
+        
+        return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 from core.models import Project, JobPosting, ProjectMember
 from .serializers import ProjectSerializer, JobPostingSerializer, ProjectMemberSerializer
 

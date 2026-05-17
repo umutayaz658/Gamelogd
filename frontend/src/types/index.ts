@@ -31,6 +31,9 @@ export interface Review {
     rating: number;
     content: string;
     is_liked: boolean;
+    likes_count?: number;
+    is_bookmarked?: boolean;
+    bookmarks_count?: number;
     is_completed: boolean;
     contains_spoilers: boolean;
     timestamp: string;
@@ -84,6 +87,7 @@ export interface Post {
     poll_options?: string[] | null;
     timestamp: string;
     likes?: number;
+    likes_count?: number;
     comments?: number;
     replies_count?: number;
     parent?: number | null;
@@ -105,6 +109,8 @@ export interface Post {
     };
     reply_to_username?: string | null;
     is_liked?: boolean;
+    is_bookmarked?: boolean;
+    bookmarks_count?: number;
     type?: 'post' | 'reply' | 'news';
     media?: {
         id: number;
