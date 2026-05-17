@@ -63,6 +63,8 @@ export interface JobPosting {
     project: Project | null;
     title: string;
     description: string;
+    post_type: 'job' | 'talent';
+    tech_stack: string[];
     job_type: 'full_time' | 'part_time' | 'contract' | 'rev_share' | 'hobby';
     location_type: 'remote' | 'on_site' | 'hybrid';
     experience_level: 'junior' | 'mid' | 'senior' | 'lead';
