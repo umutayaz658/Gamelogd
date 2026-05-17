@@ -8,9 +8,10 @@ import PostComposer from '@/components/PostComposer';
 
 interface FeedProps {
     initialItems?: FeedItem[];
+    hideComposer?: boolean;
 }
 
-export default function Feed({ initialItems = [] }: FeedProps) {
+export default function Feed({ initialItems = [], hideComposer = false }: FeedProps) {
     const [items, setItems] = useState<FeedItem[]>(initialItems);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -82,7 +83,7 @@ export default function Feed({ initialItems = [] }: FeedProps) {
     return (
         <div className="flex flex-col gap-6 pb-20">
             {/* Create Post Section */}
-            <PostComposer onPostCreated={handlePostCreated} />
+            {!hideComposer && <PostComposer onPostCreated={handlePostCreated} />}
 
             {/* Feed List */}
             {isLoading && items.length === 0 ? (

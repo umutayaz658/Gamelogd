@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post, PostMedia, Like, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
+from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry
 
 RESERVED_USERNAMES = [
@@ -125,11 +125,19 @@ class ReviewSerializer(serializers.ModelSerializer):
     game = GameSerializer(read_only=True)
     game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
     type = serializers.CharField(default='review', read_only=True)
+    is_bookmarked = serializers.SerializerMethodField()
+    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
+        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
         read_only_fields = ['id', 'user', 'timestamp']
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Bookmark.objects.filter(user=request.user, review=obj).exists()
+        return False
 
     def validate(self, data):
         request = self.context.get('request')
@@ -184,6 +192,8 @@ class PostSerializer(serializers.ModelSerializer):
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
     likes_count = serializers.IntegerField(source='likes.count', read_only=True)
     is_liked = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
+    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
     parent_details = serializers.SerializerMethodField()
     review_details = serializers.SerializerMethodField()
     news_details = serializers.SerializerMethodField()
@@ -202,7 +212,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             'id', 'user', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
-            'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked',
+            'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
             'media', 'uploaded_media'
@@ -240,6 +250,12 @@ class PostSerializer(serializers.ModelSerializer):
         user = self.context.get('request').user
         if user.is_authenticated:
             return obj.likes.filter(id=user.id).exists()
+        return False
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.bookmarks.filter(user=request.user).exists()
         return False
 
     def get_review_details(self, obj):
@@ -383,18 +399,43 @@ class NewsSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name', read_only=True)
     source_icon = serializers.URLField(source='source.icon', read_only=True)
     is_liked = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
     like_count = serializers.IntegerField(read_only=True)
     comment_count = serializers.IntegerField(read_only=True)
+    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
 
     class Meta:
         model = News
-        fields = ['id', 'title', 'link', 'image_url', 'description', 'pub_date', 'category', 'source_name', 'source_icon', 'is_liked', 'like_count', 'comment_count']
+        fields = ['id', 'title', 'link', 'image_url', 'description', 'pub_date', 'category', 'source_name', 'source_icon', 'is_liked', 'is_bookmarked', 'like_count', 'comment_count', 'bookmarks_count']
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return Like.objects.filter(user=request.user, news=obj).exists()
         return False
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Bookmark.objects.filter(user=request.user, news=obj).exists()
+        return False
+
+class BookmarkSerializer(serializers.ModelSerializer):
+    post_details = PostSerializer(source='post', read_only=True)
+    review_details = ReviewSerializer(source='review', read_only=True)
+    news_details = NewsSerializer(source='news', read_only=True)
+
+    class Meta:
+        model = Bookmark
+        fields = ['id', 'user', 'post', 'review', 'news', 'timestamp', 'post_details', 'review_details', 'news_details']
+        read_only_fields = ['id', 'user', 'timestamp']
+
+    def create(self, validated_data):
+        # Ensure only one target is set
+        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news')]
+        if sum(x is not None for x in targets) != 1:
+            raise serializers.ValidationError("Bookmark must target exactly one item (post, review, or news).")
+        return super().create(validated_data)
 
 class ProjectMemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

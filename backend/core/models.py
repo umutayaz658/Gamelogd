@@ -172,6 +172,19 @@ class Like(models.Model):
     def __str__(self):
         return f"{self.user} liked something"
 
+class Bookmark(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bookmarks')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, null=True, blank=True, related_name='bookmarks')
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, null=True, blank=True, related_name='bookmarks')
+    news = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='bookmarks')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news']]
+
+    def __str__(self):
+        return f"{self.user} bookmarked something"
+
 
 
 class NewsSource(models.Model):
