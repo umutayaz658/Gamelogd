@@ -767,8 +767,17 @@ class JobPostingViewSet(viewsets.ModelViewSet):
     serializer_class = JobPostingSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['job_type', 'location_type', 'experience_level']
+    filterset_fields = ['job_type', 'location_type', 'experience_level', 'post_type']
     search_fields = ['title', 'description']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tech_stack = self.request.query_params.get('tech_stack')
+        if tech_stack:
+            techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
+            for tech in techs:
+                queryset = queryset.filter(tech_stack__contains=[tech])
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(recruiter=self.request.user)
