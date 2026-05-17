@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import PhoneInput from 'react-phone-number-input';
@@ -23,6 +23,23 @@ export default function RegisterPage() {
         interests: [] as string[],
         platforms: [] as string[]
     });
+
+    // Pre-fill email from Google signup redirect (one-time use)
+    useEffect(() => {
+        const googleData = localStorage.getItem('googleSignupData');
+        if (googleData) {
+            localStorage.removeItem('googleSignupData');
+            try {
+                const parsed = JSON.parse(googleData);
+                setFormData(prev => ({
+                    ...prev,
+                    email: parsed.email || '',
+                }));
+            } catch (e) {
+                console.error('Failed to parse Google signup data:', e);
+            }
+        }
+    }, []);
 
     const steps = [
         { id: 1, title: "Account & Contact" },
@@ -156,7 +173,7 @@ export default function RegisterPage() {
                     <p className="text-zinc-400">Step {currentStep} of 3: {steps[currentStep - 1].title}</p>
                 </div>
 
-                <form onSubmit={handleNext} className="space-y-6">
+                <form onSubmit={handleNext} className="space-y-6" autoComplete="off">
                     <AnimatePresence mode="wait">
                         {currentStep === 1 && (
                             <motion.div
@@ -172,6 +189,7 @@ export default function RegisterPage() {
                                     <input
                                         type="text"
                                         placeholder="Username"
+                                        autoComplete="off"
                                         className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                         value={formData.username}
                                         onChange={(e) => setFormData({ ...formData, username: e.target.value })}
@@ -209,6 +227,7 @@ export default function RegisterPage() {
                                         <input
                                             type="password"
                                             placeholder="Password"
+                                            autoComplete="new-password"
                                             className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                             value={formData.password}
                                             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -220,6 +239,7 @@ export default function RegisterPage() {
                                         <input
                                             type="password"
                                             placeholder="Confirm Password"
+                                            autoComplete="new-password"
                                             className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                             value={formData.confirmPassword}
                                             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}

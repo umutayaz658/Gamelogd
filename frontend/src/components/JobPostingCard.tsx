@@ -1,13 +1,14 @@
 import { JobPosting } from '@/types';
-import { Briefcase, Users, Code2, ArrowUpRight, MapPin, Zap } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Briefcase, Users, Code2, MapPin, Zap, User as UserIcon } from 'lucide-react';
+import { getImageUrl } from '@/lib/utils';
 
 interface JobPostingCardProps {
     job: JobPosting;
+    selected?: boolean;
+    onClick?: () => void;
 }
 
-export default function JobPostingCard({ job }: JobPostingCardProps) {
-    const router = useRouter();
+export default function JobPostingCard({ job, selected, onClick }: JobPostingCardProps) {
 
     const getTypeColor = (type: string) => {
         switch (type) {
@@ -27,56 +28,82 @@ export default function JobPostingCard({ job }: JobPostingCardProps) {
     };
 
     return (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 hover:border-zinc-600 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full">
-            <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ArrowUpRight className="h-5 w-5 text-zinc-400" />
+        <div 
+            onClick={onClick}
+            className={`rounded-2xl border p-4 sm:p-5 transition-all cursor-pointer flex gap-4 ${
+                selected 
+                    ? 'bg-zinc-800 border-emerald-500 shadow-lg shadow-emerald-500/5 ring-1 ring-emerald-500/20' 
+                    : 'bg-zinc-900 border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50'
+            }`}
+        >
+            {/* Visual Identifier (Avatar or Icon) */}
+            <div className="flex-shrink-0 mt-1">
+                {job.post_type === 'talent' ? (
+                    <img 
+                        src={getImageUrl(job.recruiter.avatar, job.recruiter.username)} 
+                        alt={job.recruiter.username} 
+                        className="w-12 h-12 rounded-xl object-cover border border-zinc-700"
+                    />
+                ) : job.project?.cover_image ? (
+                    <img 
+                        src={job.project.cover_image} 
+                        alt={job.project.title} 
+                        className="w-12 h-12 rounded-xl object-cover border border-zinc-700"
+                    />
+                ) : (
+                    <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center border border-zinc-700">
+                        {job.post_type === 'job' ? <Briefcase className="h-5 w-5 text-zinc-500" /> : <UserIcon className="h-5 w-5 text-zinc-500" />}
+                    </div>
+                )}
             </div>
 
-            <div className="flex flex-col gap-4 flex-grow">
-                <div className="flex items-start justify-between">
-                    <div>
-                        <div className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border mb-3 ${getTypeColor(job.job_type)}`}>
-                            {formatJobType(job.job_type)}
-                        </div>
-                        <h3 className="text-xl font-bold text-white mb-1 group-hover:text-emerald-400 transition-colors bg-zinc-900">
-                            {job.title}
-                        </h3>
-                        <div className="flex items-center gap-2 text-zinc-400 text-sm font-medium">
-                            {job.project ? (
-                                <>
-                                    <Users className="h-4 w-4" />
-                                    {job.project.title}
-                                </>
-                            ) : (
-                                <>
-                                    <Users className="h-4 w-4" />
-                                    Indie Team (@{job.recruiter.username})
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-                    <span className="flex items-center gap-1 bg-zinc-800/50 px-2 py-1 rounded">
-                        <MapPin className="h-3 w-3" />
-                        {formatJobType(job.location_type)}
-                    </span>
-                    <span className="flex items-center gap-1 bg-zinc-800/50 px-2 py-1 rounded">
-                        <Zap className="h-3 w-3" />
-                        {formatJobType(job.experience_level)}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className={`text-lg font-bold truncate transition-colors ${selected ? 'text-emerald-400' : 'text-white'}`}>
+                        {job.title}
+                    </h3>
+                    <span className="text-xs text-zinc-500 flex-shrink-0 mt-1 hidden sm:block">
+                        {new Date(job.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </span>
                 </div>
+                
+                <div className="flex items-center gap-1.5 text-zinc-400 text-sm font-medium mb-3 truncate">
+                    {job.post_type === 'talent' ? (
+                        <>
+                            <UserIcon className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+                            <span className="truncate">{job.recruiter.real_name || job.recruiter.username}</span>
+                        </>
+                    ) : (
+                        job.project ? (
+                            <>
+                                <Users className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+                                <span className="truncate">{job.project.title}</span>
+                            </>
+                        ) : (
+                            <>
+                                <Users className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+                                <span className="truncate">@{job.recruiter.username}</span>
+                            </>
+                        )
+                    )}
+                </div>
 
-                <p className="text-zinc-400 text-sm line-clamp-3">
-                    {job.description}
-                </p>
-
-                <div className="mt-auto pt-4 border-t border-zinc-800 flex items-center justify-between">
-                    <span className="text-xs text-zinc-600">Posted {new Date(job.created_at).toLocaleDateString()}</span>
-                    <button className="text-sm font-bold text-white bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg transition-colors">
-                        Apply
-                    </button>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                    <span className={`px-2 py-0.5 rounded border ${getTypeColor(job.job_type)}`}>
+                        {formatJobType(job.job_type)}
+                    </span>
+                    {job.post_type === 'talent' && (
+                        <span className="px-2 py-0.5 rounded border bg-purple-500/10 text-purple-400 border-purple-500/20">
+                            Talent
+                        </span>
+                    )}
+                    {job.tech_stack && job.tech_stack.length > 0 && (
+                        <span className="text-zinc-500 lowercase flex items-center gap-1 font-mono font-medium">
+                            <Code2 className="h-3 w-3" />
+                            {job.tech_stack[0]}
+                            {job.tech_stack.length > 1 && ` +${job.tech_stack.length - 1}`}
+                        </span>
+                    )}
                 </div>
             </div>
         </div>
