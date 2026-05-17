@@ -501,6 +501,10 @@ class PostViewSet(viewsets.ModelViewSet):
             techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
             for tech in techs:
                 queryset = queryset.filter(project_parent__tech_stack__icontains=tech)
+                
+        is_following_project = self.request.query_params.get('is_following_project', None)
+        if is_following_project == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(project_parent__followers__user=self.request.user)
 
         return queryset
 
@@ -739,6 +743,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
             techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
             for tech in techs:
                 queryset = queryset.filter(tech_stack__icontains=tech)
+                
+        is_following = self.request.query_params.get('is_following', None)
+        if is_following == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(followers__user=self.request.user)
+            
         return queryset
 
     def perform_create(self, serializer):

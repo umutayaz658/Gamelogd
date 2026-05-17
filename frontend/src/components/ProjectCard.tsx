@@ -109,7 +109,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                     </span>
                     {followersCount > 0 && (
                         <span className="text-xs text-zinc-600 ml-auto">
-                            {followersCount} {followersCount === 1 ? 'follower' : 'followers'}
+                            {followersCount} followers
                         </span>
                     )}
                 </div>
