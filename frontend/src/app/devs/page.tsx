@@ -5,11 +5,12 @@ import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import PostCard from "@/components/PostCard";
 import ProjectCard from "@/components/ProjectCard";
-import { PlusCircle, Layout, FolderKanban, X, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
+import { PlusCircle, Layout, FolderKanban, X, ArrowUpDown, SlidersHorizontal, UserCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { Post, Project } from '@/types';
 import CreateProjectModal from '@/components/modals/CreateProjectModal';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
+import { useAuth } from '@/context/AuthContext';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -37,8 +38,10 @@ export default function DevsPage() {
     const [selectedStatus, setSelectedStatus] = useState('');
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [showTechPicker, setShowTechPicker] = useState(false);
+    const [showFollowingOnly, setShowFollowingOnly] = useState(false);
+    const { user } = useAuth();
 
-    const hasActiveFilters = selectedTechs.length > 0 || selectedStatus !== '' || sortOrder !== 'newest';
+    const hasActiveFilters = selectedTechs.length > 0 || selectedStatus !== '' || sortOrder !== 'newest' || showFollowingOnly;
 
     useEffect(() => {
         const fetchData = async () => {
@@ -49,6 +52,7 @@ export default function DevsPage() {
                     params.append('project_parent__isnull', 'false');
                     if (selectedStatus) params.append('status', selectedStatus);
                     if (selectedTechs.length > 0) params.append('tech_stack_filter', selectedTechs.join(','));
+                    if (showFollowingOnly) params.append('is_following_project', 'true');
                     
                     const queryStr = params.toString();
                     const res = await api.get(`/posts/?${queryStr}`);
@@ -68,6 +72,7 @@ export default function DevsPage() {
                     if (selectedStatus) params.append('status', selectedStatus);
                     if (selectedTechs.length > 0) params.append('tech_stack_filter', selectedTechs.join(','));
                     if (sortOrder === 'oldest') params.append('ordering', 'created_at');
+                    if (showFollowingOnly) params.append('is_following', 'true');
                     
                     const queryStr = params.toString();
                     const res = await api.get(`/projects/${queryStr ? '?' + queryStr : ''}`);
@@ -80,7 +85,7 @@ export default function DevsPage() {
             }
         };
         fetchData();
-    }, [activeTab, selectedTechs, selectedStatus, sortOrder]);
+    }, [activeTab, selectedTechs, selectedStatus, sortOrder, showFollowingOnly]);
 
     const handleCreateClick = () => {
         if (activeTab === 'devlogs') {
@@ -100,6 +105,7 @@ export default function DevsPage() {
         setSelectedTechs([]);
         setSelectedStatus('');
         setSortOrder('newest');
+        setShowFollowingOnly(false);
     };
 
     return (
@@ -192,6 +198,21 @@ export default function DevsPage() {
                                     {opt.label}
                                 </button>
                             ))}
+
+                            {/* Following Filter */}
+                            {user && (
+                                <button
+                                    onClick={() => setShowFollowingOnly(!showFollowingOnly)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                        showFollowingOnly
+                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                                    }`}
+                                >
+                                    <UserCheck className="w-4 h-4" />
+                                    Following
+                                </button>
+                            )}
 
                             {/* Tech Stack Picker Toggle */}
                             <button
