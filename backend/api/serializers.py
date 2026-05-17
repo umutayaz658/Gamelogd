@@ -15,8 +15,6 @@ class InterestSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     interests = serializers.StringRelatedField(many=True, read_only=True)
-    # interest_ids removed as we are simplifying
-
 
     class Meta:
         model = User
@@ -27,6 +25,29 @@ class UserSerializer(serializers.ModelSerializer):
             'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined'
         ]
         read_only_fields = ['id', 'date_joined']
+
+    def to_representation(self, instance):
+        """Override to safely handle mixed Cloudinary and local media paths."""
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+
+        for field in ['avatar', 'cover_image']:
+            val = representation.get(field)
+            if not val:
+                continue
+            
+            # If it's a Cloudinary URL (or any external URL)
+            if str(val).startswith('http'):
+                if str(val).startswith('http://res.cloudinary.com'):
+                    representation[field] = str(val).replace('http://', 'https://')
+            else:
+                # Local path that didn't get absolute URL for some reason
+                if request and not str(val).startswith('http'):
+                    try:
+                        representation[field] = request.build_absolute_uri(val)
+                    except Exception:
+                        pass
+        return representation
 
     def validate_username(self, value):
         if value.lower() in RESERVED_USERNAMES:
@@ -115,10 +136,28 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 class GameSerializer(serializers.ModelSerializer):
+    cover_image = serializers.SerializerMethodField()
+
     class Meta:
         model = Game
         fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id']
         read_only_fields = ['id']
+
+    def get_cover_image(self, obj):
+        if not obj.cover_image:
+            return None
+        value = str(obj.cover_image)
+        # If it's already a full URL (Steam CDN, Cloudinary, etc.), return as-is
+        if value.startswith('http'):
+            return value
+        # Otherwise, build the full media URL
+        request = self.context.get('request')
+        try:
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        except Exception:
+            return None
 
 class ReviewSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -422,7 +461,7 @@ class JobPostingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = JobPosting
-        fields = ['id', 'recruiter', 'project', 'project_details', 'title', 'description', 'job_type', 'location_type', 'experience_level', 'is_active', 'created_at']
+        fields = ['id', 'recruiter', 'project', 'project_details', 'title', 'description', 'post_type', 'tech_stack', 'job_type', 'location_type', 'experience_level', 'is_active', 'created_at']
         read_only_fields = ['id', 'recruiter', 'created_at', 'project_details']
 
     def get_project_details(self, obj):
