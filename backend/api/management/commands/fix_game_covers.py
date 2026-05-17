@@ -28,16 +28,29 @@ class Command(BaseCommand):
                 already_ok += 1
                 continue
             
-            # Need steam_appid to generate CDN URL
-            if not game.steam_appid:
+            appid = game.steam_appid
+            
+            # If no steam_appid, try to extract from the filename (e.g., games/20900.jpg -> 20900)
+            if not appid and 'games/' in cover_value:
+                try:
+                    filename = cover_value.split('/')[-1]
+                    extracted_id = filename.split('.')[0]
+                    if extracted_id.isdigit():
+                        appid = extracted_id
+                        # Update the database with the extracted steam_appid
+                        game.steam_appid = appid
+                except Exception:
+                    pass
+            
+            if not appid:
                 self.stdout.write(self.style.WARNING(f'  SKIP: {game.title} - no steam_appid'))
                 no_steam += 1
                 continue
             
             # Try to find working Steam CDN URL
-            cover_url = self._get_best_cover_url(game.steam_appid)
+            cover_url = self._get_best_cover_url(appid)
             game.cover_image = cover_url
-            game.save(update_fields=['cover_image'])
+            game.save(update_fields=['cover_image', 'steam_appid'])
             fixed += 1
             self.stdout.write(self.style.SUCCESS(f'  FIXED: {game.title} -> {cover_url}'))
         
