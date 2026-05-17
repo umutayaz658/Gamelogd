@@ -1,7 +1,6 @@
 import requests
 import time
 from django.conf import settings
-from django.core.files.base import ContentFile
 from api.models import LibraryEntry, User
 from core.models import Game
 
@@ -112,14 +111,12 @@ def fetch_steam_genres(appid):
         return []
 
 
-def fetch_steam_cover(appid):
+def get_steam_cover_url(appid):
     """
-    Tries multiple Steam CDN URLs to find a working cover image.
-    Returns (content_bytes, filename) or (None, None) if all fail.
-    Fallback chain:
-      1. library_600x900.jpg (portrait, ideal)
-      2. library_600x900_2x.jpg (portrait, high-res)
-      3. header.jpg (landscape, most reliable)
+    Returns the best Steam CDN URL for a game's cover image.
+    Checks URLs in order and returns the first one that responds with 200.
+    Falls back to header.jpg which is the most reliable.
+    Returns the URL string directly (no download needed).
     """
     urls = [
         f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/library_600x900.jpg",
@@ -129,16 +126,14 @@ def fetch_steam_cover(appid):
     
     for url in urls:
         try:
-            resp = requests.get(url, timeout=8)
-            if resp.status_code == 200 and len(resp.content) > 1000:
-                # Check it's actually an image (not an error page)
-                content_type = resp.headers.get('Content-Type', '')
-                if 'image' in content_type or content_type == '':
-                    return resp.content, f"{appid}.jpg"
+            resp = requests.head(url, timeout=5)
+            if resp.status_code == 200:
+                return url
         except Exception:
             continue
     
-    return None, None
+    # Return header.jpg as ultimate fallback (most reliable)
+    return f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg"
 
 
 def fetch_steam_library(user_id, steam_id):
@@ -218,12 +213,11 @@ def fetch_steam_library(user_id, steam_id):
                     )
                     stats['created'] += 1
                     
-                    # Fetch Cover Image
-                    cover_bytes, cover_filename = fetch_steam_cover(appid)
-                    if cover_bytes:
-                        game.cover_image.save(cover_filename, ContentFile(cover_bytes), save=True)
-                    else:
-                        print(f"No cover image found for {title} (appid: {appid})")
+                    # Store Steam CDN URL as cover image (no local download)
+                    cover_url = get_steam_cover_url(appid)
+                    if cover_url:
+                        game.cover_image = cover_url
+                        game.save(update_fields=['cover_image'])
                 else:
                     # Backfill genres if the existing game has none
                     needs_save = False
@@ -244,14 +238,16 @@ def fetch_steam_library(user_id, steam_id):
                         update_fields.append('steam_appid')
                         needs_save = True
                     
-                    # Backfill cover image if missing
-                    if not game.cover_image:
-                        cover_bytes, cover_filename = fetch_steam_cover(appid)
-                        if cover_bytes:
-                            game.cover_image.save(cover_filename, ContentFile(cover_bytes), save=True)
+                    # Backfill cover image if missing or broken (local path)
+                    cover_value = str(game.cover_image) if game.cover_image else ''
+                    if not cover_value or (cover_value and not cover_value.startswith('http')):
+                        cover_url = get_steam_cover_url(appid)
+                        if cover_url:
+                            game.cover_image = cover_url
+                            update_fields.append('cover_image')
+                            needs_save = True
                             stats['cover_fixed'] += 1
-                            print(f"Backfilled cover for {title}")
-                            needs_save = False  # save already happened via cover_image.save
+                            print(f"Fixed cover for {title}: {cover_url}")
                     
                     if needs_save and update_fields:
                         game.save(update_fields=update_fields)

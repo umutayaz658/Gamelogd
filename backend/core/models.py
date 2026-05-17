@@ -96,6 +96,10 @@ class JobPosting(models.Model):
         ('rev_share', 'Rev-share'),
         ('hobby', 'Hobby'),
     ]
+    POST_TYPE_CHOICES = [
+        ('job', 'Job Offering'),
+        ('talent', 'Talent Profile'),
+    ]
     LOCATION_TYPE_CHOICES = [
         ('remote', 'Remote'),
         ('on_site', 'On-site'),
@@ -112,6 +116,8 @@ class JobPosting(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True, related_name='jobs')
     title = models.CharField(max_length=255)
     description = models.TextField()
+    post_type = models.CharField(max_length=20, choices=POST_TYPE_CHOICES, default='job')
+    tech_stack = models.JSONField(default=list, blank=True)
     job_type = models.CharField(max_length=20, choices=JOB_TYPE_CHOICES)
     location_type = models.CharField(max_length=20, choices=LOCATION_TYPE_CHOICES)
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES)
