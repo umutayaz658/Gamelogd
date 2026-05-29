@@ -164,9 +164,14 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             setPollOptions(['', '']);
             setShowEmojiPicker(false);
             setShowGifPicker(false);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to create post:', error);
-            alert('Failed to create post. Please try again.');
+            if (error.response?.data?.traceback) {
+                console.error('BACKEND TRACEBACK:\n', error.response.data.traceback);
+                alert(`Failed to create post:\n${error.response.data.error || 'Server Error'}`);
+            } else {
+                alert('Failed to create post. Please try again.');
+            }
         } finally {
             setIsPosting(false);
         }
