@@ -279,11 +279,6 @@ class PostSerializer(serializers.ModelSerializer):
                  post.save()
         
         return post
-        if obj.parent:
-            return obj.parent.user.username
-        if obj.review_parent:
-            return obj.review_parent.user.username
-        return None
 
     def get_is_liked(self, obj):
         user = self.context.get('request').user
