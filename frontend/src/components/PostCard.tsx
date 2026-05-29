@@ -247,14 +247,14 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black aspect-[4/3]">
                                         {post.media_type === 'video' ? (
                                             <video
-                                                src={post.media_file || post.image || ''}
+                                                src={getImageUrl(post.media_file || post.image || '')}
                                                 controls
                                                 className="w-full h-full object-contain bg-black"
                                                 onClick={(e) => e.stopPropagation()}
                                             />
                                         ) : (
                                             <img
-                                                src={post.media_file || post.image || ''}
+                                                src={getImageUrl(post.media_file || post.image || '')}
                                                 alt="Post media"
                                                 className="w-full h-full object-cover"
                                             />
