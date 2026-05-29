@@ -156,11 +156,12 @@ STORAGES = {
 
 # Cloudinary Setup
 if os.environ.get('CLOUDINARY_URL'):
-    CLOUDINARY_STORAGE = {
-        'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-        'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-        'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
-    }
+    if os.environ.get('CLOUDINARY_CLOUD_NAME'):
+        CLOUDINARY_STORAGE = {
+            'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+            'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+        }
     STORAGES["default"]["BACKEND"] = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 # Default primary key field type
