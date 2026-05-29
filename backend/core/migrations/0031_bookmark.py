@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0030_projectfollow'),
+        ('core', '0031_merge_20260517_1602'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
