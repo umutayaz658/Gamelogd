@@ -1,9 +1,10 @@
 interface SwitchProps {
     checked: boolean;
     onChange: (checked: boolean) => void;
+    activeBgClass?: string;
 }
 
-export default function Switch({ checked, onChange }: SwitchProps) {
+export default function Switch({ checked, onChange, activeBgClass = 'bg-emerald-500' }: SwitchProps) {
     return (
         <button
             type="button"
@@ -12,7 +13,7 @@ export default function Switch({ checked, onChange }: SwitchProps) {
             onClick={() => onChange(!checked)}
             className={`
         relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-zinc-900
-        ${checked ? 'bg-emerald-500' : 'bg-zinc-700'}
+        ${checked ? activeBgClass : 'bg-zinc-700'}
       `}
         >
             <span

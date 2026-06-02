@@ -4,7 +4,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.conf import settings
+from django.conf import settings as django_settings
 
 class Interest(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -12,6 +12,29 @@ class Interest(models.Model):
 
     def __str__(self):
         return self.name
+
+def default_user_settings():
+    return {
+        "privateProfile": False,
+        "directMessages": True,
+        "shareActivity": True,
+        "blurSpoilers": True,
+        "matureContent": False,
+        "newFollowers": True,
+        "mentions": True,
+        "jobAlerts": True,
+        "language": "English",
+        "fontSize": "Medium",
+        "accentColor": "Emerald",
+        "connected_accounts": {
+            "psn": {"connected": False, "username": ""},
+            "xbox": {"connected": False, "username": ""},
+            "twitch": {"connected": False, "username": ""},
+            "epic": {"connected": False, "username": ""},
+            "gog": {"connected": False, "username": ""},
+            "ea": {"connected": False, "username": ""}
+        }
+    }
 
 class User(AbstractUser):
     ROLE_CHOICES = (
@@ -62,6 +85,7 @@ class User(AbstractUser):
 
     # Steam Integration
     steam_id = models.CharField(max_length=20, blank=True)
+    settings = models.JSONField(default=default_user_settings, blank=True)
 
     def __str__(self):
         return self.username
@@ -75,7 +99,7 @@ class LibraryEntry(models.Model):
         ('completed', 'Completed'),
         ('dropped', 'Dropped'),
     )
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='library', on_delete=models.CASCADE)
+    user = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='library', on_delete=models.CASCADE)
     game = models.ForeignKey('core.Game', related_name='library_entries', on_delete=models.CASCADE)
     playtime_forever = models.IntegerField(default=0) # In minutes
     platform = models.CharField(max_length=50, default='Steam')
@@ -89,8 +113,8 @@ class LibraryEntry(models.Model):
         return f"{self.user} owns {self.game}"
 
 class Follow(models.Model):
-    follower = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='following', on_delete=models.CASCADE)
-    following = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='followers', on_delete=models.CASCADE)
+    follower = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='following', on_delete=models.CASCADE)
+    following = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='followers', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -100,8 +124,8 @@ class Follow(models.Model):
         return f"{self.follower} follows {self.following}"
 
 class Notification(models.Model):
-    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='triggered_notifications', on_delete=models.CASCADE)
+    recipient = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
+    actor = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='triggered_notifications', on_delete=models.CASCADE)
     verb = models.CharField(max_length=255)
     
     target_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
@@ -127,7 +151,7 @@ def create_follow_notification(sender, instance, created, **kwargs):
         )
 
 class Conversation(models.Model):
-    participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='conversations')
+    participants = models.ManyToManyField(django_settings.AUTH_USER_MODEL, related_name='conversations')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -136,7 +160,7 @@ class Conversation(models.Model):
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, related_name='messages', on_delete=models.CASCADE)
-    sender = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='sent_messages', on_delete=models.CASCADE)
+    sender = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='sent_messages', on_delete=models.CASCADE)
     content = models.TextField()
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -146,3 +170,21 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message from {self.sender} in {self.conversation}"
+
+class SupportTicket(models.Model):
+    TICKET_TYPE_CHOICES = [
+        ('support', 'Support Contact'),
+        ('bug', 'Bug Report'),
+    ]
+    user = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='support_tickets')
+    ticket_type = models.CharField(max_length=10, choices=TICKET_TYPE_CHOICES, default='support')
+    subject = models.CharField(max_length=255)
+    category = models.CharField(max_length=50)
+    description = models.TextField()
+    steps_to_reproduce = models.TextField(blank=True, null=True)
+    severity = models.CharField(max_length=20, blank=True, null=True)
+    is_resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.ticket_type.upper()} - {self.subject} by {self.user.username}"
