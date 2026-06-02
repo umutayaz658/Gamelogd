@@ -304,38 +304,10 @@ class UserViewSet(viewsets.ModelViewSet):
                 
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
 
-        # 3. Serialize output
-        result = []
-        for g in recommended:
-            image_url = None
-            if g.cover_image:
-                # If cover_image is a URL (like standard Steam URLs), use it directly
-                # If it's a file path, we need to return the media URL. 
-                # Since django might add backend:8000 internally if we use build_absolute_uri,
-                # we return the relative url (e.g. /media/games/...) and let the frontend prefix it 
-                # if necessary, or we can construct it using a known host.
-                
-                if str(g.cover_image).startswith('http'):
-                    image_url = str(g.cover_image)
-                elif hasattr(g.cover_image, 'url'):
-                    # The frontend expects standard absolute paths or relative paths it proxies
-                    image_url = g.cover_image.url
-                    # To ensure it always points to localhost/127.0.0.1 for local dev:
-                    if request and not str(image_url).startswith('http'):
-                        host = request.get_host() # Might be localhost:8000 or 127.0.0.1:8000
-                        scheme = request.scheme
-                        # If the host is 'backend:8000' (docker internal), replace it with localhost
-                        if 'backend' in host:
-                            host = host.replace('backend', '127.0.0.1')
-                        image_url = f"{scheme}://{host}{image_url}"
-            
-            result.append({
-                "id": g.id,
-                "title": g.title,
-                "cover_image": image_url
-            })
-
-        return Response(result)
+        # 3. Serialize output using GameSerializer for consistent URL handling
+        from api.serializers import GameSerializer
+        serializer = GameSerializer(recommended, many=True, context={'request': request})
+        return Response(serializer.data)
 
     def _format_image_url(self, request, cover_image):
         if not cover_image: return None
@@ -533,13 +505,19 @@ class PostViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            print("VALIDATION ERROR:", serializer.errors)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        try:
+            serializer = self.get_serializer(data=request.data)
+            if not serializer.is_valid():
+                print("VALIDATION ERROR:", serializer.errors)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print("ERROR IN POST CREATION:", tb)
+            return Response({"error": str(e), "traceback": tb}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_create(self, serializer):
         project_parent = serializer.validated_data.get('project_parent')
