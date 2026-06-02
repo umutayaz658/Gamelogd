@@ -7,8 +7,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post
-from api.models import User, Notification
-from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer
+from api.models import User, Notification, SupportTicket
+from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
@@ -165,6 +165,30 @@ class UserViewSet(viewsets.ModelViewSet):
         LibraryEntry.objects.filter(user=request.user, platform__iexact='steam').delete()
         
         return Response({'status': 'disconnected'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='change-password')
+    def change_password(self, request):
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        if not current_password or not new_password:
+            return Response({'error': 'Both current and new passwords are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.check_password(current_password):
+            return Response({'error': 'Incorrect current password'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from django.contrib.auth.password_validation import validate_password
+            validate_password(new_password, user)
+        except Exception as e:
+            return Response({'error': list(e.messages) if hasattr(e, 'messages') else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(new_password)
+        user.save()
+        return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='delete-account')
+    def delete_account(self, request):
+        user = request.user
+        user.delete()
+        return Response({'message': 'Account deleted successfully'}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='game-dna')
     def game_dna(self, request, username=None):
@@ -844,6 +868,16 @@ class InvestorCallViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['investor_type', 'ticket_size']
     search_fields = ['organization_name', 'looking_for']
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+            
+class SupportTicketViewSet(viewsets.ModelViewSet):
+    serializer_class = SupportTicketSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return SupportTicket.objects.filter(user=self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
