@@ -415,6 +415,35 @@ class GameViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['title']
 
+    @action(detail=True, methods=['get'], url_path='details')
+    def details(self, request, pk=None):
+        from django.db.models import Avg, Count
+        game = self.get_object()
+        
+        # Fetch IGDB details on demand
+        if not game.details_fetched and game.igdb_id:
+            from api.services.igdb_service import fetch_game_details
+            game = fetch_game_details(game)
+
+        # Calculate average rating and counts
+        stats = Review.objects.filter(game=game).aggregate(
+            avg_rating=Avg('rating'),
+            rev_count=Count('id')
+        )
+        
+        # We need log count as well, which is library entries (how many users have it in library)
+        from api.models import LibraryEntry
+        log_count = LibraryEntry.objects.filter(game=game).count()
+        
+        # Annotate model on the fly for serializer
+        game.average_rating = stats['avg_rating']
+        game.review_count = stats['rev_count']
+        game.log_count = log_count
+        
+        from api.serializers import GameDetailSerializer
+        serializer = GameDetailSerializer(game, context={'request': request})
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get'])
     def trending(self, request):
         from django.db.models import Count
@@ -447,12 +476,33 @@ class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all().select_related('user', 'game')
     serializer_class = ReviewSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['user__username', 'game_id']
+    ordering_fields = ['timestamp', 'rating']
+    ordering = ['-timestamp']
 
     def get_queryset(self):
         queryset = Review.objects.all().select_related('user', 'game')
+        
+        # Annotate with likes count for ordering by popularity
+        from django.db.models import Count
+        queryset = queryset.annotate(likes_count=Count('likes', distinct=True))
+
         username = self.request.query_params.get('username', None)
         if username is not None:
             queryset = queryset.filter(user__username=username)
+            
+        game_id = self.request.query_params.get('game_id', None)
+        if game_id is not None:
+            queryset = queryset.filter(game_id=game_id)
+            
+        # Handle custom ordering by likes_count
+        ordering = self.request.query_params.get('ordering', None)
+        if ordering == '-likes_count':
+            queryset = queryset.order_by('-likes_count', '-timestamp')
+        elif ordering == 'likes_count':
+            queryset = queryset.order_by('likes_count', '-timestamp')
+            
         return queryset
 
     def perform_create(self, serializer):
