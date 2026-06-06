@@ -86,6 +86,7 @@ class User(AbstractUser):
     # Steam Integration
     steam_id = models.CharField(max_length=20, blank=True)
     settings = models.JSONField(default=default_user_settings, blank=True)
+    dnd_mode = models.BooleanField(default=False)
 
     def __str__(self):
         return self.username
@@ -192,18 +193,43 @@ def create_like_notification(sender, instance, created, **kwargs):
 
 class Conversation(models.Model):
     participants = models.ManyToManyField(django_settings.AUTH_USER_MODEL, related_name='conversations')
+    is_group = models.BooleanField(default=False)
+    name = models.CharField(max_length=255, blank=True, null=True)
+    avatar = models.ImageField(upload_to='group_avatars/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Conversation {self.id}"
 
+class ConversationMember(models.Model):
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='members')
+    user = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='conversation_memberships')
+    is_admin = models.BooleanField(default=False)
+    is_muted = models.BooleanField(default=False)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('conversation', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} in Conversation {self.conversation.id}"
+
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, related_name='messages', on_delete=models.CASCADE)
     sender = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='sent_messages', on_delete=models.CASCADE)
-    content = models.TextField()
+    content = models.TextField(blank=True, default='')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Attachments
+    image = models.ImageField(upload_to='messages/', null=True, blank=True)
+    gif_url = models.URLField(max_length=500, null=True, blank=True)
+    
+    # Shared Items
+    shared_post = models.ForeignKey('core.Post', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
+    shared_review = models.ForeignKey('core.Review', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
+    shared_news = models.ForeignKey('core.News', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
 
     class Meta:
         ordering = ['created_at']

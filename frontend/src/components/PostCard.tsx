@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send } from 'lucide-react';
 import { Post } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import ShareModal from '@/components/ShareModal';
 
 interface PostCardProps {
     post: Post;
@@ -16,13 +17,22 @@ interface PostCardProps {
 
 export default function PostCard({ post, isDetailView = false, hideNewsQuote = false }: PostCardProps) {
     const router = useRouter();
-    const { openReplyModal } = useReplyModal();
+    const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
 
     const [isLiked, setIsLiked] = useState(post.is_liked || false);
     const [likesCount, setLikesCount] = useState(post.likes_count || post.likes || 0);
     const [isBookmarked, setIsBookmarked] = useState(post.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(post.bookmarks_count || 0);
+
+    const [isReposted, setIsReposted] = useState(post.is_reposted || false);
+    const [repostsCount, setRepostsCount] = useState(post.reposts_count || 0);
+    const [showRepostMenu, setShowRepostMenu] = useState(false);
+    const repostMenuRef = useRef<HTMLDivElement>(null);
+
+    const [showShareMenu, setShowShareMenu] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const shareMenuRef = useRef<HTMLDivElement>(null);
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -31,6 +41,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setShowMenu(false);
+            }
+            if (repostMenuRef.current && !repostMenuRef.current.contains(event.target as Node)) {
+                setShowRepostMenu(false);
+            }
+            if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+                setShowShareMenu(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -93,6 +109,32 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setShowMenu(false);
     };
 
+    const handleRepost = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!user) return router.push('/login');
+        
+        try {
+            const previousIsReposted = isReposted;
+            const previousCount = repostsCount;
+            
+            setIsReposted(!isReposted);
+            setRepostsCount(prev => Math.max(0, isReposted ? prev - 1 : prev + 1));
+            setShowRepostMenu(false);
+            
+            const res = await api.post(`/posts/${post.id}/repost/`);
+            if (res.data.status === 'reposted') {
+                setIsReposted(true);
+            } else {
+                setIsReposted(false);
+            }
+            setRepostsCount(res.data.reposts_count);
+        } catch (error) {
+            console.error('Failed to toggle repost', error);
+            setIsReposted(isReposted);
+            setRepostsCount(repostsCount);
+        }
+    };
+
     const handleShare = async (e: React.MouseEvent) => {
         e.stopPropagation();
         const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
@@ -118,6 +160,20 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             router.push(`/${post.user.username}/status/${post.id}`);
         }
     };
+
+    const isDirectRepost = post.repost_parent && !post.content && !post.image && !post.media_file && !post.gif_url && !post.poll_options;
+
+    if (isDirectRepost && post.repost_details) {
+        return (
+            <div className="flex flex-col">
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 mb-1.5 pl-12">
+                    <Repeat2 className="h-3.5 w-3.5 text-green-500" />
+                    <span>{post.user.real_name || post.user.username} reposted</span>
+                </div>
+                <PostCard post={post.repost_details} isDetailView={isDetailView} hideNewsQuote={hideNewsQuote} />
+            </div>
+        );
+    }
 
     return (
         <div
@@ -303,6 +359,43 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             <p className={`text-zinc-300 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : 'line-clamp-6 sm:line-clamp-[10]'}`}>
                                 {post.content}
                             </p>
+
+                            {/* Nested Quoted Post Card */}
+                            {post.repost_details && (
+                                <div 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        router.push(`/${post.repost_details!.user.username}/status/${post.repost_details!.id}`);
+                                    }}
+                                    className="mt-3 border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3 flex flex-col gap-2 transition-all cursor-pointer hover:bg-zinc-950/50"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <img
+                                            src={getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username)}
+                                            alt={post.repost_details.user.username}
+                                            className="h-5 w-5 rounded-full object-cover"
+                                        />
+                                        <span className="font-bold text-white text-xs">{post.repost_details.user.username}</span>
+                                        <span className="text-zinc-500 text-xs">@{post.repost_details.user.username.toLowerCase()}</span>
+                                        <span className="text-zinc-600 text-xs">•</span>
+                                        <span className="text-zinc-500 text-xs">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
+                                    </div>
+                                    {post.repost_details.title && (
+                                        <h4 className="font-bold text-sm text-white">{post.repost_details.title}</h4>
+                                    )}
+                                    <p className="text-zinc-300 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">{post.repost_details.content}</p>
+                                    {(post.repost_details.media_file || post.repost_details.image) && (
+                                        <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
+                                            <img src={getImageUrl(post.repost_details.media_file || post.repost_details.image || '')} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                    {post.repost_details.gif_url && (
+                                        <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
+                                            <img src={post.repost_details.gif_url} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -383,14 +476,95 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             <span className="text-sm">{likesCount || 0}</span>
                         </button>
 
-                        <button
-                            className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
-                            onClick={handleShare}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
-                                <Share2 className="h-4 w-4" />
-                            </div>
-                        </button>
+                        <div className="relative" ref={repostMenuRef}>
+                            <button
+                                className={`flex items-center gap-2 hover:text-green-500 group transition-colors ${isReposted ? 'text-green-500' : ''}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowRepostMenu(!showRepostMenu);
+                                }}
+                            >
+                                <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
+                                    <Repeat2 className="h-4 w-4" />
+                                </div>
+                                <span className="text-sm">{repostsCount || 0}</span>
+                            </button>
+                            {showRepostMenu && (
+                                <div className="absolute left-0 mt-1 w-32 bg-zinc-900 border border-zinc-850 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <button
+                                        onClick={handleRepost}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                    >
+                                        <Repeat2 className="h-3.5 w-3.5" />
+                                        {isReposted ? 'Undo Repost' : 'Repost'}
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowRepostMenu(false);
+                                            openQuoteModal({ ...post, type: 'post' });
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                        Quote Post
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="relative" ref={shareMenuRef}>
+                            <button
+                                className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowShareMenu(!showShareMenu);
+                                }}
+                            >
+                                <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
+                                    <Share2 className="h-4 w-4" />
+                                </div>
+                            </button>
+                            {showShareMenu && (
+                                <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowShareMenu(false);
+                                            setIsShareModalOpen(true);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                    >
+                                        <Send className="h-3.5 w-3.5 text-emerald-500" />
+                                        Send via Direct Message
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowShareMenu(false);
+                                            const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
+                                            navigator.clipboard.writeText(url);
+                                            alert('Link copied to clipboard!');
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                    >
+                                        <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
+                                        Copy Link
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowShareMenu(false);
+                                            handleShare(e);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                    >
+                                        <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                        Share via...
+                                    </button>
+                                </div>
+                            )}
+                        </div>
 
                         <button
                             className={`flex items-center gap-2 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
@@ -403,6 +577,13 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     </div>
                 </div>
             </div>
+            <ShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                itemType="post"
+                itemId={post.id}
+                title={post.content?.slice(0, 50) || post.title || 'Post'}
+            />
         </div>
     );
 }

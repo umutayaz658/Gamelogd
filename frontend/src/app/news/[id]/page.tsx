@@ -11,6 +11,7 @@ import PostComposer from '@/components/PostComposer';
 import PostCard from '@/components/PostCard';
 
 import { Post } from '@/types';
+import ShareModal from '@/components/ShareModal';
 
 interface NewsDetail {
     id: number;
@@ -36,6 +37,7 @@ export default function NewsDetailPage() {
     const [loading, setLoading] = useState(true);
     const [isLiked, setIsLiked] = useState(false);
     const [likeCount, setLikeCount] = useState(0);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -75,24 +77,8 @@ export default function NewsDetailPage() {
         }
     };
 
-    const handleShare = async () => {
-        if (!news) return;
-        const url = `${window.location.origin}/news/${news.id}`;
-        const shareData = {
-            title: news.title,
-            text: news.description?.slice(0, 100) || '',
-            url,
-        };
-        try {
-            if (navigator.share) {
-                await navigator.share(shareData);
-            } else {
-                await navigator.clipboard.writeText(url);
-                alert('Link copied to clipboard!');
-            }
-        } catch (error) {
-            // User cancelled share dialog, ignore
-        }
+    const handleShare = () => {
+        setIsShareModalOpen(true);
     };
 
 
@@ -223,6 +209,15 @@ export default function NewsDetailPage() {
                     </div>
                 </div>
             </main>
+            {news && (
+                <ShareModal
+                    isOpen={isShareModalOpen}
+                    onClose={() => setIsShareModalOpen(false)}
+                    itemType="news"
+                    itemId={news.id}
+                    title={news.title}
+                />
+            )}
         </div>
     );
 }

@@ -14,6 +14,7 @@ export interface User {
     date_joined?: string;
     birth_date?: string;
     show_birth_date?: boolean;
+    dnd_mode?: boolean;
     steam_id?: string;
     settings?: any;
 }
@@ -138,6 +139,10 @@ export interface Post {
         media_type: 'image' | 'video';
         order: number;
     }[];
+    repost_parent?: number | null;
+    repost_details?: Post | null;
+    reposts_count?: number;
+    is_reposted?: boolean;
 }
 
 export interface Reply extends Post {
@@ -158,6 +163,14 @@ export interface Notification {
     created_at: string;
 }
 
+export interface ConversationMember {
+    id: number;
+    user: User;
+    is_admin: boolean;
+    is_muted: boolean;
+    joined_at: string;
+}
+
 export interface Conversation {
     id: number;
     participants: number[];
@@ -169,6 +182,10 @@ export interface Conversation {
     };
     unread_count: number;
     updated_at: string;
+    is_group: boolean;
+    name?: string | null;
+    avatar?: string | null;
+    memberships?: ConversationMember[];
 }
 
 export interface Message {
@@ -179,6 +196,20 @@ export interface Message {
     is_read: boolean;
     created_at: string;
     is_me: boolean;
+    image?: string | null;
+    gif_url?: string | null;
+    shared_post?: number | null;
+    shared_review?: number | null;
+    shared_news?: number | null;
+    shared_post_details?: Post | null;
+    shared_review_details?: Review | null;
+    shared_news_details?: {
+        id: number;
+        title: string;
+        image_url: string | null;
+        source_name: string;
+        source_icon: string | null;
+    } | null;
 }
 
 export interface Pitch {
