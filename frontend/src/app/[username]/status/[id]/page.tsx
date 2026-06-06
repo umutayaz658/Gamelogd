@@ -40,7 +40,7 @@ export default function SinglePostPage() {
                     console.log("Full Reply Data:", fetchedPost); // Debug log as requested
 
                     setPost(fetchedPost);
-                    setReplies(repliesRes.data);
+                    setReplies(repliesRes.data.results || repliesRes.data);
 
                     // 2. Set Parent from embedded parent_details
                     if (fetchedPost.parent_details) {

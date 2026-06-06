@@ -280,38 +280,10 @@ class UserViewSet(viewsets.ModelViewSet):
                 
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
 
-        # 3. Serialize output
-        result = []
-        for g in recommended:
-            image_url = None
-            if g.cover_image:
-                # If cover_image is a URL (like standard Steam URLs), use it directly
-                # If it's a file path, we need to return the media URL. 
-                # Since django might add backend:8000 internally if we use build_absolute_uri,
-                # we return the relative url (e.g. /media/games/...) and let the frontend prefix it 
-                # if necessary, or we can construct it using a known host.
-                
-                if str(g.cover_image).startswith('http'):
-                    image_url = str(g.cover_image)
-                elif hasattr(g.cover_image, 'url'):
-                    # The frontend expects standard absolute paths or relative paths it proxies
-                    image_url = g.cover_image.url
-                    # To ensure it always points to localhost/127.0.0.1 for local dev:
-                    if request and not str(image_url).startswith('http'):
-                        host = request.get_host() # Might be localhost:8000 or 127.0.0.1:8000
-                        scheme = request.scheme
-                        # If the host is 'backend:8000' (docker internal), replace it with localhost
-                        if 'backend' in host:
-                            host = host.replace('backend', '127.0.0.1')
-                        image_url = f"{scheme}://{host}{image_url}"
-            
-            result.append({
-                "id": g.id,
-                "title": g.title,
-                "cover_image": image_url
-            })
-
-        return Response(result)
+        # 3. Serialize output using GameSerializer for consistent URL handling
+        from api.serializers import GameSerializer
+        serializer = GameSerializer(recommended, many=True, context={'request': request})
+        return Response(serializer.data)
 
     def _format_image_url(self, request, cover_image):
         if not cover_image: return None
@@ -492,16 +464,36 @@ class PostViewSet(viewsets.ModelViewSet):
         if news_parent_id is not None:
             queryset = queryset.filter(news_parent_id=news_parent_id)
         
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(project_parent__status=status_filter)
+
+        tech_stack = self.request.query_params.get('tech_stack_filter', None)
+        if tech_stack:
+            techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
+            for tech in techs:
+                queryset = queryset.filter(project_parent__tech_stack__icontains=tech)
+                
+        is_following_project = self.request.query_params.get('is_following_project', None)
+        if is_following_project == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(project_parent__followers__user=self.request.user)
+
         return queryset
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            print("VALIDATION ERROR:", serializer.errors)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        try:
+            serializer = self.get_serializer(data=request.data)
+            if not serializer.is_valid():
+                print("VALIDATION ERROR:", serializer.errors)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print("ERROR IN POST CREATION:", tb)
+            return Response({"error": str(e), "traceback": tb}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_create(self, serializer):
         project_parent = serializer.validated_data.get('project_parent')
@@ -639,6 +631,38 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         
         return super().create(request, *args, **kwargs)
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+from .serializers import BookmarkSerializer
+from core.models import Bookmark
+
+class BookmarkViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, viewsets.mixins.ListModelMixin, viewsets.mixins.DestroyModelMixin):
+    queryset = Bookmark.objects.all()
+    serializer_class = BookmarkSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Bookmark.objects.filter(user=self.request.user).order_by('-timestamp')
+
+    def create(self, request, *args, **kwargs):
+        # Check for existence to toggle or prevent duplicates
+        user = request.user
+        post_id = request.data.get('post')
+        review_id = request.data.get('review')
+        news_id = request.data.get('news')
+        
+        existing = Bookmark.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id).first()
+        
+        if existing:
+            existing.delete()
+            return Response({'status': 'unbookmarked'}, status=status.HTTP_200_OK)
+        
+        return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 from core.models import Project, JobPosting, ProjectMember
 from .serializers import ProjectSerializer, JobPostingSerializer, ProjectMemberSerializer
 
@@ -715,11 +739,47 @@ class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all().select_related('owner').order_by('-created_at')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, ProjectAccessPermission]
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'description', 'tech_stack']
+    filterset_fields = ['status']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        queryset = Project.objects.all().select_related('owner').order_by('-created_at')
+        # Tech stack filtering (comma-separated)
+        tech_stack = self.request.query_params.get('tech_stack_filter', None)
+        if tech_stack:
+            techs = [t.strip() for t in tech_stack.split(',') if t.strip()]
+            for tech in techs:
+                queryset = queryset.filter(tech_stack__icontains=tech)
+                
+        is_following = self.request.query_params.get('is_following', None)
+        if is_following == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(followers__user=self.request.user)
+            
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def follow(self, request, pk=None):
+        project = self.get_object()
+        from core.models import ProjectFollow
+        follow_obj, created = ProjectFollow.objects.get_or_create(user=request.user, project=project)
+        if not created:
+            return Response({"message": "Already following this project."}, status=status.HTTP_200_OK)
+        return Response({"message": f"Now following {project.title}"}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unfollow(self, request, pk=None):
+        project = self.get_object()
+        from core.models import ProjectFollow
+        deleted_count, _ = ProjectFollow.objects.filter(user=request.user, project=project).delete()
+        if deleted_count == 0:
+            return Response({"error": "You are not following this project."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Unfollowed {project.title}"}, status=status.HTTP_200_OK)
 
 class JobPostingViewSet(viewsets.ModelViewSet):
     queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')

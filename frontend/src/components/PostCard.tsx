@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2 } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon } from 'lucide-react';
 import { Post } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
+import { useAuth } from '@/context/AuthContext';
+import api from '@/lib/api';
 
 interface PostCardProps {
     post: Post;
@@ -15,6 +17,94 @@ interface PostCardProps {
 export default function PostCard({ post, isDetailView = false, hideNewsQuote = false }: PostCardProps) {
     const router = useRouter();
     const { openReplyModal } = useReplyModal();
+    const { user } = useAuth();
+
+    const [isLiked, setIsLiked] = useState(post.is_liked || false);
+    const [likesCount, setLikesCount] = useState(post.likes_count || post.likes || 0);
+    const [isBookmarked, setIsBookmarked] = useState(post.is_bookmarked || false);
+    const [bookmarksCount, setBookmarksCount] = useState(post.bookmarks_count || 0);
+
+    const [showMenu, setShowMenu] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleLike = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!user) return router.push('/login');
+        
+        try {
+            setIsLiked(!isLiked);
+            setLikesCount(prev => Math.max(0, isLiked ? prev - 1 : prev + 1));
+            await api.post('/likes/', { post: post.id });
+        } catch (error) {
+            console.error('Failed to toggle like', error);
+            setIsLiked(isLiked);
+            setLikesCount(prev => Math.max(0, isLiked ? prev + 1 : prev - 1));
+        }
+    };
+
+    const handleBookmark = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!user) return router.push('/login');
+        
+        try {
+            setIsBookmarked(!isBookmarked);
+            setBookmarksCount(prev => isBookmarked ? prev - 1 : prev + 1);
+            await api.post('/bookmarks/', { post: post.id });
+        } catch (error) {
+            console.error('Failed to toggle bookmark', error);
+            setIsBookmarked(isBookmarked);
+            setBookmarksCount(prev => isBookmarked ? prev + 1 : prev - 1);
+        }
+    };
+
+    const handleDelete = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm("Are you sure you want to delete this post?")) return;
+        
+        try {
+            await api.delete(`/posts/${post.id}/`);
+            window.location.reload();
+        } catch (error) {
+            console.error("Failed to delete post", error);
+        }
+    };
+
+    const handleCopyLink = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
+        navigator.clipboard.writeText(url);
+        setShowMenu(false);
+    };
+
+    const handleShare = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
+        const shareData = {
+            title: post.title || `${post.user.username}'s post`,
+            text: post.content?.slice(0, 100) || '',
+            url,
+        };
+        try {
+            if (navigator.share) {
+                await navigator.share(shareData);
+            } else {
+                await navigator.clipboard.writeText(url);
+                alert('Link copied to clipboard!');
+            }
+        } catch (error) {
+            // User cancelled share dialog, ignore
+        }
+    };
 
     const handleCardClick = () => {
         if (!isDetailView) {
@@ -80,12 +170,34 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </span>
                             )}
                         </div>
-                        <button
-                            className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <MoreHorizontal className="h-4 w-4" />
-                        </button>
+                        <div className="relative" ref={menuRef}>
+                            <button
+                                className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
+                                onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+                            >
+                                <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                            {showMenu && (
+                                <div className="absolute right-0 mt-1 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-50">
+                                    {user && user.username === post.user.username && (
+                                        <button
+                                            onClick={handleDelete}
+                                            className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            Delete Post
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={handleCopyLink}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                    >
+                                        <LinkIcon className="h-4 w-4" />
+                                        Copy Link
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
 
@@ -135,14 +247,14 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black aspect-[4/3]">
                                         {post.media_type === 'video' ? (
                                             <video
-                                                src={post.media_file || post.image || ''}
+                                                src={getImageUrl(post.media_file || post.image || '')}
                                                 controls
                                                 className="w-full h-full object-contain bg-black"
                                                 onClick={(e) => e.stopPropagation()}
                                             />
                                         ) : (
                                             <img
-                                                src={post.media_file || post.image || ''}
+                                                src={getImageUrl(post.media_file || post.image || '')}
                                                 alt="Post media"
                                                 className="w-full h-full object-cover"
                                             />
@@ -255,21 +367,30 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         </button>
 
                         <button
-                            className="flex items-center gap-2 hover:text-pink-500 group transition-colors"
-                            onClick={(e) => e.stopPropagation()}
+                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
+                            onClick={handleLike}
                         >
                             <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
-                                <Heart className="h-4 w-4" />
+                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
                             </div>
-                            <span className="text-sm">{post.likes || 0}</span>
+                            <span className="text-sm">{likesCount || 0}</span>
                         </button>
 
                         <button
                             className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={handleShare}
                         >
                             <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
                                 <Share2 className="h-4 w-4" />
+                            </div>
+                        </button>
+
+                        <button
+                            className={`flex items-center gap-2 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
+                            onClick={handleBookmark}
+                        >
+                            <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
+                                <Bookmark className={`h-4 w-4 ${isBookmarked ? 'fill-emerald-500' : ''}`} />
                             </div>
                         </button>
                     </div>
