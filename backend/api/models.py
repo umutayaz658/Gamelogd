@@ -126,6 +126,46 @@ def create_follow_notification(sender, instance, created, **kwargs):
             verb='started following you'
         )
 
+@receiver(post_save, sender='core.Post')
+def create_comment_notification(sender, instance, created, **kwargs):
+    if created:
+        # 1. Reply to another post (comment on post)
+        if instance.parent and instance.parent.user != instance.user:
+            Notification.objects.create(
+                recipient=instance.parent.user,
+                actor=instance.user,
+                verb='replied to your post',
+                target=instance
+            )
+        # 2. Comment on a review
+        elif instance.review_parent and instance.review_parent.user != instance.user:
+            Notification.objects.create(
+                recipient=instance.review_parent.user,
+                actor=instance.user,
+                verb='commented on your review',
+                target=instance
+            )
+
+@receiver(post_save, sender='core.Like')
+def create_like_notification(sender, instance, created, **kwargs):
+    if created:
+        # 1. Like on a post
+        if instance.post and instance.post.user != instance.user:
+            Notification.objects.create(
+                recipient=instance.post.user,
+                actor=instance.user,
+                verb='liked your post',
+                target=instance.post
+            )
+        # 2. Like on a review
+        elif instance.review and instance.review.user != instance.user:
+            Notification.objects.create(
+                recipient=instance.review.user,
+                actor=instance.user,
+                verb='liked your review',
+                target=instance.review
+            )
+
 class Conversation(models.Model):
     participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='conversations')
     created_at = models.DateTimeField(auto_now_add=True)
