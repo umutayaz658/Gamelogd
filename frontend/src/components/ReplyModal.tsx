@@ -13,7 +13,7 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import api from '@/lib/api';
 
 export default function ReplyModal() {
-    const { isOpen, activeItem, closeReplyModal } = useReplyModal();
+    const { isOpen, activeItem, mode, closeReplyModal } = useReplyModal();
     const { addFeedItem } = useFeed();
     const { user } = useAuth();
 
@@ -121,16 +121,17 @@ export default function ReplyModal() {
             formData.append('content', content);
 
             if (activeItem.id) {
-                // Check if active item is a review by checking if 'rating' exists (typical for Review)
-                // Using explicit cast or check
-                const isReviewItem = (activeItem as any).rating !== undefined;
-
-                if (isReviewItem) {
-                    formData.append('review_parent', activeItem.id.toString());
+                if (mode === 'quote') {
+                    formData.append('repost_parent', activeItem.id.toString());
                 } else {
-                    formData.append('parent', activeItem.id.toString());
+                    const isReviewItem = (activeItem as any).rating !== undefined;
+                    if (isReviewItem) {
+                        formData.append('review_parent', activeItem.id.toString());
+                    } else {
+                        formData.append('parent', activeItem.id.toString());
+                    }
+                    formData.append('type', 'reply');
                 }
-                formData.append('type', 'reply');
             }
             if (mediaType && selectedFile) {
                 formData.append('media_file', selectedFile);
@@ -148,10 +149,15 @@ export default function ReplyModal() {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
 
-            // Add to Global Feed (Backend response includes all fields)
-            addFeedItem({ ...res.data, type: 'reply' }); // Explicitly mark as reply for frontend filtering if needed, though backend structure is same
+            // Add to Global Feed dynamically
+            if (mode === 'quote') {
+                addFeedItem({ ...res.data, type: 'post' });
+                window.dispatchEvent(new CustomEvent('post-created', { detail: res.data }));
+            } else {
+                addFeedItem({ ...res.data, type: 'reply' });
+            }
 
-            console.log('Reply created:', res.data);
+            console.log('Post created:', res.data);
 
             // Reset
             setContent('');
@@ -184,22 +190,24 @@ export default function ReplyModal() {
                     >
                         <X className="h-5 w-5 text-zinc-400" />
                     </button>
-                    <span className="font-bold text-white">Reply</span>
+                    <span className="font-bold text-white">{mode === 'quote' ? 'Quote Post' : 'Reply'}</span>
                     <div className="w-9" />
                 </div>
 
                 {/* Scrollable Content */}
                 <div className="flex-1 overflow-y-auto scrollbar-thin-dark p-4">
-                    {/* Target Item (Context) */}
-                    <div className="mb-4 relative">
-                        <div className="pointer-events-none opacity-80">
-                            {isReview(activeItem) ? (
-                                <ReviewCard review={activeItem} />
-                            ) : (
-                                <PostCard post={activeItem} />
-                            )}
+                    {/* Target Item (Context) - Only for Reply mode */}
+                    {mode !== 'quote' && (
+                        <div className="mb-4 relative">
+                            <div className="pointer-events-none opacity-80">
+                                {isReview(activeItem) ? (
+                                    <ReviewCard review={activeItem} />
+                                ) : (
+                                    <PostCard post={activeItem} />
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Reply Input Area */}
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
@@ -217,18 +225,63 @@ export default function ReplyModal() {
                             </div>
 
                             <div className="flex-1 min-w-0">
-                                <div className="mb-2">
-                                    <span className="text-zinc-500 text-sm">Replying to </span>
-                                    <span className="text-emerald-500 text-sm font-medium">@{activeItem.user.username}</span>
-                                </div>
+                                {mode !== 'quote' && (
+                                    <div className="mb-2">
+                                        <span className="text-zinc-500 text-sm">Replying to </span>
+                                        <span className="text-emerald-500 text-sm font-medium">@{activeItem.user.username}</span>
+                                    </div>
+                                )}
 
                                 <textarea
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
-                                    placeholder="Post your reply"
+                                    placeholder={mode === 'quote' ? "Add a comment..." : "Post your reply"}
                                     className="w-full bg-transparent text-lg text-zinc-200 placeholder-zinc-500 border-none focus:outline-none focus:ring-0 resize-none min-h-[100px] p-0 mb-2"
                                     autoFocus
                                 />
+
+                                {/* Embedded Quoted Post (ONLY if mode === 'quote') */}
+                                {mode === 'quote' && (
+                                    <div className="mt-2.5 mb-4 border border-zinc-800 rounded-xl p-3 bg-zinc-950/45 text-left flex flex-col gap-2 max-w-full">
+                                        <div className="flex items-center gap-2">
+                                            <img
+                                                src={getImageUrl(activeItem.user.avatar, activeItem.user.username)}
+                                                alt={activeItem.user.username}
+                                                className="h-5 w-5 rounded-full object-cover bg-zinc-800"
+                                            />
+                                            <span className="font-bold text-white text-xs leading-none">{activeItem.user.real_name || activeItem.user.username}</span>
+                                            <span className="text-zinc-500 text-xs leading-none">@{activeItem.user.username.toLowerCase()}</span>
+                                            <span className="text-zinc-650 text-xs leading-none">·</span>
+                                            <span className="text-zinc-500 text-xs leading-none">
+                                                {isReview(activeItem) 
+                                                    ? new Date((activeItem as any).timestamp).toLocaleDateString()
+                                                    : new Date(activeItem.timestamp).toLocaleDateString()
+                                                }
+                                            </span>
+                                        </div>
+                                        {isReview(activeItem) ? (
+                                            <div>
+                                                <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {(activeItem as any).rating}/10</div>
+                                                <p className="text-zinc-300 text-xs line-clamp-3 leading-relaxed">{activeItem.content || 'No review written.'}</p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                {activeItem.title && <h4 className="font-bold text-sm text-white mb-1">{activeItem.title}</h4>}
+                                                <p className="text-zinc-350 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">{activeItem.content}</p>
+                                                {(activeItem.media_file || activeItem.image) && (
+                                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-40 mt-1.5">
+                                                        <img src={getImageUrl(activeItem.media_file || activeItem.image || '')} className="w-full h-full object-cover" />
+                                                    </div>
+                                                )}
+                                                {activeItem.gif_url && (
+                                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-40 mt-1.5">
+                                                        <img src={activeItem.gif_url} className="w-full h-full object-cover" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Media Preview */}
                                 {(previewUrl || selectedGif) && (
@@ -341,7 +394,7 @@ export default function ReplyModal() {
                                         className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
                                     >
                                         {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                                        Reply
+                                        {mode === 'quote' ? 'Post' : 'Reply'}
                                     </button>
                                 </div>
                                 {/* Emoji Picker Popover */}
