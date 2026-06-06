@@ -63,7 +63,7 @@ export default function NewsDetailPage() {
         if (!news) return;
         // Optimistic update
         setIsLiked(!isLiked);
-        setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
+        setLikeCount(prev => Math.max(0, isLiked ? prev - 1 : prev + 1));
 
         try {
             await api.post('/likes/', { news: news.id });
@@ -71,7 +71,27 @@ export default function NewsDetailPage() {
             console.error("Like failed", err);
             // Revert on failure
             setIsLiked(!isLiked);
-            setLikeCount(prev => isLiked ? prev + 1 : prev - 1);
+            setLikeCount(prev => Math.max(0, isLiked ? prev + 1 : prev - 1));
+        }
+    };
+
+    const handleShare = async () => {
+        if (!news) return;
+        const url = `${window.location.origin}/news/${news.id}`;
+        const shareData = {
+            title: news.title,
+            text: news.description?.slice(0, 100) || '',
+            url,
+        };
+        try {
+            if (navigator.share) {
+                await navigator.share(shareData);
+            } else {
+                await navigator.clipboard.writeText(url);
+                alert('Link copied to clipboard!');
+            }
+        } catch (error) {
+            // User cancelled share dialog, ignore
         }
     };
 
@@ -160,7 +180,10 @@ export default function NewsDetailPage() {
                                     <span className="font-medium">{comments.length}</span>
                                 </button>
                             </div>
-                            <button className="flex items-center gap-2 px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors">
+                            <button
+                                onClick={handleShare}
+                                className="flex items-center gap-2 px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                            >
                                 <Share2 className="h-5 w-5" />
                                 <span className="font-medium">Share</span>
                             </button>

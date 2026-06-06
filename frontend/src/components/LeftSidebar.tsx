@@ -78,7 +78,7 @@ export default function LeftSidebar() {
             onClick: () => markMessagesRead(),
             badge: unreadMessages
         },
-        { icon: Bookmark, label: 'Bookmarks', href: '#' },
+        { icon: Bookmark, label: 'Bookmarks', href: '/bookmarks' },
         { icon: User, label: 'Profile', href: user ? `/${user.username}` : '/login' },
         { icon: Settings, label: 'Settings', href: '/settings' },
     ];
