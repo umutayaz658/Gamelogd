@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -9,6 +9,7 @@ import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import ShareModal from '@/components/ShareModal';
 
 interface ReviewCardProps {
     review: Review;
@@ -30,10 +31,17 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
+    const [showShareMenu, setShowShareMenu] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const shareMenuRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setShowMenu(false);
+            }
+            if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+                setShowShareMenu(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -306,14 +314,58 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                             <span className="text-sm">{likesCount || 0}</span>
                         </button>
 
-                        <button
-                            className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
-                            onClick={handleShare}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
-                                <Share2 className="h-4 w-4" />
-                            </div>
-                        </button>
+                        <div className="relative" ref={shareMenuRef}>
+                            <button
+                                className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowShareMenu(!showShareMenu);
+                                }}
+                            >
+                                <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
+                                    <Share2 className="h-4 w-4" />
+                                </div>
+                            </button>
+                            {showShareMenu && (
+                                <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowShareMenu(false);
+                                            setIsShareModalOpen(true);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                    >
+                                        <Send className="h-3.5 w-3.5 text-emerald-500" />
+                                        Send via Direct Message
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowShareMenu(false);
+                                            const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
+                                            navigator.clipboard.writeText(url);
+                                            alert('Link copied to clipboard!');
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                    >
+                                        <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
+                                        Copy Link
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowShareMenu(false);
+                                            handleShare(e);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                    >
+                                        <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                        Share via...
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         
                         <button
                             className={`flex items-center gap-2 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
@@ -326,6 +378,13 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                     </div>
                 </div>
             </div>
+            <ShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                itemType="review"
+                itemId={review.id}
+                title={`${review.user.username}'s log of ${review.game.title}`}
+            />
         </div>
     );
 }

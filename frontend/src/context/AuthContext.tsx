@@ -27,6 +27,8 @@ interface User {
     date_joined?: string;
     gender?: string;
     steam_id?: string;
+    dnd_mode?: boolean;
+    settings?: any;
 }
 
 interface AuthContextType {

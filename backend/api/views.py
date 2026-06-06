@@ -528,9 +528,56 @@ class PostViewSet(viewsets.ModelViewSet):
                 if not is_authorized:
                     from rest_framework.exceptions import PermissionDenied
                     raise PermissionDenied("You do not have permission to post a devlog for this project.")
-        serializer.save(user=self.request.user)
+        post = serializer.save(user=self.request.user)
+        
+        # Quote post notification
+        if post.repost_parent and post.repost_parent.user != self.request.user:
+            from api.models import Notification
+            from django.contrib.contenttypes.models import ContentType
+            content_type = ContentType.objects.get_for_model(Post)
+            Notification.objects.create(
+                recipient=post.repost_parent.user,
+                actor=self.request.user,
+                verb='quoted your post',
+                target_type=content_type,
+                target_id=post.id
+            )
 
-from api.models import Conversation, Message
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def repost(self, request, pk=None):
+        original_post = self.get_object()
+        user = request.user
+        
+        # Check if already reposted directly by this user (content is empty)
+        existing = Post.objects.filter(user=user, repost_parent=original_post, content='').first()
+        
+        if existing:
+            existing.delete()
+            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.filter(content='').count()}, status=status.HTTP_200_OK)
+            
+        # Create direct repost
+        repost_post = Post.objects.create(
+            user=user,
+            repost_parent=original_post,
+            content=''
+        )
+        
+        # Trigger notification
+        if original_post.user != user:
+            from api.models import Notification
+            from django.contrib.contenttypes.models import ContentType
+            content_type = ContentType.objects.get_for_model(Post)
+            Notification.objects.create(
+                recipient=original_post.user,
+                actor=user,
+                verb='reposted your post',
+                target_type=content_type,
+                target_id=repost_post.id
+            )
+            
+        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(content='').count()}, status=status.HTTP_201_CREATED)
+
+from api.models import Conversation, Message, ConversationMember
 from .serializers import ConversationSerializer, MessageSerializer
 
 class ConversationViewSet(viewsets.ModelViewSet):
@@ -538,7 +585,11 @@ class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Conversation.objects.filter(participants=self.request.user).order_by('-updated_at')
+        qs = Conversation.objects.filter(participants=self.request.user).order_by('-updated_at')
+        # Backfill memberships
+        for c in qs:
+            ConversationMember.objects.get_or_create(conversation=c, user=self.request.user)
+        return qs
 
     @action(detail=False, methods=['post'])
     def start_chat(self, request):
@@ -552,16 +603,217 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({"error": "Cannot chat with yourself"}, status=400)
 
         # Check if conversation exists (complex query for exact participants)
-        # We look for a conversation where both users are participants
-        conversations = Conversation.objects.filter(participants=request.user).filter(participants=target_user)
+        # We look for a conversation where both users are participants and is not a group
+        conversations = Conversation.objects.filter(is_group=False).filter(participants=request.user).filter(participants=target_user)
         
         if conversations.exists():
             conversation = conversations.first()
         else:
-            conversation = Conversation.objects.create()
+            conversation = Conversation.objects.create(is_group=False)
             conversation.participants.add(request.user, target_user)
             conversation.save()
+            
+        # Ensure memberships exist
+        ConversationMember.objects.get_or_create(conversation=conversation, user=request.user)
+        ConversationMember.objects.get_or_create(conversation=conversation, user=target_user)
         
+        serializer = self.get_serializer(conversation)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def create_group(self, request):
+        usernames = request.data.get('usernames', [])
+        if isinstance(usernames, str):
+            import json
+            if usernames.startswith('[') and usernames.endswith(']'):
+                try:
+                    usernames = json.loads(usernames)
+                except Exception:
+                    pass
+            else:
+                usernames = [u.strip() for u in usernames.split(',') if u.strip()]
+        elif hasattr(request.data, 'getlist'):
+            list_data = request.data.getlist('usernames')
+            if list_data:
+                if len(list_data) == 1 and isinstance(list_data[0], str):
+                    if list_data[0].startswith('[') and list_data[0].endswith(']'):
+                        import json
+                        try:
+                            list_data = json.loads(list_data[0])
+                        except Exception:
+                            pass
+                    else:
+                        list_data = [u.strip() for u in list_data[0].split(',') if u.strip()]
+                usernames = list_data
+        
+        name = request.data.get('name', 'Group Chat')
+        avatar = request.FILES.get('avatar', None)
+        
+        if not usernames:
+            return Response({"error": "At least one other participant username is required"}, status=400)
+            
+        users = User.objects.filter(username__in=usernames)
+        if not users.exists():
+            return Response({"error": "No valid participants found"}, status=400)
+            
+        conversation = Conversation.objects.create(is_group=True, name=name, avatar=avatar)
+        conversation.participants.add(request.user)
+        for u in users:
+            conversation.participants.add(u)
+        conversation.save()
+        
+        # Create memberships
+        ConversationMember.objects.create(conversation=conversation, user=request.user, is_admin=True)
+        for u in users:
+            ConversationMember.objects.create(conversation=conversation, user=u, is_admin=False)
+            
+        serializer = self.get_serializer(conversation)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+    @action(detail=True, methods=['post'], url_path='toggle-mute')
+    def toggle_mute(self, request, pk=None):
+        conversation = self.get_object()
+        member, created = ConversationMember.objects.get_or_create(conversation=conversation, user=request.user)
+        member.is_muted = not member.is_muted
+        member.save()
+        return Response({'is_muted': member.is_muted, 'status': 'success'})
+
+    @action(detail=True, methods=['post'], url_path='add-members')
+    def add_members(self, request, pk=None):
+        conversation = self.get_object()
+        if not conversation.is_group:
+            return Response({"error": "Not a group conversation"}, status=400)
+            
+        user_membership = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if not user_membership.is_admin:
+            return Response({"error": "Only group admins can add members"}, status=403)
+            
+        usernames = request.data.get('usernames', [])
+        if isinstance(usernames, str):
+            import json
+            if usernames.startswith('[') and usernames.endswith(']'):
+                try:
+                    usernames = json.loads(usernames)
+                except Exception:
+                    pass
+            else:
+                usernames = [u.strip() for u in usernames.split(',') if u.strip()]
+        elif hasattr(request.data, 'getlist'):
+            list_data = request.data.getlist('usernames')
+            if list_data:
+                if len(list_data) == 1 and isinstance(list_data[0], str):
+                    if list_data[0].startswith('[') and list_data[0].endswith(']'):
+                        import json
+                        try:
+                            list_data = json.loads(list_data[0])
+                        except Exception:
+                            pass
+                    else:
+                        list_data = [u.strip() for u in list_data[0].split(',') if u.strip()]
+                usernames = list_data
+                
+        users = User.objects.filter(username__in=usernames)
+        
+        added_users = []
+        for u in users:
+            if u not in conversation.participants.all():
+                conversation.participants.add(u)
+                ConversationMember.objects.get_or_create(conversation=conversation, user=u)
+                added_users.append(u.username)
+                
+        conversation.save()
+        return Response({'status': 'success', 'added_members': added_users})
+
+    @action(detail=True, methods=['post'], url_path='remove-member')
+    def remove_member(self, request, pk=None):
+        conversation = self.get_object()
+        if not conversation.is_group:
+            return Response({"error": "Not a group conversation"}, status=400)
+            
+        user_membership = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if not user_membership.is_admin:
+            return Response({"error": "Only group admins can remove members"}, status=403)
+            
+        target_username = request.data.get('username')
+        if not target_username:
+            return Response({"error": "Username is required"}, status=400)
+            
+        target_user = get_object_or_404(User, username=target_username)
+        if target_user == request.user:
+            return Response({"error": "Cannot remove yourself. Use leave instead"}, status=400)
+            
+        conversation.participants.remove(target_user)
+        ConversationMember.objects.filter(conversation=conversation, user=target_user).delete()
+        conversation.save()
+        return Response({'status': 'success', 'removed_member': target_username})
+
+    @action(detail=True, methods=['post'], url_path='make-admin')
+    def make_admin(self, request, pk=None):
+        conversation = self.get_object()
+        if not conversation.is_group:
+            return Response({"error": "Not a group conversation"}, status=400)
+            
+        user_membership = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if not user_membership.is_admin:
+            return Response({"error": "Only group admins can promote other members"}, status=403)
+            
+        target_username = request.data.get('username')
+        if not target_username:
+            return Response({"error": "Username is required"}, status=400)
+            
+        target_user = get_object_or_404(User, username=target_username)
+        target_membership = get_object_or_404(ConversationMember, conversation=conversation, user=target_user)
+        target_membership.is_admin = True
+        target_membership.save()
+        return Response({'status': 'success', 'promoted_member': target_username})
+
+    @action(detail=True, methods=['post'], url_path='leave')
+    def leave(self, request, pk=None):
+        conversation = self.get_object()
+        if not conversation.is_group:
+            return Response({"error": "Not a group conversation"}, status=400)
+            
+        if request.user not in conversation.participants.all():
+            return Response({"error": "You are not a participant in this conversation"}, status=400)
+            
+        conversation.participants.remove(request.user)
+        ConversationMember.objects.filter(conversation=conversation, user=request.user).delete()
+        
+        # If no participants left, delete conversation
+        if conversation.participants.count() == 0:
+            conversation.delete()
+            return Response({'status': 'deleted', 'message': 'Group deleted as it has no participants'})
+            
+        # If the user leaving was the only admin, appoint another participant as admin
+        elif not ConversationMember.objects.filter(conversation=conversation, is_admin=True).exists():
+            first_member = ConversationMember.objects.filter(conversation=conversation).first()
+            if first_member:
+                first_member.is_admin = True
+                first_member.save()
+                
+        conversation.save()
+        return Response({'status': 'success', 'message': 'You left the group'})
+
+    @action(detail=True, methods=['patch'], url_path='update-group-details')
+    def update_group_details(self, request, pk=None):
+        conversation = self.get_object()
+        if not conversation.is_group:
+            return Response({"error": "Not a group conversation"}, status=400)
+            
+        user_membership = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if not user_membership.is_admin:
+            return Response({"error": "Only group admins can update group details"}, status=403)
+            
+        name = request.data.get('name')
+        avatar = request.FILES.get('avatar')
+        
+        if name:
+            conversation.name = name
+        if avatar:
+            conversation.avatar = avatar
+            
+        conversation.save()
         serializer = self.get_serializer(conversation)
         return Response(serializer.data)
 

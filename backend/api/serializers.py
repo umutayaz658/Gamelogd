@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings'
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings', 'dnd_mode'
         ]
         read_only_fields = ['id', 'date_joined']
 
@@ -197,7 +197,7 @@ class SimplePostSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'replies_count', 'type', 'reply_to_username', 'news_details']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details']
 
     def get_reply_to_username(self, obj):
         if obj.parent:
@@ -238,6 +238,9 @@ class PostSerializer(serializers.ModelSerializer):
     news_details = serializers.SerializerMethodField()
     project_details = serializers.SerializerMethodField()
     type = serializers.CharField(default='post', read_only=True)
+    reposts_count = serializers.IntegerField(source='reposts.count', read_only=True)
+    is_reposted = serializers.SerializerMethodField()
+    repost_details = serializers.SerializerMethodField()
     
     # Media Handling
     media = PostMediaSerializer(many=True, read_only=True)
@@ -254,9 +257,9 @@ class PostSerializer(serializers.ModelSerializer):
             'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
-            'media', 'uploaded_media'
+            'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted'
         ]
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted']
 
     def create(self, validated_data):
         uploaded_media = validated_data.pop('uploaded_media', [])
@@ -285,6 +288,17 @@ class PostSerializer(serializers.ModelSerializer):
         if user.is_authenticated:
             return obj.likes.filter(id=user.id).exists()
         return False
+
+    def get_is_reposted(self, obj):
+        user = self.context.get('request').user
+        if user.is_authenticated:
+            return obj.reposts.filter(user=user).exists()
+        return False
+
+    def get_repost_details(self, obj):
+        if obj.repost_parent:
+            return SimplePostSerializer(obj.repost_parent, context=self.context).data
+        return None
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
@@ -349,30 +363,33 @@ class PostSerializer(serializers.ModelSerializer):
         return value
 
 
-class MessageSerializer(serializers.ModelSerializer):
-    sender = UserSerializer(read_only=True)
-    is_me = serializers.SerializerMethodField()
+class ConversationMemberSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
 
     class Meta:
-        model = Message
-        fields = ['id', 'conversation', 'sender', 'content', 'is_read', 'created_at', 'is_me']
-        read_only_fields = ['id', 'sender', 'created_at', 'is_me']
-
-    def get_is_me(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.sender == request.user
-        return False
+        model = ConversationMember
+        fields = ['id', 'user', 'is_admin', 'is_muted', 'joined_at']
 
 class ConversationSerializer(serializers.ModelSerializer):
     other_user = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    memberships = ConversationMemberSerializer(many=True, read_only=True, source='members')
 
     class Meta:
         model = Conversation
-        fields = ['id', 'participants', 'other_user', 'last_message', 'unread_count', 'updated_at']
+        fields = ['id', 'participants', 'other_user', 'last_message', 'unread_count', 'updated_at', 'is_group', 'name', 'avatar', 'memberships']
         read_only_fields = ['id', 'participants', 'updated_at']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Ensure absolute URL for group avatar
+        avatar = representation.get('avatar')
+        if avatar and not str(avatar).startswith('http') and request:
+            representation['avatar'] = request.build_absolute_uri(avatar)
+        return representation
 
     def get_other_user(self, obj):
         request = self.context.get('request')
@@ -453,6 +470,28 @@ class NewsSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return Bookmark.objects.filter(user=request.user, news=obj).exists()
         return False
+class MessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+    is_me = serializers.SerializerMethodField()
+    shared_post_details = SimplePostSerializer(source='shared_post', read_only=True)
+    shared_review_details = ReviewSerializer(source='shared_review', read_only=True)
+    shared_news_details = NewsSerializer(source='shared_news', read_only=True)
+
+    class Meta:
+        model = Message
+        fields = [
+            'id', 'conversation', 'sender', 'content', 'is_read', 'created_at', 'is_me',
+            'image', 'gif_url', 'shared_post', 'shared_review', 'shared_news',
+            'shared_post_details', 'shared_review_details', 'shared_news_details'
+        ]
+        read_only_fields = ['id', 'sender', 'created_at', 'is_me', 'shared_post_details', 'shared_review_details', 'shared_news_details']
+
+    def get_is_me(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.sender == request.user
+        return False
+
 
 class BookmarkSerializer(serializers.ModelSerializer):
     post_details = PostSerializer(source='post', read_only=True)

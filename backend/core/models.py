@@ -146,6 +146,7 @@ class Post(models.Model):
     review_parent = models.ForeignKey('Review', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     news_parent = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
     project_parent = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True, related_name='devlogs')
+    repost_parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='reposts')
     
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
