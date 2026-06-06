@@ -71,11 +71,44 @@ class UserSerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     actor = UserSerializer(read_only=True)
+    target_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
-        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_id', 'is_read', 'created_at']
+        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_id', 'is_read', 'created_at', 'target_url']
         read_only_fields = ['id', 'recipient', 'actor', 'created_at']
+
+    def get_target_url(self, obj):
+        try:
+            if 'following' in obj.verb:
+                return f"/{obj.actor.username}"
+            
+            if obj.target:
+                model_name = obj.target_type.model if obj.target_type else ''
+                
+                if 'replied' in obj.verb:
+                    parent_post = getattr(obj.target, 'parent', None)
+                    if parent_post:
+                        return f"/{parent_post.user.username}/status/{parent_post.id}"
+                
+                elif 'commented' in obj.verb:
+                    review = getattr(obj.target, 'review_parent', None)
+                    if review:
+                        return f"/{review.user.username}/review/{review.id}"
+                
+                elif 'liked' in obj.verb:
+                    if model_name == 'post':
+                        return f"/{obj.target.user.username}/status/{obj.target.id}"
+                    elif model_name == 'review':
+                        return f"/{obj.target.user.username}/review/{obj.target.id}"
+                
+                elif 'invited' in obj.verb:
+                    project = getattr(obj.target, 'project', None)
+                    if project:
+                        return f"/projects/{project.id}"
+        except Exception as e:
+            print("Error generating target_url in NotificationSerializer:", e)
+        return None
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -140,7 +173,36 @@ class GameSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Game
-        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id']
+        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id', 'genres']
+        read_only_fields = ['id']
+
+    def get_cover_image(self, obj):
+        if not obj.cover_image:
+            return None
+        value = str(obj.cover_image)
+        if value.startswith('http'):
+            return value
+        request = self.context.get('request')
+        if request:
+            host = request.get_host()
+            if 'backend' in host:
+                host = host.replace('backend', '127.0.0.1')
+            return f"{request.scheme}://{host}{obj.cover_image.url}"
+        return value
+
+class GameDetailSerializer(serializers.ModelSerializer):
+    cover_image = serializers.SerializerMethodField()
+    average_rating = serializers.FloatField(read_only=True)
+    review_count = serializers.IntegerField(read_only=True)
+    log_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Game
+        fields = [
+            'id', 'title', 'cover_image', 'release_date', 'igdb_id', 'steam_appid', 'genres',
+            'summary', 'description', 'developer', 'publisher', 'screenshots', 'platforms', 'igdb_url',
+            'average_rating', 'review_count', 'log_count'
+        ]
         read_only_fields = ['id']
 
     def get_cover_image(self, obj):
@@ -166,16 +228,28 @@ class ReviewSerializer(serializers.ModelSerializer):
     type = serializers.CharField(default='review', read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
     bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    is_liked_by_user = serializers.SerializerMethodField()
+    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
+        fields = [
+            'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 
+            'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
+            'is_liked_by_user', 'likes_count'
+        ]
         read_only_fields = ['id', 'user', 'timestamp']
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return Bookmark.objects.filter(user=request.user, review=obj).exists()
+        return False
+
+    def get_is_liked_by_user(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
         return False
 
     def validate(self, data):
@@ -284,9 +358,9 @@ class PostSerializer(serializers.ModelSerializer):
         return post
 
     def get_is_liked(self, obj):
-        user = self.context.get('request').user
-        if user.is_authenticated:
-            return obj.likes.filter(id=user.id).exists()
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
         return False
 
     def get_is_reposted(self, obj):

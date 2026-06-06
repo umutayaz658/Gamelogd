@@ -15,6 +15,8 @@ export interface User {
     birth_date?: string;
     show_birth_date?: boolean;
     dnd_mode?: boolean;
+    steam_id?: string;
+    settings?: any;
 }
 
 export interface Game {
@@ -23,6 +25,21 @@ export interface Game {
     cover_image?: string;
     release_date?: string;
     igdb_id?: number;
+    steam_appid?: number;
+    genres?: string[];
+}
+
+export interface GameDetail extends Game {
+    summary?: string;
+    description?: string;
+    developer?: string;
+    publisher?: string;
+    screenshots?: string[];
+    platforms?: string[];
+    igdb_url?: string;
+    average_rating?: number;
+    review_count?: number;
+    log_count?: number;
 }
 
 export interface Review {
@@ -32,6 +49,7 @@ export interface Review {
     rating: number;
     content: string;
     is_liked: boolean;
+    is_liked_by_user?: boolean;
     likes_count?: number;
     is_bookmarked?: boolean;
     bookmarks_count?: number;
