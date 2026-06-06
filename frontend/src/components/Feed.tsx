@@ -60,8 +60,20 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
 
         fetchFeed();
 
+        const handleCreated = (e: Event) => {
+            const customEvent = e as CustomEvent<Post>;
+            if (customEvent.detail) {
+                setItems(prev => {
+                    if (prev.some(item => item.id === customEvent.detail.id)) return prev;
+                    return [{ ...customEvent.detail, type: 'post' }, ...prev];
+                });
+            }
+        };
+        window.addEventListener('post-created', handleCreated);
+
         return () => {
             isMounted = false;
+            window.removeEventListener('post-created', handleCreated);
         };
     }, []);
 

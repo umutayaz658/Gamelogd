@@ -6,7 +6,9 @@ import { FeedItem } from '@/types';
 interface ReplyModalContextType {
     isOpen: boolean;
     activeItem: FeedItem | null;
+    mode: 'reply' | 'quote';
     openReplyModal: (item: FeedItem) => void;
+    openQuoteModal: (item: FeedItem) => void;
     closeReplyModal: () => void;
 }
 
@@ -15,8 +17,16 @@ const ReplyModalContext = createContext<ReplyModalContextType | undefined>(undef
 export function ReplyModalProvider({ children }: { children: ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
     const [activeItem, setActiveItem] = useState<FeedItem | null>(null);
+    const [mode, setMode] = useState<'reply' | 'quote'>('reply');
 
     const openReplyModal = (item: FeedItem) => {
+        setMode('reply');
+        setActiveItem(item);
+        setIsOpen(true);
+    };
+
+    const openQuoteModal = (item: FeedItem) => {
+        setMode('quote');
         setActiveItem(item);
         setIsOpen(true);
     };
@@ -27,7 +37,7 @@ export function ReplyModalProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <ReplyModalContext.Provider value={{ isOpen, activeItem, openReplyModal, closeReplyModal }}>
+        <ReplyModalContext.Provider value={{ isOpen, activeItem, mode, openReplyModal, openQuoteModal, closeReplyModal }}>
             {children}
         </ReplyModalContext.Provider>
     );
