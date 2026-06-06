@@ -22,7 +22,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
     const baseId = useId().replace(/:/g, '-');
 
-    const [isLiked, setIsLiked] = useState(review.is_liked || false);
+    const [isLiked, setIsLiked] = useState(review.is_liked_by_user || false);
     const [likesCount, setLikesCount] = useState(review.likes_count || 0);
     const [isBookmarked, setIsBookmarked] = useState(review.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(review.bookmarks_count || 0);
@@ -39,6 +39,13 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        setIsLiked(review.is_liked_by_user || false);
+        setLikesCount(review.likes_count || 0);
+        setIsBookmarked(review.is_bookmarked || false);
+        setBookmarksCount(review.bookmarks_count || 0);
+    }, [review]);
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
