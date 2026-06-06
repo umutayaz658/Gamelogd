@@ -19,6 +19,7 @@ interface Notification {
     verb: string;
     created_at: string;
     is_read: boolean;
+    target_url?: string | null;
 }
 
 export default function LeftSidebar() {
@@ -112,7 +113,7 @@ export default function LeftSidebar() {
                         ) : notifications.length > 0 ? (
                             notifications.map((notif) => (
                                 <Link
-                                    href={`/${notif.actor.username}`}
+                                    href={notif.target_url || `/${notif.actor.username}`}
                                     key={notif.id}
                                     className={`flex items-start gap-3 p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer ${!notif.is_read ? 'bg-zinc-800/30' : ''}`}
                                 >
