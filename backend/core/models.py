@@ -11,6 +11,15 @@ class Game(models.Model):
     igdb_id = models.IntegerField(unique=True, null=True, blank=True)
     steam_appid = models.IntegerField(unique=True, null=True, blank=True)
     genres = models.JSONField(default=list, blank=True)
+    # Game detail fields (populated on-demand from IGDB)
+    summary = models.TextField(blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    developer = models.CharField(max_length=255, blank=True, default='')
+    publisher = models.CharField(max_length=255, blank=True, default='')
+    screenshots = models.JSONField(default=list, blank=True)
+    platforms = models.JSONField(default=list, blank=True)
+    igdb_url = models.URLField(blank=True, default='', max_length=500)
+    details_fetched = models.BooleanField(default=False)
 
     def __str__(self):
         return self.title

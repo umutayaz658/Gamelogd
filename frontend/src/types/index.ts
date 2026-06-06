@@ -24,6 +24,21 @@ export interface Game {
     cover_image?: string;
     release_date?: string;
     igdb_id?: number;
+    steam_appid?: number;
+    genres?: string[];
+}
+
+export interface GameDetail extends Game {
+    summary?: string;
+    description?: string;
+    developer?: string;
+    publisher?: string;
+    screenshots?: string[];
+    platforms?: string[];
+    igdb_url?: string;
+    average_rating?: number;
+    review_count?: number;
+    log_count?: number;
 }
 
 export interface Review {

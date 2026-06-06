@@ -1,30 +1,84 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { User, Settings, LogOut, ChevronDown, LogIn, PlusCircle } from 'lucide-react';
+import { User, Settings, LogOut, ChevronDown, LogIn, PlusCircle, Search, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLogModal } from '@/context/LogModalContext';
 import { getImageUrl } from '@/lib/utils';
+import api from '@/lib/api';
 
 export default function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [showResults, setShowResults] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const searchRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const debounceTimer = useRef<NodeJS.Timeout | null>(null);
     const router = useRouter();
     const { user, logout, isLoading } = useAuth();
-    const { openLogModal } = useLogModal(); // Hook
+    const { openLogModal } = useLogModal();
 
     const handleLogout = () => {
         logout();
         setIsMenuOpen(false);
     };
 
-    // Close menu when clicking outside
+    const searchGames = useCallback(async (query: string) => {
+        if (query.trim().length < 2) {
+            setSearchResults([]);
+            setIsSearching(false);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const res = await api.get(`/games/?search=${encodeURIComponent(query.trim())}`);
+            const results = res.data.results || res.data;
+            setSearchResults(results.slice(0, 6));
+        } catch (err) {
+            console.error('Search failed', err);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    }, []);
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setSearchQuery(value);
+        setShowResults(true);
+
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+        debounceTimer.current = setTimeout(() => {
+            searchGames(value);
+        }, 300);
+    };
+
+    const handleSelectGame = (gameId: number) => {
+        setSearchQuery('');
+        setSearchResults([]);
+        setShowResults(false);
+        router.push(`/games/${gameId}`);
+    };
+
+    const clearSearch = () => {
+        setSearchQuery('');
+        setSearchResults([]);
+        setShowResults(false);
+    };
+
+    // Close menus when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setIsMenuOpen(false);
+            }
+            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+                setShowResults(false);
             }
         };
 
@@ -60,7 +114,78 @@ export default function Navbar() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4" ref={menuRef}>
+                <div className="flex items-center gap-3" ref={menuRef}>
+                    {/* Game Search Bar */}
+                    <div className="relative" ref={searchRef}>
+                        <div className="flex items-center bg-zinc-800/70 border border-zinc-700/50 rounded-full px-3 py-1.5 focus-within:border-indigo-500/60 focus-within:bg-zinc-800 transition-all duration-300 w-48 sm:w-64 focus-within:w-64 sm:focus-within:w-80">
+                            <Search className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={handleSearchChange}
+                                onFocus={() => { if (searchQuery.trim().length >= 2) setShowResults(true); }}
+                                placeholder="Search games"
+                                className="bg-transparent text-sm text-white placeholder-zinc-500 outline-none border-none ml-2 w-full"
+                            />
+                            {searchQuery && (
+                                <button onClick={clearSearch} className="text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Search Results Dropdown */}
+                        {showResults && searchQuery.trim().length >= 2 && (
+                            <div className="absolute top-full mt-2 left-0 right-0 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-1 duration-150">
+                                {isSearching ? (
+                                    <div className="flex items-center justify-center py-6">
+                                        <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                ) : searchResults.length > 0 ? (
+                                    <div className="py-1 max-h-80 overflow-y-auto">
+                                        {searchResults.map((game) => {
+                                            const coverUrl = game.cover_image
+                                                ? (game.cover_image.startsWith('http') ? game.cover_image : `http://localhost:8000${game.cover_image}`)
+                                                : null;
+                                            return (
+                                                <button
+                                                    key={game.id}
+                                                    onClick={() => handleSelectGame(game.id)}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800/80 transition-colors text-left group"
+                                                >
+                                                    <div className="w-10 h-13 rounded-md overflow-hidden bg-zinc-800 flex-shrink-0 border border-zinc-700/50">
+                                                        {coverUrl ? (
+                                                            <img src={coverUrl} alt={game.title} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center">
+                                                                <Search className="w-4 h-4 text-zinc-600" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">
+                                                            {game.title}
+                                                        </p>
+                                                        {game.release_date && (
+                                                            <p className="text-xs text-zinc-500">
+                                                                {new Date(game.release_date).getFullYear()}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="py-6 text-center">
+                                        <p className="text-sm text-zinc-500">No games found</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {isLoading ? (
                         // Loading Skeleton
                         <div className="h-9 w-9 rounded-full bg-zinc-800 animate-pulse" />
@@ -70,7 +195,7 @@ export default function Navbar() {
                             {/* Log Game Button (Visible on all logged in screens) */}
                             <button
                                 onClick={openLogModal}
-                                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors mr-2 shadow-lg shadow-emerald-900/20"
+                                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors shadow-lg shadow-emerald-900/20"
                                 title="Log a Game"
                             >
                                 <PlusCircle className="h-5 w-5" />
