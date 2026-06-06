@@ -14,6 +14,8 @@ export interface User {
     date_joined?: string;
     birth_date?: string;
     show_birth_date?: boolean;
+    steam_id?: string;
+    settings?: any;
 }
 
 export interface Game {
