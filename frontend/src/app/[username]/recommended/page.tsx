@@ -114,13 +114,20 @@ export default function RecommendedGamesPage() {
                 if (cachedData) {
                     try {
                         const parsed = JSON.parse(cachedData);
-                        // Only use cache if it actually contains games
-                        if (parsed.games && parsed.games.length > 0) {
-                            setGames(parsed.games);
-                            // Add artificial delay to show loading state smoothly
-                            setLoading(true);
-                            setTimeout(() => setLoading(false), 500);
-                            return;
+                        const timestamp = parsed.timestamp || 0;
+                        const isExpired = Date.now() - timestamp > 1000 * 60 * 60; // 1 hour expiration
+                        
+                        // Only use cache if it actually contains games and is not expired
+                        if (!isExpired && parsed.games && parsed.games.length > 0) {
+                            // Check if all covers are null (legacy cache), force refresh if so
+                            const hasCovers = parsed.games.some((g: any) => g.cover_image !== null);
+                            if (hasCovers || parsed.games.length === 0) {
+                                setGames(parsed.games);
+                                // Add artificial delay to show loading state smoothly
+                                setLoading(true);
+                                setTimeout(() => setLoading(false), 500);
+                                return;
+                            }
                         }
                     } catch (e) {
                         console.error('Failed to parse cached games', e);
