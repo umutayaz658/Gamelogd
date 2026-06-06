@@ -84,23 +84,25 @@ class NotificationSerializer(serializers.ModelSerializer):
                 return f"/{obj.actor.username}"
             
             if obj.target:
-                if obj.verb == 'replied to your post':
+                model_name = obj.target_type.model if obj.target_type else ''
+                
+                if 'replied' in obj.verb:
                     parent_post = getattr(obj.target, 'parent', None)
                     if parent_post:
                         return f"/{parent_post.user.username}/status/{parent_post.id}"
                 
-                elif obj.verb == 'commented on your review':
+                elif 'commented' in obj.verb:
                     review = getattr(obj.target, 'review_parent', None)
                     if review:
                         return f"/{review.user.username}/review/{review.id}"
                 
-                elif obj.verb == 'liked your post':
-                    return f"/{obj.target.user.username}/status/{obj.target.id}"
+                elif 'liked' in obj.verb:
+                    if model_name == 'post':
+                        return f"/{obj.target.user.username}/status/{obj.target.id}"
+                    elif model_name == 'review':
+                        return f"/{obj.target.user.username}/review/{obj.target.id}"
                 
-                elif obj.verb == 'liked your review':
-                    return f"/{obj.target.user.username}/review/{obj.target.id}"
-                
-                elif obj.verb == 'invited you to join the project':
+                elif 'invited' in obj.verb:
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
@@ -197,16 +199,28 @@ class ReviewSerializer(serializers.ModelSerializer):
     type = serializers.CharField(default='review', read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
     bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    is_liked_by_user = serializers.SerializerMethodField()
+    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type']
+        fields = [
+            'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 
+            'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
+            'is_liked_by_user', 'likes_count'
+        ]
         read_only_fields = ['id', 'user', 'timestamp']
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return Bookmark.objects.filter(user=request.user, review=obj).exists()
+        return False
+
+    def get_is_liked_by_user(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
         return False
 
     def validate(self, data):
@@ -312,9 +326,9 @@ class PostSerializer(serializers.ModelSerializer):
         return post
 
     def get_is_liked(self, obj):
-        user = self.context.get('request').user
-        if user.is_authenticated:
-            return obj.likes.filter(id=user.id).exists()
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
         return False
 
     def get_is_bookmarked(self, obj):
