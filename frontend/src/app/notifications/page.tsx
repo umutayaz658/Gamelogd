@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
@@ -22,14 +23,26 @@ interface Notification {
     target_id?: number;
     is_read: boolean;
     created_at: string;
+    target_url?: string | null;
 }
 
 export default function NotificationsPage() {
+    const router = useRouter();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'mentions' | 'verified'>('all');
 
     const { markNotificationsRead } = useNotifications();
+
+    const handleNotificationClick = (e: React.MouseEvent, targetUrl: string | null | undefined) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('a') || target.closest('button')) {
+            return;
+        }
+        if (targetUrl) {
+            router.push(targetUrl);
+        }
+    };
 
     useEffect(() => {
         const fetchNotifications = async () => {
@@ -143,7 +156,8 @@ export default function NotificationsPage() {
                                     filteredNotifications.map((notif) => (
                                         <div
                                             key={notif.id}
-                                            className={`p-4 flex gap-4 transition-colors hover:bg-zinc-800/10 ${!notif.is_read ? 'bg-zinc-800/20' : ''}`}
+                                            className={`p-4 flex gap-4 transition-colors ${!notif.is_read ? 'bg-zinc-800/20' : ''} ${notif.target_url ? 'cursor-pointer hover:bg-zinc-800/30' : 'hover:bg-zinc-800/10'}`}
+                                            onClick={(e) => handleNotificationClick(e, notif.target_url)}
                                         >
                                             {/* Icon Column */}
                                             <div className="pt-1">

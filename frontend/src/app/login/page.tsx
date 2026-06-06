@@ -42,7 +42,9 @@ export default function LoginPage() {
 
         } catch (err: any) {
             console.error('Login failed:', err);
-            setError('Invalid credentials. Please try again.');
+            const data = err.response?.data;
+            const errorMsg = data?.detail || data?.error || (typeof data === 'string' ? data : 'Invalid credentials. Please try again.');
+            setError(errorMsg);
             setIsLoading(false);
         }
     };

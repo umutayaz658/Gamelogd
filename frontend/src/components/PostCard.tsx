@@ -53,6 +53,13 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        setIsLiked(post.is_liked || false);
+        setLikesCount(post.likes_count || post.likes || 0);
+        setIsBookmarked(post.is_bookmarked || false);
+        setBookmarksCount(post.bookmarks_count || 0);
+    }, [post]);
+
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!user) return router.push('/login');
