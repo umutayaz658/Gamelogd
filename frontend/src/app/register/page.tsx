@@ -118,7 +118,23 @@ export default function RegisterPage() {
 
         } catch (err: any) {
             console.error('Registration Error:', err.response?.data || err.message);
-            setError(err.response?.data?.detail || 'Registration failed. Please check your inputs.');
+            const data = err.response?.data;
+            let errorMsg = 'Registration failed. Please check your inputs.';
+            if (data) {
+                if (typeof data === 'string') {
+                    errorMsg = data;
+                } else if (data.detail) {
+                    errorMsg = data.detail;
+                } else {
+                    // DRF returns field-level errors like {password: ["too common"], username: ["already exists"]}
+                    const firstKey = Object.keys(data)[0];
+                    if (firstKey) {
+                        const msgs = Array.isArray(data[firstKey]) ? data[firstKey].join(' ') : data[firstKey];
+                        errorMsg = `${firstKey}: ${msgs}`;
+                    }
+                }
+            }
+            setError(errorMsg);
         } finally {
             setIsSubmitting(false);
         }
