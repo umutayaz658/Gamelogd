@@ -63,11 +63,18 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
                     try {
                         const parsed = JSON.parse(cached);
                         const cachedGames = parsed.games || parsed; // Fallback for old cache format
-                        // Only use cache if it actually contains games
-                        if (cachedGames && cachedGames.length > 0) {
-                            setGames(cachedGames);
-                            setLoading(false);
-                            return;
+                        const timestamp = parsed.timestamp || 0;
+                        const isExpired = Date.now() - timestamp > 1000 * 60 * 60; // 1 hour expiration
+                        
+                        // Only use cache if it actually contains games and is not expired
+                        if (!isExpired && cachedGames && cachedGames.length > 0) {
+                            // Check if all covers are null (legacy cache), force refresh if so
+                            const hasCovers = cachedGames.some((g: any) => g.cover_image !== null);
+                            if (hasCovers || cachedGames.length === 0) {
+                                setGames(cachedGames);
+                                setLoading(false);
+                                return;
+                            }
                         }
                     } catch (e) {
                         console.error('Failed to parse cached games', e);
