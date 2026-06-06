@@ -173,7 +173,36 @@ class GameSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Game
-        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id']
+        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id', 'genres']
+        read_only_fields = ['id']
+
+    def get_cover_image(self, obj):
+        if not obj.cover_image:
+            return None
+        value = str(obj.cover_image)
+        if value.startswith('http'):
+            return value
+        request = self.context.get('request')
+        if request:
+            host = request.get_host()
+            if 'backend' in host:
+                host = host.replace('backend', '127.0.0.1')
+            return f"{request.scheme}://{host}{obj.cover_image.url}"
+        return value
+
+class GameDetailSerializer(serializers.ModelSerializer):
+    cover_image = serializers.SerializerMethodField()
+    average_rating = serializers.FloatField(read_only=True)
+    review_count = serializers.IntegerField(read_only=True)
+    log_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Game
+        fields = [
+            'id', 'title', 'cover_image', 'release_date', 'igdb_id', 'steam_appid', 'genres',
+            'summary', 'description', 'developer', 'publisher', 'screenshots', 'platforms', 'igdb_url',
+            'average_rating', 'review_count', 'log_count'
+        ]
         read_only_fields = ['id']
 
     def get_cover_image(self, obj):
