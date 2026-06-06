@@ -33,6 +33,7 @@ export interface Review {
     rating: number;
     content: string;
     is_liked: boolean;
+    is_liked_by_user?: boolean;
     likes_count?: number;
     is_bookmarked?: boolean;
     bookmarks_count?: number;
