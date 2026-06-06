@@ -71,11 +71,42 @@ class UserSerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     actor = UserSerializer(read_only=True)
+    target_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
-        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_id', 'is_read', 'created_at']
+        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_id', 'is_read', 'created_at', 'target_url']
         read_only_fields = ['id', 'recipient', 'actor', 'created_at']
+
+    def get_target_url(self, obj):
+        try:
+            if 'following' in obj.verb:
+                return f"/{obj.actor.username}"
+            
+            if obj.target:
+                if obj.verb == 'replied to your post':
+                    parent_post = getattr(obj.target, 'parent', None)
+                    if parent_post:
+                        return f"/{parent_post.user.username}/status/{parent_post.id}"
+                
+                elif obj.verb == 'commented on your review':
+                    review = getattr(obj.target, 'review_parent', None)
+                    if review:
+                        return f"/{review.user.username}/review/{review.id}"
+                
+                elif obj.verb == 'liked your post':
+                    return f"/{obj.target.user.username}/status/{obj.target.id}"
+                
+                elif obj.verb == 'liked your review':
+                    return f"/{obj.target.user.username}/review/{obj.target.id}"
+                
+                elif obj.verb == 'invited you to join the project':
+                    project = getattr(obj.target, 'project', None)
+                    if project:
+                        return f"/projects/{project.id}"
+        except Exception as e:
+            print("Error generating target_url in NotificationSerializer:", e)
+        return None
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
