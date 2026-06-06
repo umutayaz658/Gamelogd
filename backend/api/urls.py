@@ -23,9 +23,10 @@ router.register(r'bookmarks', BookmarkViewSet, basename='bookmark')
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'project-members', ProjectMemberViewSet, basename='project-member')
 router.register(r'job-postings', JobPostingViewSet, basename='job-posting')
-from .views import PitchViewSet, InvestorCallViewSet
+from .views import PitchViewSet, InvestorCallViewSet, SupportTicketViewSet
 router.register(r'pitches', PitchViewSet, basename='pitch')
 router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call')
+router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),

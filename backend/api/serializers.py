@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined'
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings'
         ]
         read_only_fields = ['id', 'date_joined']
 
@@ -566,3 +566,9 @@ class InvestorCallSerializer(serializers.ModelSerializer):
         model = InvestorCall
         fields = ['id', 'user', 'organization_name', 'investor_type', 'looking_for', 'ticket_size', 'deadline', 'is_active', 'created_at']
         read_only_fields = ['id', 'user', 'created_at']
+
+class SupportTicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupportTicket
+        fields = ['id', 'user', 'ticket_type', 'subject', 'category', 'description', 'steps_to_reproduce', 'severity', 'is_resolved', 'created_at']
+        read_only_fields = ['id', 'user', 'is_resolved', 'created_at']
