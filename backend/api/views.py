@@ -934,6 +934,28 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
         context['request'] = self.request
         return context
 
+    @action(detail=False, methods=['post'])
+    def fetch(self, request):
+        from django.conf import settings
+        from django.core.management import call_command
+        import threading
+
+        client_secret = request.headers.get('X-Cron-Secret') or request.query_params.get('secret')
+        expected_secret = getattr(settings, 'CRON_SECRET', None)
+
+        if not expected_secret or client_secret != expected_secret:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Run feedparser news fetching in a background thread to prevent http connection timeout
+        def run_fetch():
+            try:
+                call_command('fetch_news')
+            except Exception as e:
+                print(f"Error in background fetch_news task: {e}")
+
+        threading.Thread(target=run_fetch).start()
+        return Response({"message": "News fetch task started in background."}, status=status.HTTP_200_OK)
+
 from .serializers import LikeSerializer
 from core.models import Like
 
