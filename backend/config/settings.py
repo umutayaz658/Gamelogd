@@ -89,10 +89,15 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+if os.environ.get('GITHUB_ACTIONS') == 'true':
+    DB_ENGINE = 'django.db.backends.sqlite3'
+else:
+    DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.postgresql')
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'gamelogd'),
+        'ENGINE': DB_ENGINE,
+        'NAME': os.path.join(BASE_DIR, 'db.sqlite3') if DB_ENGINE == 'django.db.backends.sqlite3' else os.environ.get('DB_NAME', 'gamelogd'),
         'USER': os.environ.get('DB_USER', 'postgres'),
         'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
