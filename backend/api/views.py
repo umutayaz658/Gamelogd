@@ -1067,8 +1067,17 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         
         instance.status = 'active'
         instance.save()
+        
+        # Trigger notification to project owner
+        from api.models import Notification
+        Notification.objects.create(
+            recipient=instance.project.owner,
+            actor=request.user,
+            verb='accepted your invite to join the project',
+            target=instance
+        )
+        
         return Response({'status': 'active'}, status=status.HTTP_200_OK)
-
     def perform_destroy(self, instance):
         project = instance.project
         user = self.request.user
@@ -1118,6 +1127,20 @@ class ProjectViewSet(viewsets.ModelViewSet):
         follow_obj, created = ProjectFollow.objects.get_or_create(user=request.user, project=project)
         if not created:
             return Response({"message": "Already following this project."}, status=status.HTTP_200_OK)
+        
+        # Trigger notification to project owner
+        if project.owner != request.user:
+            from api.models import Notification
+            from django.contrib.contenttypes.models import ContentType
+            content_type = ContentType.objects.get_for_model(project.__class__)
+            Notification.objects.create(
+                recipient=project.owner,
+                actor=request.user,
+                verb='followed your project',
+                target_type=content_type,
+                target_id=project.id
+            )
+            
         return Response({"message": f"Now following {project.title}"}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -1183,5 +1206,146 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+from datetime import timedelta
+
+class FeedViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=['get'], url_path='for-you')
+    def for_you(self, request):
+        user = request.user
+        time_limit = timezone.now() - timedelta(days=30)
+        
+        posts = Post.objects.filter(
+            parent__isnull=True,
+            review_parent__isnull=True,
+            news_parent__isnull=True,
+            timestamp__gte=time_limit
+        ).select_related('user').order_by('-timestamp')[:80]
+        
+        if posts.count() < 40:
+            posts = Post.objects.filter(
+                parent__isnull=True,
+                review_parent__isnull=True,
+                news_parent__isnull=True
+            ).select_related('user').order_by('-timestamp')[:80]
+            
+        reviews = Review.objects.filter(timestamp__gte=time_limit).select_related('user', 'game').order_by('-timestamp')[:80]
+        if reviews.count() < 40:
+            reviews = Review.objects.all().select_related('user', 'game').order_by('-timestamp')[:80]
+
+        followed_users_ids = set()
+        library_game_ids = set()
+        library_playtimes = {}
+        interest_keywords = set()
+
+        if user.is_authenticated:
+            followed_users_ids = set(user.following.values_list('following_id', flat=True))
+            library_game_ids = set(user.library.values_list('game_id', flat=True))
+            library_playtimes = {entry.game_id: entry.playtime_forever for entry in user.library.all()}
+            interest_keywords = set(user.interests.values_list('name', flat=True))
+            if user.is_developer:
+                interest_keywords.update(['dev', 'development', 'indie', 'coding', 'engine', 'unity', 'unreal'])
+            if user.is_investor:
+                interest_keywords.update(['pitch', 'invest', 'funding', 'seed', 'startup', 'market'])
+            
+            interest_keywords = {k.lower() for k in interest_keywords}
+
+        scored_items = []
+        now = timezone.now()
+
+        merged_items = []
+        for p in posts:
+            merged_items.append(('post', p))
+        for r in reviews:
+            merged_items.append(('review', r))
+
+        for item_type, item in merged_items:
+            score = 10.0
+            
+            # Recency decay
+            age_in_days = (now - item.timestamp).total_seconds() / 86400.0
+            recency_multiplier = 1.0 / (1.0 + age_in_days * 0.5)
+            score *= recency_multiplier
+            
+            # Social / Engagement factor
+            likes = item.likes.count() if hasattr(item, 'likes') else 0
+            replies = item.replies.count() if hasattr(item, 'replies') else 0
+            
+            score += likes * 0.5
+            score += replies * 0.8
+            
+            # Personalization
+            if user.is_authenticated:
+                if item.user_id in followed_users_ids:
+                    score += 5.0
+                    
+                text_to_search = ""
+                if item_type == 'post':
+                    text_to_search = (item.content or "") + " " + (item.title or "")
+                elif item_type == 'review':
+                    text_to_search = (item.content or "") + " " + (item.game.title or "")
+                    
+                text_to_search_lower = text_to_search.lower()
+                keyword_matches = sum(1 for kw in interest_keywords if kw in text_to_search_lower)
+                score += min(keyword_matches * 2.0, 6.0)
+                
+                if item_type == 'review':
+                    if item.game_id in library_game_ids:
+                        score += 4.0
+                        playtime = library_playtimes.get(item.game_id, 0)
+                        if playtime > 0:
+                            score += 2.0
+                            
+            scored_items.append((score, item_type, item))
+
+        scored_items.sort(key=lambda x: x[0], reverse=True)
+        top_items = scored_items[:60]
+        
+        results = []
+        for score, item_type, item in top_items:
+            if item_type == 'post':
+                data = PostSerializer(item, context={'request': request}).data
+                data['type'] = 'post'
+            else:
+                data = ReviewSerializer(item, context={'request': request}).data
+                data['type'] = 'review'
+            data['relevance_score'] = score
+            results.append(data)
+            
+        return Response(results)
+
+    @action(detail=False, methods=['get'], url_path='following')
+    def following(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            return Response([])
+
+        followed_users_ids = user.following.values_list('following_id', flat=True)
+        
+        posts = Post.objects.filter(
+            user_id__in=followed_users_ids,
+            parent__isnull=True,
+            review_parent__isnull=True,
+            news_parent__isnull=True
+        ).select_related('user').order_by('-timestamp')[:50]
+        
+        reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').order_by('-timestamp')[:50]
+        
+        merged_items = []
+        for p in posts:
+            data = PostSerializer(p, context={'request': request}).data
+            data['type'] = 'post'
+            merged_items.append((p.timestamp, data))
+        for r in reviews:
+            data = ReviewSerializer(r, context={'request': request}).data
+            data['type'] = 'review'
+            merged_items.append((r.timestamp, data))
+            
+        merged_items.sort(key=lambda x: x[0], reverse=True)
+        results = [item[1] for item in merged_items[:50]]
+        return Response(results)
             
 
