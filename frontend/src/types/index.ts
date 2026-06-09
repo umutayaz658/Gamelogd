@@ -17,6 +17,11 @@ export interface User {
     dnd_mode?: boolean;
     steam_id?: string;
     settings?: any;
+    phone_number?: string;
+    gender?: string;
+    is_gamer?: boolean;
+    is_developer?: boolean;
+    is_investor?: boolean;
 }
 
 export interface Game {
