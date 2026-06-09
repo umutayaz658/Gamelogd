@@ -154,7 +154,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                                 className="font-bold text-white hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                {review.user.username}
+                                {review.user.real_name || review.user.username}
                             </Link>
                             <Link
                                 href={`/${review.user.username}`}

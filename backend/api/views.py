@@ -190,6 +190,26 @@ class UserViewSet(viewsets.ModelViewSet):
         user.delete()
         return Response({'message': 'Account deleted successfully'}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='steam-status')
+    def steam_status(self, request, username=None):
+        user = self.get_object()
+        
+        # Check settings for privacy
+        is_private = user.settings.get('steamStatusPrivate', False)
+        is_owner = request.user.is_authenticated and request.user.id == user.id
+        
+        if is_private and not is_owner:
+            return Response({
+                "is_playing": False,
+                "game_title": None,
+                "steam_appid": None,
+                "cover_image": None
+            }, status=status.HTTP_200_OK)
+            
+        from api.services.steam import fetch_steam_currently_playing
+        status_data = fetch_steam_currently_playing(user.steam_id)
+        return Response(status_data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='game-dna')
     def game_dna(self, request, username=None):
         user = self.get_object()
