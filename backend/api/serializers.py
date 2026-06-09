@@ -106,6 +106,18 @@ class NotificationSerializer(serializers.ModelSerializer):
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
+
+                elif 'quoted' in obj.verb or 'reposted' in obj.verb:
+                    if model_name == 'post':
+                        return f"/{obj.target.user.username}/status/{obj.target.id}"
+
+                elif 'accepted' in obj.verb:
+                    project = getattr(obj.target, 'project', None)
+                    if project:
+                        return f"/projects/{project.id}"
+
+                elif 'followed' in obj.verb and model_name == 'project':
+                    return f"/projects/{obj.target.id}"
         except Exception as e:
             print("Error generating target_url in NotificationSerializer:", e)
         return None
