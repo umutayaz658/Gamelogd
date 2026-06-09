@@ -29,6 +29,7 @@ interface User {
     steam_id?: string;
     dnd_mode?: boolean;
     settings?: any;
+    phone_number?: string;
 }
 
 interface AuthContextType {
