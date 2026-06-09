@@ -54,7 +54,7 @@ export default function RightSidebar() {
     }
 
     return (
-        <div className="hidden lg:flex flex-col gap-4 sticky top-20 h-[calc(100vh-6rem)] overflow-y-auto scrollbar-thin-dark pr-1">
+        <div className="hidden lg:flex flex-col gap-4 sticky top-20 h-[calc(100vh-6rem)] overflow-y-auto scrollbar-thin-dark pr-1 pb-32">
             <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-white flex items-center gap-2">
