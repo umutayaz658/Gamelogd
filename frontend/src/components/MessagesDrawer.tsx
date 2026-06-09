@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, ChevronUp, ChevronDown, X, ArrowLeft, Send, Image as ImageIcon, Smile, Loader2 } from 'lucide-react';
+import { MessageSquare, ChevronUp, ChevronDown, X, ArrowLeft, Send, Image as ImageIcon, Smile, Loader2, FileImage } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { getImageUrl } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import GifPicker from '@/components/GifPicker';
+import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 
 // API Data Types
 interface Message {
@@ -22,6 +24,7 @@ interface Message {
     is_read: boolean;
     created_at: string;
     is_me: boolean;
+    gif_url?: string | null;
 }
 
 interface Conversation {
@@ -55,6 +58,24 @@ export default function MessagesDrawer() {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const [selectedGif, setSelectedGif] = useState<string | null>(null);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [showGifPicker, setShowGifPicker] = useState(false);
+
+    const onEmojiClick = (emojiData: EmojiClickData) => {
+        setInputText((prev) => prev + emojiData.emoji);
+        setShowEmojiPicker(false);
+    };
+
+    const handleGifSelect = (url: string) => {
+        setSelectedGif(url);
+        setShowGifPicker(false);
+    };
+
+    const clearGif = () => {
+        setSelectedGif(null);
+    };
 
     // Fetch Conversations
     const fetchConversations = async () => {
@@ -97,21 +118,29 @@ export default function MessagesDrawer() {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!inputText.trim() || !activeChatId) return;
+        const hasText = inputText.trim().length > 0;
+        const hasGif = !!selectedGif;
+        if ((!hasText && !hasGif) || !activeChatId) return;
 
         try {
             const res = await api.post('/messages/', {
                 conversation: activeChatId,
-                content: inputText
+                content: inputText,
+                gif_url: selectedGif
             });
 
             setMessages([...messages, res.data]);
             setInputText('');
+            setSelectedGif(null);
+            setShowEmojiPicker(false);
+            setShowGifPicker(false);
             fetchConversations(); // Update last message in list
         } catch (error) {
             console.error("Failed to send message:", error);
         }
     };
+
+
 
     const handleChatClick = (chatId: number) => {
         setActiveChatId(chatId);
@@ -193,28 +222,51 @@ export default function MessagesDrawer() {
                                     ) : (
                                         messages.map((msg) => (
                                             <div key={msg.id} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.is_me
-                                                    ? 'bg-emerald-600 text-white rounded-tr-none'
-                                                    : 'bg-zinc-800 text-zinc-200 rounded-tl-none'
-                                                    }`}>
+                                                <div className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${msg.is_me ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
                                                     {msg.content}
+                                                    {msg.gif_url && <img src={msg.gif_url} alt="gif" className="mt-2 rounded" />}
                                                 </div>
                                             </div>
                                         ))
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
-                                <form onSubmit={handleSendMessage} className="p-2 border-t border-zinc-800 bg-zinc-900 flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        placeholder="Type a message..."
-                                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-full py-1.5 px-3 text-sm focus:outline-none focus:border-emerald-500/50 transition-all"
-                                    />
-                                    <button type="submit" disabled={!inputText.trim()} className="p-1.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 disabled:opacity-50">
-                                        <Send className="h-3 w-3" />
-                                    </button>
+                                <form onSubmit={handleSendMessage} className="p-2 border-t border-zinc-800 bg-zinc-900">
+                                    <div className="flex items-center gap-2">
+                                        <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="text-zinc-400 hover:text-white">
+                                            <Smile className="h-5 w-5" />
+                                        </button>
+                                        <button type="button" onClick={() => setShowGifPicker(!showGifPicker)} className="text-zinc-400 hover:text-white">
+                                            <FileImage className="h-5 w-5" />
+                                        </button>
+                                        <input
+                                            value={inputText}
+                                            onChange={(e) => setInputText(e.target.value)}
+                                            placeholder="Type a message..."
+                                            className="flex-1 bg-zinc-800 text-white text-sm rounded-full px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                        />
+                                        <button type="submit" disabled={!inputText.trim() && !selectedGif} className="text-emerald-500 hover:text-emerald-400 disabled:opacity-50">
+                                            <Send className="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                    {selectedGif && (
+                                        <div className="mt-2 relative">
+                                            <img src={selectedGif} alt="Selected GIF" className="h-20 rounded" />
+                                            <button type="button" onClick={clearGif} className="absolute -top-1 -right-1 bg-black rounded-full p-0.5">
+                                                <X className="h-3 w-3 text-white" />
+                                            </button>
+                                        </div>
+                                    )}
+                                    {showEmojiPicker && (
+                                        <div className="absolute bottom-16 left-0 z-10">
+                                            <EmojiPicker onEmojiClick={onEmojiClick} />
+                                        </div>
+                                    )}
+                                    {showGifPicker && (
+                                        <div className="absolute bottom-16 left-0 z-10 w-full p-2 bg-zinc-900 border border-zinc-800 rounded-lg">
+                                            <GifPicker onSelected={handleGifSelect} />
+                                        </div>
+                                    )}
                                 </form>
                             </>
                         ) : (
