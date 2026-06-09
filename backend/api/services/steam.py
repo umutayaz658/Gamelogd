@@ -313,3 +313,75 @@ def fetch_steam_library(user_id, steam_id):
           f"{stats['errors']} errors")
     
     return stats
+
+
+def fetch_steam_currently_playing(steam_id):
+    """
+    Fetches the currently playing status for a steam_id using GetPlayerSummaries.
+    Caches the result for 60 seconds to avoid hitting rate limits.
+    """
+    from django.core.cache import cache
+
+    if not steam_id:
+        return {
+            "is_playing": False,
+            "game_title": None,
+            "steam_appid": None,
+            "cover_image": None
+        }
+
+    cache_key = f"steam_status_{steam_id}"
+    cached_status = cache.get(cache_key)
+    if cached_status is not None:
+        return cached_status
+
+    api_key = settings.STEAM_API_KEY
+    if not api_key:
+        print("STEAM_API_KEY not found in environment settings.")
+        return {
+            "is_playing": False,
+            "game_title": None,
+            "steam_appid": None,
+            "cover_image": None
+        }
+
+    url = f"http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key={api_key}&steamids={steam_id}"
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        players = data.get('response', {}).get('players', [])
+        
+        if players:
+            player = players[0]
+            game_title = player.get('gameextrainfo')
+            gameid = player.get('gameid')
+            
+            if gameid:
+                try:
+                    appid = int(gameid)
+                except ValueError:
+                    appid = gameid
+                
+                status_data = {
+                    "is_playing": True,
+                    "game_title": game_title or "Unknown Steam Game",
+                    "steam_appid": appid,
+                    "cover_image": f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
+                }
+                cache.set(cache_key, status_data, 60)
+                return status_data
+
+    except Exception as e:
+        print(f"Error fetching Steam currently playing: {e}")
+
+    status_data = {
+        "is_playing": False,
+        "game_title": None,
+        "steam_appid": None,
+        "cover_image": None
+    }
+    # Cache even the offline/not-playing state for 60 seconds to avoid spamming the Steam API
+    cache.set(cache_key, status_data, 60)
+    return status_data
+

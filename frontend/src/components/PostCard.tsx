@@ -214,7 +214,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="font-bold text-white hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                {post.user.username}
+                                {post.user.real_name || post.user.username}
                             </Link>
                             <Link
                                 href={`/${post.user.username}`}
@@ -344,7 +344,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             <Link
                                                 href={`/projects/${post.project_parent}`}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="text-emerald-500 hover:text-emerald-400 font-bold text-sm hover:underline transition-colors tracking-wide"
+                                                className="text-blue-500 hover:text-blue-400 font-bold text-sm hover:underline transition-colors tracking-wide"
                                             >
                                                 {post.project_details?.title || 'PROJECT DEVLOG'}
                                             </Link>
@@ -375,7 +375,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             alt={post.repost_details.user.username}
                                             className="h-5 w-5 rounded-full object-cover"
                                         />
-                                        <span className="font-bold text-white text-xs">{post.repost_details.user.username}</span>
+                                        <span className="font-bold text-white text-xs">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
                                         <span className="text-zinc-500 text-xs">@{post.repost_details.user.username.toLowerCase()}</span>
                                         <span className="text-zinc-600 text-xs">•</span>
                                         <span className="text-zinc-500 text-xs">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>

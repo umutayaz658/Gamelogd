@@ -8,7 +8,7 @@ import Feed from "@/components/Feed";
 import GameSearchModal from "@/components/GameSearchModal";
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
-import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
 import EditProfileModal from "@/components/EditProfileModal";
@@ -37,6 +37,19 @@ interface UserProfile {
     followers_count?: number;
     following_count?: number;
     is_following?: boolean;
+    steam_id?: string;
+    settings?: any;
+    is_gamer?: boolean;
+    is_developer?: boolean;
+    is_investor?: boolean;
+    reviews_count?: number;
+}
+
+interface SteamStatus {
+    is_playing: boolean;
+    game_title: string | null;
+    steam_appid: number | null;
+    cover_image: string | null;
 }
 
 export default function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -62,6 +75,12 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [isFollowing, setIsFollowing] = useState(false);
     const [followersCount, setFollowersCount] = useState(0);
 
+    // Steam Status State
+    const [steamStatus, setSteamStatus] = useState<SteamStatus | null>(null);
+    const [isSteamStatusLoading, setIsSteamStatusLoading] = useState(false);
+    const [isSteamPrivate, setIsSteamPrivate] = useState(false);
+    const [isUpdatingPrivacy, setIsUpdatingPrivacy] = useState(false);
+
     const isOwnProfile = currentUser?.username === username;
 
     // Fetch Profile Data
@@ -85,6 +104,68 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             fetchProfile();
         }
     }, [username]);
+
+    // Fetch Steam Status
+    useEffect(() => {
+        const fetchSteamStatus = async () => {
+            if (!profileUser?.steam_id) {
+                setSteamStatus(null);
+                return;
+            }
+            setIsSteamStatusLoading(true);
+            try {
+                const res = await api.get(`/users/${profileUser.username}/steam-status/`);
+                setSteamStatus(res.data);
+            } catch (error) {
+                console.error("Failed to fetch Steam status:", error);
+                setSteamStatus(null);
+            } finally {
+                setIsSteamStatusLoading(false);
+            }
+        };
+
+        if (profileUser) {
+            fetchSteamStatus();
+        }
+    }, [profileUser]);
+
+    // Sync privacy state with profileUser settings
+    useEffect(() => {
+        if (profileUser) {
+            setIsSteamPrivate(profileUser.settings?.steamStatusPrivate || false);
+        }
+    }, [profileUser]);
+
+    const toggleSteamPrivacy = async () => {
+        if (!profileUser) return;
+        
+        setIsUpdatingPrivacy(true);
+        const newPrivateState = !isSteamPrivate;
+        
+        // Optimistic update
+        setIsSteamPrivate(newPrivateState);
+        
+        try {
+            const updatedSettings = {
+                ...(profileUser.settings || {}),
+                steamStatusPrivate: newPrivateState
+            };
+            
+            const res = await api.patch('/users/me/', { settings: updatedSettings });
+            setProfileUser(res.data);
+            
+            // Re-fetch steam status since privacy toggled
+            const statusRes = await api.get(`/users/${profileUser.username}/steam-status/`);
+            setSteamStatus(statusRes.data);
+        } catch (error) {
+            console.error("Failed to update Steam status privacy:", error);
+            // Revert on failure
+            setIsSteamPrivate(!newPrivateState);
+            alert("Failed to update privacy settings. Please try again.");
+        } finally {
+            setIsUpdatingPrivacy(false);
+        }
+    };
 
     // Load favorites from profile user
     useEffect(() => {
@@ -307,12 +388,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         social_links: profileUser.social_links || {}
     };
 
-    // Mock Currently Playing
-    const currentlyPlaying = {
-        title: "Baldur's Gate 3",
-        image: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?q=80&w=2070&auto=format&fit=crop",
-        progress: 45
-    };
+
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -351,9 +427,23 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                     <div className="flex items-center gap-4">
                                         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
                                             {displayUser.name}
-                                            <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 text-xs font-bold rounded-lg border border-emerald-500/20 uppercase tracking-wide">
-                                                {displayUser.role}
-                                            </span>
+                                            <div className="flex flex-wrap gap-1.5 items-center">
+                                                {profileUser.is_gamer && (
+                                                    <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-lg border border-emerald-500/20 uppercase tracking-wider animate-in fade-in zoom-in-95 duration-200">
+                                                        Gamer
+                                                    </span>
+                                                )}
+                                                {profileUser.is_developer && (
+                                                    <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] font-bold rounded-lg border border-blue-500/20 uppercase tracking-wider animate-in fade-in zoom-in-95 duration-200">
+                                                        Developer
+                                                    </span>
+                                                )}
+                                                {profileUser.is_investor && (
+                                                    <span className="px-2 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] font-bold rounded-lg border border-amber-500/20 uppercase tracking-wider animate-in fade-in zoom-in-95 duration-200">
+                                                        Investor
+                                                    </span>
+                                                )}
+                                            </div>
                                         </h1>
                                         {isOwnProfile ? (
                                             <button
@@ -408,8 +498,8 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                         <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Following</div>
                                     </div>
                                     <div className="text-center">
-                                        <div className="text-xl font-bold text-emerald-400">{displayUser.stats.gamesPlayed}</div>
-                                        <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Games</div>
+                                        <div className="text-xl font-bold text-emerald-400">{profileUser.reviews_count || 0}</div>
+                                        <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Reviews</div>
                                     </div>
                                 </div>
                             </div>
@@ -511,34 +601,65 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
                         {/* Currently Playing */}
                         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
-                            <div className="flex items-center gap-2 mb-4 text-zinc-100 font-bold">
-                                <Gamepad2 className="h-5 w-5 text-emerald-500" />
-                                <span>Currently Playing</span>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2 text-zinc-100 font-bold">
+                                    <Gamepad2 className="h-5 w-5 text-emerald-500" />
+                                    <span>Currently Playing</span>
+                                </div>
+                                {isOwnProfile && profileUser?.steam_id && (
+                                    <button
+                                        onClick={toggleSteamPrivacy}
+                                        disabled={isUpdatingPrivacy}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white hover:border-zinc-700 transition-all text-xs font-semibold cursor-pointer"
+                                        title={isSteamPrivate ? "Only you can see this status" : "Anyone can see this status"}
+                                    >
+                                        {isSteamPrivate ? (
+                                            <>
+                                                <EyeOff className="h-3.5 w-3.5 text-zinc-500" />
+                                                <span>Private</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                                <span>Public</span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
                             </div>
 
-                            {currentlyPlaying ? (
-                                <>
-                                    <div className="relative aspect-video rounded-xl overflow-hidden mb-3 group cursor-pointer">
-                                        <img
-                                            src={getImageUrl(currentlyPlaying.image)}
-                                            alt={currentlyPlaying.title}
-                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-3">
-                                            <span className="font-bold text-white">{currentlyPlaying.title}</span>
+                            {isSteamStatusLoading ? (
+                                <div className="aspect-video rounded-xl bg-zinc-950 border border-zinc-800/50 flex items-center justify-center">
+                                    <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
+                                </div>
+                            ) : steamStatus && steamStatus.is_playing ? (
+                                <div className="relative aspect-video rounded-xl overflow-hidden group">
+                                    <img
+                                        src={steamStatus.cover_image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"}
+                                        alt={steamStatus.game_title || "Game"}
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent flex flex-col justify-between p-3.5">
+                                        <div className="flex justify-end">
+                                            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 uppercase tracking-wider animate-pulse">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                                In-Game
+                                            </span>
                                         </div>
+                                        <span className="font-bold text-white text-sm md:text-base leading-snug drop-shadow-md">
+                                            {steamStatus.game_title}
+                                        </span>
                                     </div>
-                                    <div className="flex items-center gap-3 text-xs font-bold text-zinc-400">
-                                        <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                            <div className="h-full bg-emerald-500 w-[45%] rounded-full" style={{ width: `${currentlyPlaying.progress}%` }} />
-                                        </div>
-                                        <span>{currentlyPlaying.progress}%</span>
-                                    </div>
-                                </>
+                                </div>
                             ) : (
-                                <div className="aspect-video rounded-xl bg-zinc-950 border border-dashed border-zinc-800 flex flex-col items-center justify-center text-zinc-600 gap-2">
-                                    <Gamepad2 className="h-8 w-8 opacity-50" />
-                                    <span className="text-xs font-bold uppercase">Not Playing</span>
+                                <div className="aspect-video rounded-xl bg-zinc-950 border border-dashed border-zinc-800 flex flex-col items-center justify-center text-zinc-500 gap-2">
+                                    <Gamepad2 className="h-8 w-8 opacity-40 text-zinc-500" />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Not Playing</span>
+                                    {isOwnProfile && !profileUser?.steam_id && (
+                                        <Link href="/settings?tab=connected" className="text-[11px] text-emerald-500 hover:underline font-semibold mt-1">
+                                            Connect Steam Account
+                                        </Link>
+                                    )}
                                 </div>
                             )}
                         </div>
