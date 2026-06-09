@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
@@ -35,6 +35,10 @@ export default function NewsPage() {
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
     const [ordering, setOrdering] = useState<'newest' | 'oldest'>('newest');
     const [currentPage, setCurrentPage] = useState(1);
+    const [isSortOpen, setIsSortOpen] = useState(false);
+
+    const filterRef = useRef<HTMLDivElement>(null);
+    const isFirstMount = useRef(true);
 
     useEffect(() => {
         const fetchNews = async () => {
@@ -50,6 +54,31 @@ export default function NewsPage() {
         };
         fetchNews();
     }, []);
+
+    // Outside click detection for custom sort dropdown
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const dropdown = document.getElementById('sort-dropdown');
+            if (dropdown && !dropdown.contains(event.target as Node)) {
+                setIsSortOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    // Smooth scroll to news grid when page changes (ignoring first mount)
+    useEffect(() => {
+        if (isFirstMount.current) {
+            isFirstMount.current = false;
+            return;
+        }
+        if (filterRef.current) {
+            filterRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [currentPage]);
 
     const handleCategoryClick = (catId: string) => {
         if (catId === 'all') {
@@ -136,7 +165,7 @@ export default function NewsPage() {
                         </div>
 
                         {/* Hero Section */}
-                        {!loading && currentPage === 1 && heroNews.length > 0 && (
+                        {!loading && heroNews.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[400px]">
                                 {/* Main Hero */}
                                 <div onClick={() => handleCardClick(heroNews[0].id)} className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block">
@@ -194,7 +223,7 @@ export default function NewsPage() {
                         )}
 
                         {/* Filters & Sorting */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+                        <div ref={filterRef} className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
                             {/* Category Tabs (Multi-Select) */}
                             <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
                                 {CATEGORIES.map(cat => {
@@ -218,20 +247,52 @@ export default function NewsPage() {
                                 })}
                             </div>
 
-                            {/* Date Ordering Selector */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-zinc-500">Sıralama:</span>
-                                <select
-                                    value={ordering}
-                                    onChange={(e) => {
-                                        setOrdering(e.target.value as 'newest' | 'oldest');
-                                        setCurrentPage(1);
-                                    }}
-                                    className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 cursor-pointer transition-colors"
+                            {/* Date Ordering Custom Selector */}
+                            <div className="flex items-center gap-3 relative" id="sort-dropdown">
+                                <span className="text-sm text-zinc-500">Sort by:</span>
+                                <button
+                                    onClick={() => setIsSortOpen(!isSortOpen)}
+                                    className="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm text-white hover:border-zinc-700 hover:text-emerald-400 transition-all focus:outline-none focus:border-emerald-500 min-w-[140px]"
                                 >
-                                    <option value="newest">Yeniden Eskiye (Newest)</option>
-                                    <option value="oldest">Eskiden Yeniye (Oldest)</option>
-                                </select>
+                                    <span>{ordering === 'newest' ? 'Newest First' : 'Oldest First'}</span>
+                                    <svg
+                                        className={`w-4 h-4 text-zinc-400 transition-transform ${isSortOpen ? 'rotate-180 text-emerald-500' : ''}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+
+                                {isSortOpen && (
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={() => {
+                                                setOrdering('newest');
+                                                setCurrentPage(1);
+                                                setIsSortOpen(false);
+                                            }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-850 ${
+                                                ordering === 'newest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
+                                            }`}
+                                        >
+                                            Newest First
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setOrdering('oldest');
+                                                setCurrentPage(1);
+                                                setIsSortOpen(false);
+                                            }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-850 ${
+                                                ordering === 'oldest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
+                                            }`}
+                                        >
+                                            Oldest First
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -292,7 +353,7 @@ export default function NewsPage() {
                                             disabled={currentPage === 1}
                                             className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
                                         >
-                                            Önceki
+                                            Previous
                                         </button>
                                         
                                         {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
@@ -314,7 +375,7 @@ export default function NewsPage() {
                                             disabled={currentPage === totalPages}
                                             className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
                                         >
-                                            Sonraki
+                                            Next
                                         </button>
                                     </div>
                                 )}
