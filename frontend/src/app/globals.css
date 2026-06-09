@@ -27,6 +27,11 @@ body {
 
 @layer utilities {
 
+  .scrollbar-thin-dark {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+
   /* Custom Dark Scrollbar for Webkit (Chrome, Safari, Edge) */
   .scrollbar-thin-dark::-webkit-scrollbar {
     height: 8px;
