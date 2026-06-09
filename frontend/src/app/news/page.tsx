@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
@@ -32,14 +32,15 @@ export default function NewsPage() {
     const router = useRouter();
     const [news, setNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeCategory, setActiveCategory] = useState('all');
+    const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
+    const [ordering, setOrdering] = useState<'newest' | 'oldest'>('newest');
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         const fetchNews = async () => {
             setLoading(true);
             try {
-                const params = activeCategory === 'all' ? {} : { category: activeCategory };
-                const res = await api.get('/news/', { params });
+                const res = await api.get('/news/');
                 setNews(res.data);
             } catch (err) {
                 console.error("Failed to fetch news:", err);
@@ -48,10 +49,58 @@ export default function NewsPage() {
             }
         };
         fetchNews();
-    }, [activeCategory]);
+    }, []);
 
-    const heroNews = news.slice(0, 3);
-    const gridNews = news.slice(3);
+    const handleCategoryClick = (catId: string) => {
+        if (catId === 'all') {
+            setSelectedCategories(['all']);
+        } else {
+            let newSelection = selectedCategories.filter(c => c !== 'all');
+            if (newSelection.includes(catId)) {
+                newSelection = newSelection.filter(c => c !== catId);
+            } else {
+                newSelection.push(catId);
+            }
+
+            if (newSelection.length === 0) {
+                setSelectedCategories(['all']);
+            } else {
+                setSelectedCategories(newSelection);
+            }
+        }
+        setCurrentPage(1);
+    };
+
+    const filteredAndSortedNews = useMemo(() => {
+        let result = [...news];
+
+        if (!selectedCategories.includes('all')) {
+            result = result.filter(item => selectedCategories.includes(item.category));
+        }
+
+        result.sort((a, b) => {
+            const dateA = new Date(a.pub_date).getTime();
+            const dateB = new Date(b.pub_date).getTime();
+            return ordering === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+
+        return result;
+    }, [news, selectedCategories, ordering]);
+
+    const heroNews = useMemo(() => {
+        return filteredAndSortedNews.slice(0, 3);
+    }, [filteredAndSortedNews]);
+
+    const gridNews = useMemo(() => {
+        const start = 3 + (currentPage - 1) * 20;
+        const end = start + 20;
+        return filteredAndSortedNews.slice(start, end);
+    }, [filteredAndSortedNews, currentPage]);
+
+    const totalPages = useMemo(() => {
+        const totalGridItems = Math.max(0, filteredAndSortedNews.length - 3);
+        return Math.ceil(totalGridItems / 20);
+    }, [filteredAndSortedNews]);
 
     const handleCardClick = (id: number) => {
         router.push(`/news/${id}`);
@@ -87,7 +136,7 @@ export default function NewsPage() {
                         </div>
 
                         {/* Hero Section */}
-                        {!loading && heroNews.length > 0 && (
+                        {!loading && currentPage === 1 && heroNews.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[400px]">
                                 {/* Main Hero */}
                                 <div onClick={() => handleCardClick(heroNews[0].id)} className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block">
@@ -144,22 +193,46 @@ export default function NewsPage() {
                             </div>
                         )}
 
-                        {/* Category Tabs */}
-                        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-zinc-800">
-                            {CATEGORIES.map(cat => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => setActiveCategory(cat.id)}
-                                    className={`
-                                        px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all
-                                        ${activeCategory === cat.id
-                                            ? 'bg-white text-black'
-                                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'}
-                                    `}
+                        {/* Filters & Sorting */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+                            {/* Category Tabs (Multi-Select) */}
+                            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
+                                {CATEGORIES.map(cat => {
+                                    const isSelected = cat.id === 'all'
+                                        ? selectedCategories.includes('all')
+                                        : selectedCategories.includes(cat.id);
+                                    return (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => handleCategoryClick(cat.id)}
+                                            className={`
+                                                px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all
+                                                ${isSelected
+                                                    ? 'bg-emerald-500 text-black font-bold'
+                                                    : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'}
+                                            `}
+                                        >
+                                            {cat.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Date Ordering Selector */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-zinc-500">Sıralama:</span>
+                                <select
+                                    value={ordering}
+                                    onChange={(e) => {
+                                        setOrdering(e.target.value as 'newest' | 'oldest');
+                                        setCurrentPage(1);
+                                    }}
+                                    className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 cursor-pointer transition-colors"
                                 >
-                                    {cat.label}
-                                </button>
-                            ))}
+                                    <option value="newest">Yeniden Eskiye (Newest)</option>
+                                    <option value="oldest">Eskiden Yeniye (Oldest)</option>
+                                </select>
+                            </div>
                         </div>
 
                         {/* News Grid */}
@@ -168,51 +241,88 @@ export default function NewsPage() {
                                 <span className="loading-spinner text-emerald-500">Loading news...</span>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {gridNews.map((item) => (
-                                    <div key={item.id} onClick={() => handleCardClick(item.id)} className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group cursor-pointer block">
-                                        <div className="relative h-48 overflow-hidden">
-                                            <img
-                                                src={item.image_url || "/placeholder-news.jpg"}
-                                                alt={item.title}
-                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                            />
-                                            <div className="absolute top-3 left-3">
-                                                <span className="bg-black/60 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium border border-white/10">
-                                                    {item.category}
-                                                </span>
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {gridNews.map((item) => (
+                                        <div key={item.id} onClick={() => handleCardClick(item.id)} className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group cursor-pointer block">
+                                            <div className="relative h-48 overflow-hidden">
+                                                <img
+                                                    src={item.image_url || "/placeholder-news.jpg"}
+                                                    alt={item.title}
+                                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                />
+                                                <div className="absolute top-3 left-3">
+                                                    <span className="bg-black/60 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium border border-white/10">
+                                                        {item.category}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="p-5 flex-1 flex flex-col">
+                                                <div className="flex items-center gap-2 text-xs text-zinc-400 mb-3">
+                                                    {item.source_icon && <img src={item.source_icon} className="w-4 h-4 rounded-full" />}
+                                                    <span className="font-medium text-zinc-300">{item.source_name}</span>
+                                                    <span>•</span>
+                                                    <span>{new Date(item.pub_date).toLocaleDateString()}</span>
+                                                </div>
+                                                <h3 className="text-xl font-bold leading-snug line-clamp-2 mb-3 group-hover:text-emerald-400 transition-colors">
+                                                    {item.title}
+                                                </h3>
+                                                <p className="text-zinc-400 text-sm line-clamp-3 mb-4 flex-1">
+                                                    {item.description.replace(/<[^>]*>/g, '').replace('...', '')}
+                                                </p>
+                                                <a
+                                                    href={item.link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={handleExternalLink}
+                                                    className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto w-fit"
+                                                >
+                                                    Read Article <ExternalLink className="h-4 w-4" />
+                                                </a>
                                             </div>
                                         </div>
-                                        <div className="p-5 flex-1 flex flex-col">
-                                            <div className="flex items-center gap-2 text-xs text-zinc-400 mb-3">
-                                                {item.source_icon && <img src={item.source_icon} className="w-4 h-4 rounded-full" />}
-                                                <span className="font-medium text-zinc-300">{item.source_name}</span>
-                                                <span>•</span>
-                                                <span>{new Date(item.pub_date).toLocaleDateString()}</span>
-                                            </div>
-                                            <h3 className="text-xl font-bold leading-snug line-clamp-2 mb-3 group-hover:text-emerald-400 transition-colors">
-                                                {item.title}
-                                            </h3>
-                                            <p className="text-zinc-400 text-sm line-clamp-3 mb-4 flex-1">
-                                                {item.description.replace(/<[^>]*>/g, '').replace('...', '')}
-                                            </p>
-                                            <a
-                                                href={item.link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                onClick={handleExternalLink}
-                                                className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto w-fit"
+                                    ))}
+                                </div>
+
+                                {/* Pagination Controls */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-center flex-wrap gap-2 mt-12">
+                                        <button
+                                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                            disabled={currentPage === 1}
+                                            className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
+                                        >
+                                            Önceki
+                                        </button>
+                                        
+                                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                            <button
+                                                key={page}
+                                                onClick={() => setCurrentPage(page)}
+                                                className={`w-10 h-10 rounded-lg text-sm font-medium transition-all ${
+                                                    currentPage === page
+                                                        ? 'bg-emerald-500 text-black font-bold'
+                                                        : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                                                }`}
                                             >
-                                                Read Article <ExternalLink className="h-4 w-4" />
-                                            </a>
-                                        </div>
+                                                {page}
+                                            </button>
+                                        ))}
+
+                                        <button
+                                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
+                                        >
+                                            Sonraki
+                                        </button>
                                     </div>
-                                ))}
-                            </div>
+                                )}
+                            </>
                         )}
-                        {!loading && news.length === 0 && (
+                        {!loading && filteredAndSortedNews.length === 0 && (
                             <div className="text-center py-20 text-zinc-500">
-                                No news found for this category.
+                                No news found for this category selection.
                             </div>
                         )}
                     </div>
