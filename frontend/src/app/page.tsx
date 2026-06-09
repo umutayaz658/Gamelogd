@@ -6,28 +6,23 @@ import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import Feed from "@/components/Feed";
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Home() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'for-you' | 'following'>('for-you');
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchFeed = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const [postsRes, reviewsRes] = await Promise.all([
-          api.get('/posts/'),
-          api.get('/reviews/')
-        ]);
-
-        const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
-        const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
-
-        const combined = [...posts, ...reviews].sort((a: any, b: any) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-
-        setPosts(combined);
+        const endpoint = activeTab === 'following' ? '/feed/following/' : '/feed/for-you/';
+        const res = await api.get(endpoint);
+        setPosts(res.data);
       } catch (err) {
         console.error('Failed to fetch feed:', err);
         setError('Failed to load feed. Please try again later.');
@@ -37,7 +32,7 @@ export default function Home() {
     };
 
     fetchFeed();
-  }, []);
+  }, [activeTab]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -52,6 +47,32 @@ export default function Home() {
 
           {/* Main Feed - Full width on mobile, 6 cols on desktop */}
           <div className="col-span-12 lg:col-span-6">
+            {user && (
+              <div className="flex border-b border-zinc-800 mb-4">
+                <button
+                  onClick={() => setActiveTab('for-you')}
+                  className={`flex-1 py-3 text-center font-bold text-sm transition-colors relative ${
+                    activeTab === 'for-you' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  For You
+                  {activeTab === 'for-you' && (
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('following')}
+                  className={`flex-1 py-3 text-center font-bold text-sm transition-colors relative ${
+                    activeTab === 'following' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  Following
+                  {activeTab === 'following' && (
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
+                  )}
+                </button>
+              </div>
+            )}
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>

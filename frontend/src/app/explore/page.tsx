@@ -36,19 +36,8 @@ export default function ExplorePage() {
         const fetchFeed = async () => {
             setIsLoading(true);
             try {
-                const [postsRes, reviewsRes] = await Promise.all([
-                    api.get('/posts/'),
-                    api.get('/reviews/')
-                ]);
-
-                const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
-                const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
-
-                const combined = [...posts, ...reviews].sort((a: any, b: any) =>
-                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                );
-
-                setPosts(combined);
+                const res = await api.get('/feed/for-you/');
+                setPosts(res.data);
             } catch (error) {
                 console.error("Failed to fetch feed:", error);
             } finally {

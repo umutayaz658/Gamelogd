@@ -151,7 +151,20 @@ export interface Reply extends Post {
     replyToUsername: string;
 }
 
-export type FeedItem = Post | Review | Reply;
+export interface News {
+    id: number;
+    title: string;
+    link: string;
+    image_url: string | null;
+    description: string;
+    pub_date: string;
+    category: string;
+    source_name: string;
+    source_icon: string | null;
+    type?: 'news';
+}
+
+export type FeedItem = Post | Review | Reply | News;
 
 export interface Notification {
     id: number;
