@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Loader2, UserPlus, Heart, AtSign, MessageSquare, Users, Star, CheckCircle2, Repeat } from 'lucide-react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
-import { Heart, UserPlus, Shield, MessageSquare, Star, AtSign, CheckCircle2, Loader2, Users } from 'lucide-react';
+
 import api from "@/lib/api";
 import { getImageUrl } from "@/lib/utils";
 import { useNotifications } from "@/context/NotificationContext";
@@ -84,11 +85,12 @@ export default function NotificationsPage() {
     };
 
     const getIcon = (verb: string) => {
-        if (verb.includes('following')) return <UserPlus className="h-5 w-5 text-blue-500" />;
-        if (verb.includes('liked')) return <Heart className="h-5 w-5 text-red-500 fill-red-500" />;
-        if (verb.includes('mentioned')) return <AtSign className="h-5 w-5 text-emerald-500" />;
-        if (verb.includes('replied')) return <MessageSquare className="h-5 w-5 text-purple-500" />;
-        if (verb.includes('invited')) return <Users className="h-5 w-5 text-emerald-500" />;
+        if (verb.includes('liked')) return <Heart className="h-5 w-5 text-rose-500" />;
+        if (verb.includes('mentioned')) return <AtSign className="h-5 w-5 text-sky-500" />;
+        if (verb.includes('replied')) return <MessageSquare className="h-5 w-5 text-emerald-500" />;
+        if (verb.includes('reposted') || verb.includes('quoted')) return <Repeat className="h-5 w-5 text-emerald-500" />;
+        if (verb.includes('invited') || verb.includes('accepted')) return <Users className="h-5 w-5 text-amber-500" />;
+        if (verb.includes('followed') || verb.includes('following')) return <UserPlus className="h-5 w-5 text-indigo-500" />;
         return <Star className="h-5 w-5 text-yellow-500" />;
     };
 

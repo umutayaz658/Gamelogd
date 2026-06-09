@@ -177,6 +177,17 @@ const translations = {
         errorSupportSubmit: "Failed to submit support ticket.",
         successBugSubmit: "Bug report submitted successfully! Thank you for helping us improve Gamelogd.",
         errorBugSubmit: "Failed to submit bug report.",
+        realName: "Real Name",
+        bio: "Bio",
+        location: "Location",
+        phoneNumber: "Phone Number",
+        gender: "Gender",
+        birthDate: "Birth Date",
+        showBirthDate: "Show Birth Date on Profile",
+        roles: "Roles",
+        gamer: "Gamer",
+        developer: "Developer",
+        investor: "Investor",
         aboutContent: "Gamelogd is a next-generation social network tailored specifically for game enthusiasts, indie developers, and venture investors. Our platform empowers gamers to sync their libraries, catalog playtimes, and discover tailored suggestions. Developers can host development logs (Devlogs) for their games, coordinate project teams, and promote open roles. Investors can browse game pitches, analyze genre DNA trends, and schedule investor meetings directly in one integrated, responsive workspace.",
         tosContent: "By utilizing Gamelogd, you agree to comply with standard platform guidelines. All content generated, including comments, game ratings, and project pitch descriptions must respect intellectual property rights and follow respectful community interaction standards. Abuse, harassment, scraping, or malicious API exploitation are strictly prohibited and will lead to swift account termination without warnings.",
         privacyContent: "Your privacy is paramount at Gamelogd. We collect registration details (username, email), optional platform integration coordinates (Steam ID, connection state toggles), and system settings. When syncing Steam libraries, we process only public game playtimes to calculate preferences and display achievements. We do not sell user data to advertising entities, and users maintain complete control over profile visibility through the Privacy & Safety control settings.",
@@ -292,6 +303,17 @@ const translations = {
         errorSupportSubmit: "Destek talebi iletilemedi.",
         successBugSubmit: "Hata raporu başarıyla iletildi! Gamelogd'u geliştirmemize yardımcı olduğunuz için teşekkür ederiz.",
         errorBugSubmit: "Hata raporu iletilemedi.",
+        realName: "Gerçek İsim",
+        bio: "Biyografi",
+        location: "Konum",
+        phoneNumber: "Telefon Numarası",
+        gender: "Cinsiyet",
+        birthDate: "Doğum Tarihi",
+        showBirthDate: "Doğum Tarihini Göster",
+        roles: "Roller",
+        gamer: "Oyuncu",
+        developer: "Geliştirici",
+        investor: "Yatırımcı",
         aboutContent: "Gamelogd, oyun severler, bağımsız geliştiriciler ve girişim yatırımcıları için özel olarak tasarlanmış yeni nesil bir sosyal ağdır. Platformumuz, oyuncuların kütüphanelerini eşitlemelerine, oyun sürelerini kataloglamalarına ve özel öneriler keşfetmelerine olanak tanır. Geliştiriciler oyunları için geliştirme günlükleri (Devlogs) barındırabilir, proje ekiplerini koordine edebilir ve açık rolleri tanıtabilir. Yatırımcılar ise tek bir entegre çalışma alanında oyun sunumlarına göz atabilir, tür DNA trendlerini analiz edebilir ve doğrudan yatırımcı toplantıları planlayabilir.",
         tosContent: "Gamelogd'u kullanarak standart platform kurallarına uymayı kabul etmiş olursunuz. Yorumlar, oyun derecelendirmeleri ve proje sunum açıklamaları dahil olmak üzere oluşturulan tüm içerikler fikri mülkiyet haklarına saygı duymalı ve topluluk etkileşim standartlarına uygun olmalıdır. Kötüye kullanım, taciz veya kötü niyetli API kullanımı kesinlikle yasaktır ve hesapların uyarısız kapatılmasına yol açacaktır.",
         privacyContent: "Gizliliğiniz Gamelogd için son derece önemlidir. Kayıt bilgilerini (kullanıcı adı, e-posta), isteğe bağlı platform entegrasyon koordinatlarını (Steam ID, bağlantı durumu anahtarları) ve sistem ayarlarını toplarız. Steam kütüphanelerini eşitlerken, yalnızca tercihleri hesaplamak ve başarımları göstermek için herkese açık oyun sürelerini işleriz. Kullanıcı verilerini reklam şirketlerine satmayız ve kullanıcılar Gizlilik & Güvenlik ayarları aracılığıyla profil görünürlüğünü tamamen kontrol edebilirler.",
@@ -726,12 +748,21 @@ function SettingsContent() {
         accentColor: 'Emerald'
     });
 
-    // User details state
     const { user, updateUser, logout } = useAuth();
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+    const [realName, setRealName] = useState('');
+    const [bio, setBio] = useState('');
+    const [location, setLocation] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [gender, setGender] = useState('Prefer not to say');
+    const [birthDate, setBirthDate] = useState('');
+    const [showBirthDate, setShowBirthDate] = useState(false);
+    const [isGamer, setIsGamer] = useState(false);
+    const [isDeveloper, setIsDeveloper] = useState(false);
+    const [isInvestor, setIsInvestor] = useState(false);
     // Steam State
     const [steamIdInput, setSteamIdInput] = useState('');
     const [isSyncing, setIsSyncing] = useState(false);
@@ -812,6 +843,16 @@ function SettingsContent() {
         if (user) {
             setUsername(user.username || '');
             setEmail(user.email || '');
+            setRealName(user.real_name || '');
+            setBio(user.bio || '');
+            setLocation(user.location || '');
+            setPhoneNumber(user.phone_number || '');
+            setGender(user.gender || 'Prefer not to say');
+            setBirthDate(user.birth_date || '');
+            setShowBirthDate(user.show_birth_date || false);
+            setIsGamer(user.is_gamer || false);
+            setIsDeveloper(user.is_developer || false);
+            setIsInvestor(user.is_investor || false);
             if (user.steam_id) {
                 setSteamConnected(true);
                 setSteamIdInput(user.steam_id);
@@ -857,7 +898,20 @@ function SettingsContent() {
         }
         setIsSavingProfile(true);
         try {
-            const res = await api.patch('/users/me/', { username, email });
+            const res = await api.patch('/users/me/', {
+                username,
+                email,
+                real_name: realName,
+                bio,
+                location,
+                phone_number: phoneNumber,
+                gender,
+                birth_date: birthDate,
+                show_birth_date: showBirthDate,
+                is_gamer: isGamer,
+                is_developer: isDeveloper,
+                is_investor: isInvestor
+            });
             updateUser(res.data);
             alert(t('successSaveProfile'));
         } catch (error: any) {
@@ -1186,6 +1240,107 @@ function SettingsContent() {
                                                 onChange={(e) => setEmail(e.target.value)}
                                                 className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('realName')}</label>
+                                            <input
+                                                type="text"
+                                                value={realName}
+                                                onChange={(e) => setRealName(e.target.value)}
+                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('bio')}</label>
+                                            <textarea
+                                                value={bio}
+                                                onChange={(e) => setBio(e.target.value)}
+                                                rows={4}
+                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all resize-none`}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('location')}</label>
+                                            <input
+                                                type="text"
+                                                value={location}
+                                                onChange={(e) => setLocation(e.target.value)}
+                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('phoneNumber')}</label>
+                                            <input
+                                                type="text"
+                                                value={phoneNumber}
+                                                onChange={(e) => setPhoneNumber(e.target.value)}
+                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('gender')}</label>
+                                            <select
+                                                value={gender}
+                                                onChange={(e) => setGender(e.target.value)}
+                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                            >
+                                                <option value="Male">Male</option>
+                                                <option value="Female">Female</option>
+                                                <option value="Non-binary">Non-binary</option>
+                                                <option value="Prefer not to say">Prefer not to say</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('birthDate')}</label>
+                                            <input
+                                                type="date"
+                                                value={birthDate}
+                                                onChange={(e) => setBirthDate(e.target.value)}
+                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-between py-2 border-b border-zinc-800/50">
+                                            <div>
+                                                <div className="font-bold text-sm text-zinc-400 uppercase tracking-wider">{t('showBirthDate')}</div>
+                                                <div className="text-xs text-zinc-500">Show your birth date on your public profile.</div>
+                                            </div>
+                                            <Switch 
+                                                checked={showBirthDate} 
+                                                onChange={() => setShowBirthDate(!showBirthDate)} 
+                                                activeBgClass={activeColor.switchBg}
+                                            />
+                                        </div>
+                                        <div className="space-y-3 py-2">
+                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider block">{t('roles')}</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <label className="flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isGamer} 
+                                                        onChange={(e) => setIsGamer(e.target.checked)} 
+                                                        className={`rounded ${activeColor.accentRange} bg-zinc-950 border-zinc-800 h-4 w-4`}
+                                                    />
+                                                    <span className="text-sm font-medium">{t('gamer')}</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isDeveloper} 
+                                                        onChange={(e) => setIsDeveloper(e.target.checked)} 
+                                                        className={`rounded ${activeColor.accentRange} bg-zinc-950 border-zinc-800 h-4 w-4`}
+                                                    />
+                                                    <span className="text-sm font-medium">{t('developer')}</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isInvestor} 
+                                                        onChange={(e) => setIsInvestor(e.target.checked)} 
+                                                        className={`rounded ${activeColor.accentRange} bg-zinc-950 border-zinc-800 h-4 w-4`}
+                                                    />
+                                                    <span className="text-sm font-medium">{t('investor')}</span>
+                                                </label>
+                                            </div>
                                         </div>
 
                                         <button

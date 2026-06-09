@@ -736,9 +736,10 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                             {activeTab === 'replies' && (
                                 (() => {
                                     // Local Context Replies (for immediate feedback)
-                                    const contextReplies = feedItems.filter(item =>
-                                        item.user.username === username && ((item as any).parent || (item as any).review_parent || item.type === 'reply')
-                                    );
+                                    const contextReplies = feedItems.filter(item => {
+                                        if (!('user' in item)) return false;
+                                        return item.user.username === username && ((item as any).parent || (item as any).review_parent || item.type === 'reply');
+                                    });
 
                                     // In a real app, we might also want to filter `userPosts` for replies if the API returns them
                                     // But since `userPosts` usually fetches root posts, let's assume we rely on context
