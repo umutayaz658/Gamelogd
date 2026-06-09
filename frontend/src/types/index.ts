@@ -237,3 +237,25 @@ export interface InvestorCall {
     is_active: boolean;
     created_at: string;
 }
+
+export interface CompanyInfo {
+    name: string;
+    description: string;
+    logo_url: string | null;
+    country: number | null;
+    start_date: string | null;
+    websites: { url: string; category: number }[];
+    igdb_url: string;
+    resolved_from: string | null;
+}
+
+export interface CompanyGame {
+    igdb_id: number;
+    name: string;
+    cover_url: string | null;
+    release_date: string | null;
+    rating: number | null;
+    is_developer: boolean;
+    is_publisher: boolean;
+    local_id: number | null;
+}

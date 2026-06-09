@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import api from '@/lib/api';
 import { GameDetail, Review } from '@/types';
 import Navbar from '@/components/Navbar';
@@ -187,11 +188,18 @@ export default function GameDetailPage() {
                                         {new Date(game.release_date).getFullYear()}
                                     </span>
                                 )}
-                                {game.developer && (
-                                    <span className="text-zinc-300 bg-zinc-900/60 px-3 py-1 rounded-full border border-zinc-700/50 backdrop-blur-sm">
-                                        {game.developer}
-                                    </span>
-                                )}
+                                {game.developer && game.developer.split(',').map((dev, i) => {
+                                    const devName = dev.trim();
+                                    return (
+                                        <Link 
+                                            key={i} 
+                                            href={`/developer/${encodeURIComponent(devName)}`}
+                                            className="text-zinc-300 bg-zinc-900/60 px-3 py-1 rounded-full border border-zinc-700/50 backdrop-blur-sm hover:text-indigo-400 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all duration-300 cursor-pointer"
+                                        >
+                                            {devName}
+                                        </Link>
+                                    );
+                                })}
                             </div>
 
                             {game.genres && game.genres.length > 0 && (
