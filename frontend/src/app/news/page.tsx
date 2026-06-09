@@ -40,6 +40,48 @@ export default function NewsPage() {
     const filterRef = useRef<HTMLDivElement>(null);
     const isFirstMount = useRef(true);
 
+    // Custom smooth scroll with ease-in-out physics
+    const smoothScrollTo = (targetY: number, duration: number = 700) => {
+        const startY = window.scrollY;
+        const difference = targetY - startY;
+        let startTime: number | null = null;
+
+        const easeInOutQuad = (t: number, b: number, c: number, d: number) => {
+            t /= d / 2;
+            if (t < 1) return c / 2 * t * t + b;
+            t--;
+            return -c / 2 * (t * (t - 2) - 1) + b;
+        };
+
+        const animateScroll = (timestamp: number) => {
+            if (startTime === null) startTime = timestamp;
+            const timeElapsed = timestamp - startTime;
+            const nextY = easeInOutQuad(timeElapsed, startY, difference, duration);
+
+            window.scrollTo(0, nextY);
+
+            if (timeElapsed < duration) {
+                requestAnimationFrame(animateScroll);
+            } else {
+                window.scrollTo(0, targetY);
+            }
+        };
+
+        requestAnimationFrame(animateScroll);
+    };
+
+    // Load page query parameter on mount
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const pageParam = params.get('page');
+        if (pageParam) {
+            const parsedPage = parseInt(pageParam, 10);
+            if (!isNaN(parsedPage) && parsedPage > 0) {
+                setCurrentPage(parsedPage);
+            }
+        }
+    }, []);
+
     useEffect(() => {
         const fetchNews = async () => {
             setLoading(true);
@@ -76,9 +118,18 @@ export default function NewsPage() {
             return;
         }
         if (filterRef.current) {
-            filterRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const rect = filterRef.current.getBoundingClientRect();
+            const targetY = window.scrollY + rect.top - 20; // 20px offset
+            smoothScrollTo(targetY, 700);
         }
     }, [currentPage]);
+
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', page.toString());
+        window.history.pushState({}, '', url.toString());
+    };
 
     const handleCategoryClick = (catId: string) => {
         if (catId === 'all') {
@@ -97,7 +148,7 @@ export default function NewsPage() {
                 setSelectedCategories(newSelection);
             }
         }
-        setCurrentPage(1);
+        handlePageChange(1);
     };
 
     const filteredAndSortedNews = useMemo(() => {
@@ -270,10 +321,10 @@ export default function NewsPage() {
                                         <button
                                             onClick={() => {
                                                 setOrdering('newest');
-                                                setCurrentPage(1);
+                                                handlePageChange(1);
                                                 setIsSortOpen(false);
                                             }}
-                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-850 ${
+                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
                                                 ordering === 'newest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
                                             }`}
                                         >
@@ -282,10 +333,10 @@ export default function NewsPage() {
                                         <button
                                             onClick={() => {
                                                 setOrdering('oldest');
-                                                setCurrentPage(1);
+                                                handlePageChange(1);
                                                 setIsSortOpen(false);
                                             }}
-                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-850 ${
+                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
                                                 ordering === 'oldest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
                                             }`}
                                         >
@@ -349,7 +400,7 @@ export default function NewsPage() {
                                 {totalPages > 1 && (
                                     <div className="flex items-center justify-center flex-wrap gap-2 mt-12">
                                         <button
-                                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                            onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                                             disabled={currentPage === 1}
                                             className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
                                         >
@@ -359,7 +410,7 @@ export default function NewsPage() {
                                         {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
                                             <button
                                                 key={page}
-                                                onClick={() => setCurrentPage(page)}
+                                                onClick={() => handlePageChange(page)}
                                                 className={`w-10 h-10 rounded-lg text-sm font-medium transition-all ${
                                                     currentPage === page
                                                         ? 'bg-emerald-500 text-black font-bold'
@@ -371,7 +422,7 @@ export default function NewsPage() {
                                         ))}
 
                                         <button
-                                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                            onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                                             disabled={currentPage === totalPages}
                                             className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
                                         >
