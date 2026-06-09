@@ -35,10 +35,6 @@ export default function Home() {
     fetchFeed();
   }, [fetchFeed]);
 
-  const handleTriggerTestError = () => {
-    setError('TEST_ERROR');
-  };
-
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
       <Navbar />
@@ -52,44 +48,34 @@ export default function Home() {
 
           {/* Main Feed - Full width on mobile, 6 cols on desktop */}
           <div className="col-span-12 lg:col-span-6">
-            <div className="flex items-center justify-between border-b border-zinc-800 mb-6 pr-2">
-              {user ? (
-                <div className="flex flex-1">
-                  <button
-                    onClick={() => { setError(null); setActiveTab('for-you'); }}
-                    className={`flex-1 py-3 text-center font-bold text-sm transition-colors relative ${
-                      activeTab === 'for-you' && !error ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    For You
-                    {activeTab === 'for-you' && !error && (
-                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => { setError(null); setActiveTab('following'); }}
-                    className={`flex-1 py-3 text-center font-bold text-sm transition-colors relative ${
-                      activeTab === 'following' && !error ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    Following
-                    {activeTab === 'following' && !error && (
-                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="py-3 text-sm font-bold text-zinc-400">Explore Feed</div>
-              )}
-              
-              <button
-                onClick={handleTriggerTestError}
-                className="text-[10px] text-zinc-500 hover:text-red-400 border border-zinc-800 hover:border-red-500/25 px-2 py-1 rounded transition-all active:scale-95 cursor-pointer font-medium"
-                title="Simulate a feed loading error to test the interface"
-              >
-                Simulate Error
-              </button>
-            </div>
+            {user ? (
+              <div className="flex border-b border-zinc-800 mb-6">
+                <button
+                  onClick={() => { setError(null); setActiveTab('for-you'); }}
+                  className={`flex-1 py-3 text-center font-bold text-sm transition-colors relative ${
+                    activeTab === 'for-you' && !error ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  For You
+                  {activeTab === 'for-you' && !error && (
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
+                  )}
+                </button>
+                <button
+                  onClick={() => { setError(null); setActiveTab('following'); }}
+                  className={`flex-1 py-3 text-center font-bold text-sm transition-colors relative ${
+                    activeTab === 'following' && !error ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  Following
+                  {activeTab === 'following' && !error && (
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="py-3 text-sm font-bold text-zinc-400 border-b border-zinc-800 mb-6">Explore Feed</div>
+            )}
 
             {loading ? (
               <div className="flex justify-center items-center h-64">
@@ -102,9 +88,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Something Went Wrong</h3>
                 <p className="text-zinc-400 text-sm max-w-sm mb-6 leading-relaxed">
-                  {error === 'TEST_ERROR' 
-                    ? "This is a simulated test error. You can click 'Try Again' below to reload the actual feed." 
-                    : error}
+                  {error}
                 </p>
                 <div className="flex gap-3">
                   <button
@@ -113,12 +97,6 @@ export default function Home() {
                   >
                     <RefreshCw className="h-4 w-4" />
                     <span>Try Again</span>
-                  </button>
-                  <button
-                    onClick={handleTriggerTestError}
-                    className="px-5 py-2.5 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl transition-all border border-zinc-700/40 active:scale-95 cursor-pointer"
-                  >
-                    Simulate Again
                   </button>
                 </div>
               </div>
