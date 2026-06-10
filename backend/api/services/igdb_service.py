@@ -64,8 +64,10 @@ def fetch_game_details(game: Game) -> Game:
         'Authorization': f'Bearer {token}'
     }
 
+    target_igdb_id = game.igdb_id
+
     # Resolve IGDB ID if missing (e.g. for games synced from Steam)
-    if not game.igdb_id:
+    if not target_igdb_id:
         try:
             # Sanitize title for IGDB search
             safe_title = game.title.replace('"', '').replace('\\', '')
@@ -87,8 +89,12 @@ def fetch_game_details(game: Game) -> Game:
                 if not best_match:
                     best_match = results[0]
                     
-                game.igdb_id = best_match['id']
-                game.save(update_fields=['igdb_id'])
+                target_igdb_id = best_match['id']
+                
+                # Safely save igdb_id only if it's not already taken by a duplicate game
+                if not Game.objects.filter(igdb_id=target_igdb_id).exclude(id=game.id).exists():
+                    game.igdb_id = target_igdb_id
+                    game.save(update_fields=['igdb_id'])
             else:
                 # Could not find game on IGDB
                 game.details_fetched = True
@@ -108,7 +114,7 @@ def fetch_game_details(game: Game) -> Game:
         fields summary, storyline, url, cover.url,
                involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
                platforms.name, screenshots.url, genres.name;
-        where id = {game.igdb_id};
+        where id = {target_igdb_id};
     """
 
     try:
