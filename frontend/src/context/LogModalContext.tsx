@@ -3,7 +3,8 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface LogModalContextType {
     isLogModalOpen: boolean;
-    openLogModal: () => void;
+    initialGame?: any;
+    openLogModal: (game?: any) => void;
     closeLogModal: () => void;
 }
 
@@ -11,12 +12,16 @@ const LogModalContext = createContext<LogModalContextType | undefined>(undefined
 
 export function LogModalProvider({ children }: { children: ReactNode }) {
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+    const [initialGame, setInitialGame] = useState<any>(null);
 
-    const openLogModal = () => setIsLogModalOpen(true);
+    const openLogModal = (game?: any) => {
+        setInitialGame(game || null);
+        setIsLogModalOpen(true);
+    };
     const closeLogModal = () => setIsLogModalOpen(false);
 
     return (
-        <LogModalContext.Provider value={{ isLogModalOpen, openLogModal, closeLogModal }}>
+        <LogModalContext.Provider value={{ isLogModalOpen, initialGame, openLogModal, closeLogModal }}>
             {children}
         </LogModalContext.Provider>
     );

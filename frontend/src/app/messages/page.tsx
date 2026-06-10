@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import { 
     Search, Plus, MoreVertical, Phone, Video, Info, 
     Image as ImageIcon, Send, Smile, Loader2, Bell, BellOff, 
-    LogOut, UserPlus, UserMinus, Shield, FileImage, X, Check, Edit2
+    LogOut, UserPlus, UserMinus, Shield, FileImage, X, Check, Edit2, CornerUpLeft
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +18,13 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import Link from 'next/link';
 
 // API Data Types
+interface MessageReaction {
+    id: number;
+    emoji: string;
+    username: string;
+    user: number;
+}
+
 interface Message {
     id: number;
     conversation: number;
@@ -35,6 +42,15 @@ interface Message {
     shared_post_details?: any | null;
     shared_review_details?: any | null;
     shared_news_details?: any | null;
+    reactions?: MessageReaction[];
+    reply_to?: number | null;
+    reply_to_details?: {
+        id: number;
+        content: string;
+        sender_username: string;
+        image?: string | null;
+        gif_url?: string | null;
+    } | null;
 }
 
 interface ConversationMember {
@@ -93,65 +109,148 @@ function MessageAttachment({ msg }: { msg: Message }) {
         const isDevlog = !!post.project_parent;
         
         return (
-            <div className="mt-2 p-3 bg-zinc-900 border border-zinc-850 hover:border-zinc-700 rounded-xl transition-all text-left max-w-sm">
-                <div className="flex items-center gap-2 mb-2">
-                    <img src={getImageUrl(post.user.avatar, post.user.username)} className="h-5 w-5 rounded-full object-cover" alt={post.user.username} />
-                    <div>
-                        <div className="font-bold text-white text-xs leading-none">{post.user.username}</div>
-                        <div className="text-[9px] text-zinc-500 mt-0.5">
-                            {isDevlog ? 'Shared Devlog' : isOpinion ? 'Shared Opinion' : 'Shared Post'}
+            <Link 
+                href={`/${post.user.username}/status/${post.id}`} 
+                className="block mt-2 max-w-sm"
+            >
+                <div className="p-3 bg-zinc-950/45 border border-zinc-800/80 hover:border-zinc-700/80 rounded-2xl transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-100 text-left">
+                    <div className="flex items-start gap-2.5 mb-2">
+                        <img 
+                            src={getImageUrl(post.user.avatar, post.user.username)} 
+                            className="h-8 w-8 rounded-full object-cover border border-zinc-800/50" 
+                            alt={post.user.username} 
+                        />
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-white text-xs truncate max-w-[130px]">{post.user.real_name || post.user.username}</span>
+                                <span className="text-[10px] text-zinc-500 truncate">@{post.user.username}</span>
+                            </div>
+                            <div className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wider mt-0.5">
+                                {isDevlog ? 'Devlog' : isOpinion ? 'Opinion' : 'Post'}
+                            </div>
                         </div>
                     </div>
+                    {post.title && <h4 className="font-bold text-xs text-white mb-1.5 leading-snug">{post.title}</h4>}
+                    <p className="text-zinc-300 text-[11px] line-clamp-4 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                    {(post.media_file || post.image) && (
+                        <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800/50 max-h-36">
+                            <img 
+                                src={getImageUrl(post.media_file || post.image || '')} 
+                                className="w-full h-full object-cover" 
+                                alt="Shared Media" 
+                            />
+                        </div>
+                    )}
+                    {post.gif_url && (
+                        <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800/50 max-h-36">
+                            <img 
+                                src={post.gif_url} 
+                                className="w-full h-full object-cover" 
+                                alt="Shared GIF" 
+                            />
+                        </div>
+                    )}
                 </div>
-                {post.title && <h4 className="font-bold text-xs text-white mb-1">{post.title}</h4>}
-                <p className="text-zinc-350 text-xs line-clamp-4 whitespace-pre-wrap leading-normal">{post.content}</p>
-                {(post.media_file || post.image) && (
-                    <img src={getImageUrl(post.media_file || post.image || '')} className="mt-2 rounded-lg object-cover max-h-32 w-full" alt="Shared Media" />
-                )}
-                {post.gif_url && (
-                    <img src={post.gif_url} className="mt-2 rounded-lg object-cover max-h-32 w-full animate-pulse" alt="Shared GIF" />
-                )}
-            </div>
+            </Link>
         );
     }
     if (msg.shared_review_details) {
         const review = msg.shared_review_details;
         return (
-            <div className="mt-2 p-3 bg-zinc-900 border border-zinc-850 hover:border-zinc-700 rounded-xl transition-all text-left max-w-sm flex gap-3">
-                <div className="w-14 h-20 bg-zinc-950 rounded overflow-hidden flex-shrink-0">
-                    {review.game.cover_image && <img src={getImageUrl(review.game.cover_image)} className="w-full h-full object-cover" alt="Game cover" />}
-                </div>
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <h4 className="font-bold text-xs text-white truncate mb-0.5">{review.game.title}</h4>
-                    <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {review.rating}/10</div>
-                    <p className="text-zinc-400 text-[11px] line-clamp-2 leading-tight">{review.content || 'No review written.'}</p>
-                    <div className="mt-1 flex items-center gap-1 text-[9px] text-zinc-500">
-                        <span>By @{review.user.username}</span>
+            <Link 
+                href={`/${review.user.username}/review/${review.id}`} 
+                className="block mt-2 max-w-sm"
+            >
+                <div className="p-3 bg-zinc-950/45 border border-zinc-800/80 hover:border-zinc-700/80 rounded-2xl transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-100 text-left flex gap-3">
+                    <div className="w-14 h-20 bg-zinc-950 rounded-xl overflow-hidden border border-zinc-800/40 flex-shrink-0">
+                        {review.game.cover_image && <img src={getImageUrl(review.game.cover_image)} className="w-full h-full object-cover" alt="Game cover" />}
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <h4 className="font-bold text-xs text-white truncate mb-0.5">{review.game.title}</h4>
+                        <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {review.rating}/10</div>
+                        <p className="text-zinc-400 text-[11px] line-clamp-2 leading-tight">{review.content || 'No review written.'}</p>
+                        <div className="mt-1 flex items-center gap-1 text-[9px] text-zinc-500">
+                            <span>By @{review.user.username}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </Link>
         );
     }
     if (msg.shared_news_details) {
         const news = msg.shared_news_details;
         return (
-            <div className="mt-2 p-3 bg-zinc-900 border border-zinc-850 hover:border-zinc-700 rounded-xl transition-all text-left max-w-sm flex gap-3">
-                {news.image_url && (
-                    <div className="w-16 h-16 bg-zinc-950 rounded overflow-hidden flex-shrink-0">
-                        <img src={news.image_url} className="w-full h-full object-cover" alt="News thumbnail" />
+            <Link 
+                href={`/news/${news.id}`} 
+                className="block mt-2 max-w-sm"
+            >
+                <div className="p-3 bg-zinc-950/45 border border-zinc-800/80 hover:border-zinc-700/80 rounded-2xl transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-100 text-left flex gap-3">
+                    {news.image_url && (
+                        <div className="w-16 h-16 bg-zinc-950 rounded-xl overflow-hidden border border-zinc-800/40 flex-shrink-0">
+                            <img src={news.image_url} className="w-full h-full object-cover" alt="News thumbnail" />
+                        </div>
+                    )}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <div className="text-[9px] text-zinc-500 flex items-center gap-1 mb-1">
+                            {news.source_icon && <img src={news.source_icon} className="h-3 w-3 rounded-full" alt={news.source_name} />}
+                            <span>{news.source_name}</span>
+                        </div>
+                        <h4 className="font-bold text-xs text-white leading-snug line-clamp-2">{news.title}</h4>
                     </div>
-                )}
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <div className="text-[9px] text-zinc-500 flex items-center gap-1 mb-1">
-                        {news.source_icon && <img src={news.source_icon} className="h-3 w-3 rounded-full" alt={news.source_name} />}
-                        <span>{news.source_name}</span>
-                    </div>
-                    <h4 className="font-bold text-xs text-white leading-snug line-clamp-2">{news.title}</h4>
                 </div>
-            </div>
+            </Link>
         );
     }
     return null;
+}
+
+function ReactionButton({ msg, onReact }: { msg: Message; onReact: (msgId: number, emoji: string) => void }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850 transition-all focus:outline-none"
+                title="React to message"
+            >
+                <Smile className="h-4 w-4" />
+            </button>
+            {isOpen && (
+                <div className={`absolute bottom-8 z-30 bg-zinc-950 border border-zinc-800 rounded-full px-2 py-1 flex items-center gap-1.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 ${
+                    msg.is_me ? 'right-0' : 'left-0'
+                }`}>
+                    {emojis.map((emoji) => (
+                        <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                                onReact(msg.id, emoji);
+                                setIsOpen(false);
+                            }}
+                            className="hover:scale-125 active:scale-95 transition-transform text-sm p-0.5"
+                        >
+                            {emoji}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 }
 
 function MessagesContent() {
@@ -191,6 +290,20 @@ function MessagesContent() {
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [showGifPicker, setShowGifPicker] = useState(false);
     const [isSending, setIsSending] = useState(false);
+
+    // Replying
+    const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+    const scrollToMessage = (msgId: number) => {
+        const element = document.getElementById(`msg-${msgId}`);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('bg-emerald-500/10', 'border-emerald-500/20', 'scale-[1.01]');
+            setTimeout(() => {
+                element.classList.remove('bg-emerald-500/10', 'border-emerald-500/20', 'scale-[1.01]');
+            }, 1200);
+        }
+    };
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +442,9 @@ function MessagesContent() {
             if (selectedGif) {
                 formData.append('gif_url', selectedGif);
             }
+            if (replyingTo) {
+                formData.append('reply_to', replyingTo.id.toString());
+            }
 
             const res = await api.post('/messages/', formData, {
                 headers: {
@@ -339,6 +455,7 @@ function MessagesContent() {
             setMessages([...messages, res.data]);
             setInputText('');
             clearMedia();
+            setReplyingTo(null);
 
             // Refresh conversations to update last message
             fetchConversations();
@@ -347,6 +464,16 @@ function MessagesContent() {
             alert("Failed to send message.");
         } finally {
             setIsSending(false);
+        }
+    };
+
+    const handleMessageReact = async (messageId: number, emoji: string) => {
+        try {
+            const res = await api.post(`/messages/${messageId}/react/`, { emoji });
+            const updatedMsg = res.data.message;
+            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions: updatedMsg.reactions } : m));
+        } catch (error) {
+            console.error("Failed to toggle reaction:", error);
         }
     };
 
@@ -637,12 +764,6 @@ function MessagesContent() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 text-zinc-400">
-                                        <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors hidden sm:block">
-                                            <Phone className="h-5 w-5" />
-                                        </button>
-                                        <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors hidden sm:block">
-                                            <Video className="h-5 w-5" />
-                                        </button>
                                         <button 
                                             onClick={() => {
                                                 setShowDetails(!showDetails);
@@ -664,26 +785,95 @@ function MessagesContent() {
                                         </div>
                                     ) : (
                                         messages.map((msg) => (
-                                            <div key={msg.id} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-150`}>
-                                                <div className={`flex flex-col max-w-[75%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
+                                            <div key={msg.id} id={`msg-${msg.id}`} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-150 group relative rounded-2xl transition-all duration-300 p-0.5`}>
+                                                <div className={`flex items-center gap-2 max-w-[75%] ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
                                                     
-                                                    {/* Sender name in groups */}
-                                                    {activeChat.is_group && !msg.is_me && (
-                                                        <span className="text-[10px] text-zinc-500 mb-1 pl-2">@{msg.sender.username}</span>
-                                                    )}
-                                                    
-                                                    <div className={`rounded-2xl px-4 py-2 ${msg.is_me
-                                                        ? 'bg-emerald-600 text-white rounded-tr-none shadow-lg shadow-emerald-950/20'
-                                                        : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-750'
-                                                        }`}>
-                                                        {msg.content && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>}
-                                                        
-                                                        {/* Attachment renderer */}
-                                                        <MessageAttachment msg={msg} />
+                                                    <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-150 ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                        <ReactionButton msg={msg} onReact={handleMessageReact} />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setReplyingTo(msg)}
+                                                            className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850 transition-colors"
+                                                            title="Reply to message"
+                                                        >
+                                                            <CornerUpLeft className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
 
-                                                        <p className={`text-[9px] mt-1 text-right ${msg.is_me ? 'text-emerald-200' : 'text-zinc-550'}`}>
-                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </p>
+                                                    <div className={`flex flex-col ${msg.is_me ? 'items-end' : 'items-start'}`}>
+                                                        
+                                                        {/* Sender name in groups */}
+                                                        {activeChat.is_group && !msg.is_me && (
+                                                            <span className="text-[10px] text-zinc-500 mb-1 pl-2">@{msg.sender.username}</span>
+                                                        )}
+                                                        
+                                                        <div className={`rounded-2xl px-4 py-2 ${msg.is_me
+                                                            ? 'bg-emerald-600 text-white rounded-tr-none shadow-lg shadow-emerald-950/20'
+                                                            : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-750'
+                                                            }`}>
+                                                            
+                                                            {/* Reply Quote Preview */}
+                                                            {msg.reply_to_details && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => scrollToMessage(msg.reply_to_details!.id)}
+                                                                    className={`w-full text-left mb-2 p-1.5 rounded-lg border-l-2 border-emerald-450 transition-colors flex flex-col gap-0.5 ${
+                                                                        msg.is_me 
+                                                                            ? 'bg-emerald-950/30 hover:bg-emerald-950/50 text-emerald-100' 
+                                                                            : 'bg-zinc-900/60 hover:bg-zinc-900/80 text-zinc-300'
+                                                                    }`}
+                                                                >
+                                                                    <span className={`text-[10px] font-bold ${msg.is_me ? 'text-emerald-250' : 'text-emerald-400'}`}>
+                                                                        @{msg.reply_to_details.sender_username}
+                                                                    </span>
+                                                                    <span className="text-[11px] truncate opacity-90">
+                                                                        {msg.reply_to_details.content || (msg.reply_to_details.image ? '📷 Photo' : msg.reply_to_details.gif_url ? 'GIF' : 'Attachment')}
+                                                                    </span>
+                                                                </button>
+                                                            )}
+
+                                                            {msg.content && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>}
+                                                            
+                                                            {/* Attachment renderer */}
+                                                            <MessageAttachment msg={msg} />
+
+                                                            <p className={`text-[9px] mt-1 text-right ${msg.is_me ? 'text-emerald-200' : 'text-zinc-550'}`}>
+                                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Reactions Display */}
+                                                        {msg.reactions && msg.reactions.length > 0 && (
+                                                            <div className={`flex flex-wrap gap-1 mt-1 ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
+                                                                {Object.entries(
+                                                                    msg.reactions.reduce((acc: { [emoji: string]: { count: number; users: string[]; reactedByMe: boolean } }, r: any) => {
+                                                                        if (!acc[r.emoji]) {
+                                                                            acc[r.emoji] = { count: 0, users: [], reactedByMe: false };
+                                                                        }
+                                                                        acc[r.emoji].count += 1;
+                                                                        acc[r.emoji].users.push(r.username);
+                                                                        if (r.username === user?.username) {
+                                                                            acc[r.emoji].reactedByMe = true;
+                                                                        }
+                                                                        return acc;
+                                                                    }, {})
+                                                                ).map(([emoji, data]: [string, any]) => (
+                                                                    <button
+                                                                        key={emoji}
+                                                                        onClick={() => handleMessageReact(msg.id, emoji)}
+                                                                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] transition-all border ${
+                                                                            data.reactedByMe
+                                                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                                                                : 'bg-zinc-950 text-zinc-400 border-zinc-850 hover:border-zinc-700'
+                                                                        }`}
+                                                                        title={data.users.join(', ')}
+                                                                    >
+                                                                        <span>{emoji}</span>
+                                                                        <span className="text-[9px] font-bold">{data.count}</span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -695,6 +885,27 @@ function MessagesContent() {
                                 {/* Input Composer Area */}
                                 <div className="p-4 border-t border-zinc-800 bg-zinc-950">
                                     <form onSubmit={handleSendMessage} className="flex flex-col gap-2 relative">
+                                        
+                                        {/* Replying To Preview */}
+                                        {replyingTo && (
+                                            <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-zinc-900/60 border-l-4 border-emerald-500 border border-zinc-800/80 text-left animate-in slide-in-from-bottom-2 duration-200">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-[10px] font-bold text-emerald-400">
+                                                        Replying to @{replyingTo.sender.username}
+                                                    </div>
+                                                    <div className="text-xs text-zinc-400 truncate mt-0.5">
+                                                        {replyingTo.content || (replyingTo.image ? '📷 Photo' : replyingTo.gif_url ? 'GIF' : 'Attachment')}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setReplyingTo(null)}
+                                                    className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white transition-colors ml-2"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        )}
                                         
                                         {/* Media Upload / GIF Previews */}
                                         {(previewUrl || selectedGif) && (

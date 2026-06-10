@@ -12,6 +12,7 @@ import { MapPin, Calendar, Link as LinkIcon, Users, Layout, Info, Edit2, Check, 
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -23,6 +24,7 @@ export default function ProjectDetailPage() {
     const router = useRouter();
     const projectId = params.id;
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     const [project, setProject] = useState<Project | null>(null);
     const [devlogs, setDevlogs] = useState<Post[]>([]);
@@ -239,7 +241,7 @@ export default function ProjectDetailPage() {
     };
 
     const handleRemoveParticipant = async (memberId: number) => {
-        if (!confirm("Remove this participant?")) return;
+        if (!confirm(t('removeParticipantConfirm'))) return;
         try {
             await api.delete(`/project-members/${memberId}/`);
             await fetchProjectData();
@@ -260,9 +262,9 @@ export default function ProjectDetailPage() {
     if (!project) {
         return (
             <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center">
-                <h1 className="text-2xl font-bold mb-4">Project Not Found</h1>
+                <h1 className="text-2xl font-bold mb-4">{t('projectNotFound')}</h1>
                 <Link href="/devs" className="text-emerald-500 hover:underline">
-                    Back to Developer Hub
+                    {t('backToDevHub')}
                 </Link>
             </div>
         );
@@ -326,7 +328,7 @@ export default function ProjectDetailPage() {
                                         className="h-10 w-10 rounded-full bg-zinc-800 object-cover border-2 border-transparent group-hover:border-emerald-500 transition-all"
                                     />
                                     <div>
-                                        <p className="text-sm text-zinc-400">Created by</p>
+                                        <p className="text-sm text-zinc-400">{t('createdBy')}</p>
                                         <p className="font-bold text-white group-hover:text-emerald-400 transition-colors">
                                             {project.owner.real_name || project.owner.username}
                                         </p>
@@ -340,7 +342,7 @@ export default function ProjectDetailPage() {
                                 <div className="flex items-center gap-2">
                                     <Users className="w-4 h-4 text-zinc-500" />
                                     <span className="text-sm font-medium text-zinc-300">
-                                        {followersCount} <span className="text-zinc-500">followers</span>
+                                        {followersCount} <span className="text-zinc-500">{t('followers').toLowerCase()}</span>
                                     </span>
                                 </div>
                             </div>
@@ -365,9 +367,9 @@ export default function ProjectDetailPage() {
                                     } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
                                 >
                                     {isFollowing ? (
-                                        <><UserCheck className="w-4 h-4" /> Following</>
+                                        <><UserCheck className="w-4 h-4" /> {t('following')}</>
                                     ) : (
-                                        <><UserPlus className="w-4 h-4" /> Follow</>
+                                        <><UserPlus className="w-4 h-4" /> {t('follow')}</>
                                     )}
                                 </button>
                             </div>
@@ -382,7 +384,7 @@ export default function ProjectDetailPage() {
                             >
                                 <div className="flex items-center gap-2">
                                     <Layout className="h-5 w-5" />
-                                    Devlogs ({devlogs.length})
+                                    {t('devlogs')} ({devlogs.length})
                                 </div>
                                 {activeTab === 'devlogs' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
@@ -395,7 +397,7 @@ export default function ProjectDetailPage() {
                             >
                                 <div className="flex items-center gap-2">
                                     <Info className="h-5 w-5" />
-                                    About
+                                    {t('about')}
                                 </div>
                                 {activeTab === 'about' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
@@ -408,7 +410,7 @@ export default function ProjectDetailPage() {
                             >
                                 <div className="flex items-center gap-2">
                                     <Users className="h-5 w-5" />
-                                    Participants
+                                    {t('participants')}
                                 </div>
                                 {activeTab === 'participants' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
@@ -438,7 +440,7 @@ export default function ProjectDetailPage() {
                                     ) : (
                                         <div className="p-12 text-center bg-zinc-900/50 rounded-2xl border border-zinc-800 border-dashed">
                                             <Layout className="h-12 w-12 text-zinc-700 mx-auto mb-3" />
-                                            <p className="text-zinc-400 text-lg">No devlogs published yet.</p>
+                                            <p className="text-zinc-400 text-lg">{t('noDevlogsYet')}</p>
                                         </div>
                                     )}
                                 </div>
@@ -448,10 +450,10 @@ export default function ProjectDetailPage() {
                                     <div className="space-y-6">
                                         <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
                                             <div className="flex items-center justify-between mb-4">
-                                                <h3 className="text-xl font-bold">About this Project</h3>
+                                                <h3 className="text-xl font-bold">{t('aboutProject')}</h3>
                                                 {isEditor && !isEditingAbout && (
                                                     <button onClick={() => setIsEditingAbout(true)} className="text-zinc-400 hover:text-white flex items-center gap-1 text-sm bg-zinc-800 px-3 py-1.5 rounded-lg transition-colors">
-                                                        <Edit2 className="w-4 h-4" /> Edit
+                                                        <Edit2 className="w-4 h-4" /> {t('edit')}
                                                     </button>
                                                 )}
                                             </div>
@@ -460,27 +462,27 @@ export default function ProjectDetailPage() {
                                                 <div className="space-y-4">
                                                     {isAdmin && (
                                                         <div className="space-y-2">
-                                                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Project Title</label>
+                                                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('projectTitle')}</label>
                                                             <input 
                                                                 type="text"
                                                                 value={editedTitle}
                                                                 onChange={e => setEditedTitle(e.target.value)}
                                                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none text-lg font-bold"
-                                                                placeholder="Project Title"
+                                                                placeholder={t('projectTitle')}
                                                             />
                                                         </div>
                                                     )}
                                                     <div className="space-y-2">
-                                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Description</label>
+                                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('description')}</label>
                                                         <textarea 
                                                             value={editedDescription}
                                                             onChange={e => setEditedDescription(e.target.value)}
                                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-zinc-300 min-h-[150px] focus:ring-1 focus:ring-emerald-500 focus:outline-none leading-relaxed"
-                                                            placeholder="Project Description"
+                                                            placeholder={t('description')}
                                                         />
                                                     </div>
                                                     <div className="space-y-2 relative" style={{ overflow: 'visible' }}>
-                                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Tech Stack</label>
+                                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('techStack')}</label>
                                                         <div 
                                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white cursor-pointer min-h-[50px] flex flex-wrap gap-2 items-center hover:border-zinc-700 transition-colors"
                                                             onClick={() => setShowAboutTechDropdown(!showAboutTechDropdown)}
@@ -499,7 +501,7 @@ export default function ProjectDetailPage() {
                                                                     </span>
                                                                 ))
                                                             ) : (
-                                                                <span className="text-zinc-700">Select technologies...</span>
+                                                                <span className="text-zinc-700">{t('selectTechPlaceholder')}</span>
                                                             )}
                                                         </div>
                                                         {showAboutTechDropdown && (
@@ -527,9 +529,9 @@ export default function ProjectDetailPage() {
                                                         )}
                                                     </div>
                                                     <div className="flex justify-end gap-2 pt-2">
-                                                        <button onClick={() => { setIsEditingAbout(false); setShowAboutTechDropdown(false); }} className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors">Cancel</button>
+                                                        <button onClick={() => { setIsEditingAbout(false); setShowAboutTechDropdown(false); }} className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors">{t('cancel')}</button>
                                                         <button onClick={handleSaveAbout} disabled={isSaving} className="px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center gap-2">
-                                                            {isSaving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Check className="w-4 h-4" />} Save
+                                                            {isSaving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Check className="w-4 h-4" />} {t('save')}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -541,7 +543,7 @@ export default function ProjectDetailPage() {
                                                     </p>
                                                     {project.tech_stack.length > 0 && (
                                                         <div className="pt-2">
-                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Tech Stack</h4>
+                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">{t('techStack')}</h4>
                                                             <div className="flex flex-wrap gap-2">
                                                                 {project.tech_stack.map((tech, i) => (
                                                                     <span key={i} className="px-3 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-400">
@@ -555,41 +557,52 @@ export default function ProjectDetailPage() {
                                             )}
 
                                             <div className="mt-8 pt-8 border-t border-zinc-800">
-                                                <h4 className="font-bold mb-3 text-zinc-400 uppercase text-sm tracking-wider">Project Stats</h4>
+                                                <h4 className="font-bold mb-3 text-zinc-400 uppercase text-sm tracking-wider">{t('projectStats')}</h4>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                                                        <div className="text-zinc-500 text-xs mb-1">Started</div>
+                                                        <div className="text-zinc-500 text-xs mb-1">{t('started')}</div>
                                                         <div className="font-mono text-white">{new Date(project.created_at).toLocaleDateString()}</div>
                                                     </div>
                                                     <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                                                        <div className="text-zinc-500 text-xs mb-1">Status</div>
+                                                        <div className="text-zinc-500 text-xs mb-1">{t('status')}</div>
                                                         {isAdmin ? (
                                                             <div className="relative">
                                                                 <button 
                                                                     onClick={() => setShowStatusDropdown(!showStatusDropdown)}
                                                                     className="font-mono text-emerald-400 capitalize flex items-center gap-1 hover:text-emerald-300 transition-colors"
                                                                 >
-                                                                    {project.status.replace('_', ' ')} <ChevronDown className="w-3 h-3" />
+                                                                    {project.status === 'released' ? t('released') :
+                                                                     project.status === 'in_dev' ? t('inDevelopment') :
+                                                                     project.status.replace('_', ' ')} <ChevronDown className="w-3 h-3" />
                                                                 </button>
                                                                 {showStatusDropdown && (
                                                                     <>
                                                                         <div className="fixed inset-0 z-10" onClick={() => setShowStatusDropdown(false)} />
                                                                         <div className="absolute top-full left-0 mt-1 w-40 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                            {['in_dev', 'alpha', 'beta', 'released'].map(s => (
-                                                                                <button 
-                                                                                    key={s}
-                                                                                    onClick={() => handleUpdateStatus(s)}
-                                                                                    className={`w-full text-left px-4 py-2 text-sm capitalize transition-colors ${project.status === s ? 'bg-emerald-500/10 text-emerald-400' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}`}
-                                                                                >
-                                                                                    {s.replace('_', ' ')}
-                                                                                </button>
-                                                                            ))}
+                                                                            {['in_dev', 'alpha', 'beta', 'released'].map(s => {
+                                                                                const statusLabel = s === 'in_dev' ? t('inDevelopment') :
+                                                                                                    s === 'released' ? t('released') :
+                                                                                                    s;
+                                                                                return (
+                                                                                    <button 
+                                                                                        key={s}
+                                                                                        onClick={() => handleUpdateStatus(s)}
+                                                                                        className={`w-full text-left px-4 py-2 text-sm capitalize transition-colors ${project.status === s ? 'bg-emerald-500/10 text-emerald-400' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}`}
+                                                                                    >
+                                                                                        {statusLabel.replace('_', ' ')}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     </>
                                                                 )}
                                                             </div>
                                                         ) : (
-                                                            <div className="font-mono text-emerald-400 capitalize">{project.status.replace('_', ' ')}</div>
+                                                            <div className="font-mono text-emerald-400 capitalize">
+                                                                {project.status === 'released' ? t('released') :
+                                                                 project.status === 'in_dev' ? t('inDevelopment') :
+                                                                 project.status.replace('_', ' ')}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -605,7 +618,7 @@ export default function ProjectDetailPage() {
                                             <div className="flex items-center justify-between mb-6">
                                                 <h3 className="text-lg font-bold flex items-center gap-2">
                                                     <Users className="w-5 h-5 text-emerald-500" />
-                                                    Participants
+                                                    {t('participants')}
                                                 </h3>
                                                 {isAdmin && (
                                                     <button onClick={() => setShowAddParticipantModal(true)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-1.5 rounded-lg transition-colors">
@@ -622,7 +635,7 @@ export default function ProjectDetailPage() {
                                                         onClick={() => toggleRoleCollapse('admin')}
                                                     >
                                                         <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${collapsedRoles.admin ? '-rotate-90' : ''}`} />
-                                                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">Admins</h4>
+                                                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">{t('admins')}</h4>
                                                     </div>
                                                     
                                                     {!collapsedRoles.admin && (
@@ -632,7 +645,7 @@ export default function ProjectDetailPage() {
                                                                     <img src={getImageUrl(project.owner.avatar, project.owner.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Owner" />
                                                                     <div>
                                                                         <div className="text-sm font-medium text-white">{project.owner.username}</div>
-                                                                        <div className="text-xs text-zinc-500">Owner</div>
+                                                                        <div className="text-xs text-zinc-500">{t('owner')}</div>
                                                                     </div>
                                                                 </Link>
                                                             </div>
@@ -643,9 +656,9 @@ export default function ProjectDetailPage() {
                                                                         <div>
                                                                             <div className="text-sm font-medium text-white flex items-center gap-2">
                                                                                 {member.user.username}
-                                                                                {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> Pending</span>}
+                                                                                {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> {t('pending')}</span>}
                                                                             </div>
-                                                                            <div className="text-xs text-zinc-500">Admin</div>
+                                                                            <div className="text-xs text-zinc-500">{t('admins')}</div>
                                                                         </div>
                                                                     </Link>
                                                                     {isAdmin && (
@@ -657,13 +670,13 @@ export default function ProjectDetailPage() {
                                                                                 <>
                                                                                     <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpenFor(null)} />
                                                                                     <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">Change Role</div>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10">Make Admin</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">Make Editor</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-b border-zinc-800">Make Participant</button>
+                                                                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">{t('changeRole')}</div>
+                                                                                        <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10">{t('makeAdmin')}</button>
+                                                                                        <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeEditor')}</button>
+                                                                                        <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-b border-zinc-800">{t('makeParticipant')}</button>
                                                                                         
                                                                                         <button onClick={() => handleRemoveParticipant(member.id)} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                                            {member.status === 'pending' ? 'Revoke Invite' : 'Remove Participant'}
+                                                                                            {member.status === 'pending' ? t('revokeInvite') : t('removeParticipant')}
                                                                                         </button>
                                                                                     </div>
                                                                                 </>
@@ -684,7 +697,7 @@ export default function ProjectDetailPage() {
                                                             onClick={() => toggleRoleCollapse('editor')}
                                                         >
                                                             <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${collapsedRoles.editor ? '-rotate-90' : ''}`} />
-                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">Editors</h4>
+                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">{t('editors')}</h4>
                                                         </div>
                                                         
                                                         {!collapsedRoles.editor && (
@@ -695,7 +708,7 @@ export default function ProjectDetailPage() {
                                                                         <img src={getImageUrl(member.user.avatar, member.user.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Editor" />
                                                                         <div className="text-sm font-medium text-zinc-300 flex items-center gap-2">
                                                                             {member.user.username}
-                                                                            {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> Pending</span>}
+                                                                            {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> {t('pending')}</span>}
                                                                         </div>
                                                                     </Link>
                                                                 {isAdmin && (
@@ -707,13 +720,13 @@ export default function ProjectDetailPage() {
                                                                             <>
                                                                                 <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpenFor(null)} />
                                                                                 <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                                    <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">Change Role</div>
-                                                                                    <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">Make Admin</button>
-                                                                                    <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10">Make Editor</button>
-                                                                                    <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-b border-zinc-800">Make Participant</button>
+                                                                                    <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">{t('changeRole')}</div>
+                                                                                    <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeAdmin')}</button>
+                                                                                    <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10">{t('makeEditor')}</button>
+                                                                                    <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-b border-zinc-800">{t('makeParticipant')}</button>
                                                                                     
                                                                                     <button onClick={() => handleRemoveParticipant(member.id)} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                                        {member.status === 'pending' ? 'Revoke Invite' : 'Remove Participant'}
+                                                                                        {member.status === 'pending' ? t('revokeInvite') : t('removeParticipant')}
                                                                                     </button>
                                                                                 </div>
                                                                             </>
@@ -735,7 +748,7 @@ export default function ProjectDetailPage() {
                                                             onClick={() => toggleRoleCollapse('participant')}
                                                         >
                                                             <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${collapsedRoles.participant ? '-rotate-90' : ''}`} />
-                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">Participants</h4>
+                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">{t('participants')}</h4>
                                                         </div>
                                                         
                                                         {!collapsedRoles.participant && (
@@ -746,7 +759,7 @@ export default function ProjectDetailPage() {
                                                                         <img src={getImageUrl(member.user.avatar, member.user.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Participant" />
                                                                         <div className="text-sm font-medium text-zinc-300 flex items-center gap-2">
                                                                             {member.user.username}
-                                                                            {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> Pending</span>}
+                                                                            {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> {t('pending')}</span>}
                                                                         </div>
                                                                     </Link>
                                                                     {isAdmin && (
@@ -758,13 +771,13 @@ export default function ProjectDetailPage() {
                                                                                 <>
                                                                                     <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpenFor(null)} />
                                                                                     <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">Change Role</div>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">Make Admin</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">Make Editor</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10 border-b border-zinc-800">Make Participant</button>
+                                                                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">{t('changeRole')}</div>
+                                                                                        <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeAdmin')}</button>
+                                                                                        <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeEditor')}</button>
+                                                                                        <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10 border-b border-zinc-800">{t('makeParticipant')}</button>
                                                                                         
                                                                                         <button onClick={() => handleRemoveParticipant(member.id)} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                                            {member.status === 'pending' ? 'Revoke Invite' : 'Remove Participant'}
+                                                                                            {member.status === 'pending' ? t('revokeInvite') : t('removeParticipant')}
                                                                                         </button>
                                                                                     </div>
                                                                                 </>
@@ -783,7 +796,7 @@ export default function ProjectDetailPage() {
                                     <div className="lg:col-span-2 hidden lg:block">
                                         <div className="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 border-dashed text-center flex flex-col items-center justify-center h-full text-zinc-500">
                                             <Users className="w-12 h-12 mb-4 opacity-50" />
-                                            <p>Manage your team here.</p>
+                                            <p>{t('participants')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -805,7 +818,7 @@ export default function ProjectDetailPage() {
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
-                            <h2 className="text-xl font-bold flex items-center gap-2"><Settings className="w-5 h-5"/> Project Settings</h2>
+                            <h2 className="text-xl font-bold flex items-center gap-2"><Settings className="w-5 h-5"/> {t('projectSettings')}</h2>
                             <button onClick={() => setShowSettingsDrawer(false)} className="text-zinc-500 hover:text-white p-2 rounded-lg hover:bg-zinc-900 transition-colors">
                                 <X className="w-5 h-5" />
                             </button>
@@ -814,11 +827,11 @@ export default function ProjectDetailPage() {
                             {/* Danger Zone */}
                             <div className="bg-red-950/20 border border-red-900/50 rounded-2xl p-6">
                                 <h3 className="text-red-500 font-bold flex items-center gap-2 mb-2">
-                                    <ShieldAlert className="w-5 h-5" /> Danger Zone
+                                    <ShieldAlert className="w-5 h-5" /> {t('dangerZone')}
                                 </h3>
-                                <p className="text-sm text-zinc-400 mb-4">Deleting this project will permanently remove it and all associated devlogs.</p>
+                                <p className="text-sm text-zinc-400 mb-4">{t('deleteProjectDesc')}</p>
                                 <button onClick={() => { setShowSettingsDrawer(false); setShowDeleteModal(true); }} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-xl py-2 font-bold transition-colors">
-                                    Delete Project
+                                    {t('deleteProject')}
                                 </button>
                             </div>
                         </div>
@@ -831,7 +844,7 @@ export default function ProjectDetailPage() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
                         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                            <h3 className="font-bold text-lg">Add Participant</h3>
+                            <h3 className="font-bold text-lg">{t('addParticipant')}</h3>
                             <button onClick={() => { setShowAddParticipantModal(false); setSelectedTargetUser(null); setSearchQuery(''); }} className="text-zinc-500 hover:text-white">
                                 <X className="w-5 h-5" />
                             </button>
@@ -840,12 +853,12 @@ export default function ProjectDetailPage() {
                             {!selectedTargetUser ? (
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm text-zinc-400 mb-2">Search User</label>
+                                        <label className="block text-sm text-zinc-400 mb-2">{t('searchUser')}</label>
                                         <input 
                                             type="text" 
                                             value={searchQuery}
                                             onChange={handleSearchUsers}
-                                            placeholder="Type username..."
+                                            placeholder={t('typeUsername')}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-colors"
                                         />
                                     </div>
@@ -874,18 +887,18 @@ export default function ProjectDetailPage() {
                                     <div className="flex flex-col items-center p-6 bg-zinc-950 rounded-xl border border-zinc-800">
                                         <img src={getImageUrl(selectedTargetUser.avatar, selectedTargetUser.username)} className="w-16 h-16 rounded-full border-2 border-zinc-800 mb-3" alt="" />
                                         <div className="text-lg font-bold text-white">{selectedTargetUser.username}</div>
-                                        <div className="text-sm text-zinc-500">Will receive an invitation to join</div>
+                                        <div className="text-sm text-zinc-500">{t('willReceiveInvite')}</div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm text-zinc-400 mb-2">Select Role</label>
+                                        <label className="block text-sm text-zinc-400 mb-2">{t('selectRole')}</label>
                                         <div className="relative">
                                             <div 
                                                 onClick={() => setRoleDropdownOpen(!roleDropdownOpen)} 
                                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white cursor-pointer flex justify-between items-center hover:border-emerald-500 transition-colors"
                                             >
                                                 <span className="font-medium">
-                                                    {selectedRole === 'admin' ? 'Admin (Full access)' : selectedRole === 'editor' ? 'Editor (Can post devlogs & edit about)' : 'Participant (Read-only)'}
+                                                    {selectedRole === 'admin' ? t('adminFullAccess') : selectedRole === 'editor' ? t('editorAccess') : t('participantAccess')}
                                                 </span>
                                                 <ChevronDown className="w-5 h-5 text-zinc-500" />
                                             </div>
@@ -893,9 +906,9 @@ export default function ProjectDetailPage() {
                                             {roleDropdownOpen && (
                                                 <div className="absolute z-10 w-full mt-2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
                                                     {[
-                                                        { value: 'participant', label: 'Participant', desc: 'Read-only access to the project.' },
-                                                        { value: 'editor', label: 'Editor', desc: 'Can post devlogs & edit about section.' },
-                                                        { value: 'admin', label: 'Admin', desc: 'Full access including managing members.' }
+                                                        { value: 'participant', label: t('participant'), desc: t('roleParticipantDesc') },
+                                                        { value: 'editor', label: t('editor'), desc: t('roleEditorDesc') },
+                                                        { value: 'admin', label: t('admin'), desc: t('roleAdminDesc') }
                                                     ].map(r => (
                                                         <div 
                                                             key={r.value} 
@@ -916,7 +929,7 @@ export default function ProjectDetailPage() {
                                             onClick={() => setSelectedTargetUser(null)} 
                                             className="flex-1 py-3 text-zinc-400 font-bold hover:text-white bg-zinc-950 hover:bg-zinc-800 rounded-xl transition-colors border border-zinc-800"
                                         >
-                                            Cancel
+                                            {t('cancel')}
                                         </button>
                                         
                                         {project.members?.find(m => m.user.id === selectedTargetUser.id) ? (
@@ -925,7 +938,7 @@ export default function ProjectDetailPage() {
                                                 disabled={isAddingUser}
                                                 className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 py-3 rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 border border-red-500/20"
                                             >
-                                                {isAddingUser ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500" /> : 'Revoke Invite'}
+                                                {isAddingUser ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500" /> : t('revokeInvite')}
                                             </button>
                                         ) : (
                                             <button 
@@ -933,7 +946,7 @@ export default function ProjectDetailPage() {
                                                 disabled={isAddingUser}
                                                 className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                             >
-                                                {isAddingUser ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : 'Send Invite'}
+                                                {isAddingUser ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : t('sendInvite')}
                                             </button>
                                         )}
                                     </div>
@@ -952,15 +965,15 @@ export default function ProjectDetailPage() {
                             <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
                                 <ShieldAlert className="w-6 h-6 text-red-500" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Delete Project?</h3>
+                            <h3 className="text-xl font-bold text-white mb-2">{t('deleteProjectConfirm')}</h3>
                             <p className="text-zinc-400 mb-6">
-                                This action cannot be undone. This will permanently delete the project 
+                                {t('deleteProjectWarning')}
                                 <span className="text-white font-bold mx-1">{project?.title}</span> 
-                                and all its devlogs, jobs, and associated data.
+                                {t('deleteProjectWarning2')}
                             </p>
                             <div className="mb-6">
                                 <label className="block text-sm text-zinc-400 mb-2">
-                                    Please type <strong className="text-white">{project?.title}</strong> to confirm.
+                                    {t('pleaseType')} <strong className="text-white">{project?.title}</strong> {t('toConfirm')}
                                 </label>
                                 <input 
                                     type="text" 
@@ -971,14 +984,14 @@ export default function ProjectDetailPage() {
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={() => setShowDeleteModal(false)} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-2 rounded-xl font-bold transition-colors">
-                                    Cancel
+                                    {t('cancel')}
                                 </button>
                                 <button 
                                     onClick={handleDeleteProject}
                                     disabled={deleteConfirmText !== project?.title || isDeleting}
                                     className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:hover:bg-red-500 text-white py-2 rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
                                 >
-                                    {isDeleting ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Trash2 className="w-4 h-4" />} Delete
+                                    {isDeleting ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Trash2 className="w-4 h-4" />} {t('delete')}
                                 </button>
                             </div>
                         </div>
