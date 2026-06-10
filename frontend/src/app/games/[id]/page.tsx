@@ -11,10 +11,12 @@ import ReviewCard from '@/components/ReviewCard';
 import SimilarGames from '@/components/SimilarGames';
 import { getMediaUrl } from '@/lib/utils';
 import Image from 'next/image';
+import { useLogModal } from '@/context/LogModalContext';
 
 export default function GameDetailPage() {
     const params = useParams();
     const gameId = params.id as string;
+    const { openLogModal } = useLogModal();
 
     const [game, setGame] = useState<GameDetail | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
@@ -229,16 +231,25 @@ export default function GameDetailPage() {
                                 </div>
                             )}
 
-                            <div className="flex items-center gap-6">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">
-                                        ★ {game.average_rating ? game.average_rating.toFixed(1) : '-'}
-                                    </span>
+                            <div className="flex items-center justify-between mt-4">
+                                <div className="flex items-center gap-6">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">
+                                            ★ {game.average_rating ? game.average_rating.toFixed(1) : '-'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col text-xs text-zinc-300 font-medium border-l border-zinc-700/80 pl-6 drop-shadow">
+                                        <span><strong className="text-white">{game.review_count || 0}</strong> Reviews</span>
+                                        <span><strong className="text-white">{game.log_count || 0}</strong> Logs</span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col text-xs text-zinc-300 font-medium border-l border-zinc-700/80 pl-6 drop-shadow">
-                                    <span><strong className="text-white">{game.review_count || 0}</strong> Reviews</span>
-                                    <span><strong className="text-white">{game.log_count || 0}</strong> Logs</span>
-                                </div>
+                                <button 
+                                    onClick={() => openLogModal(game)}
+                                    className="px-6 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                                    Log Game
+                                </button>
                             </div>
                         </div>
                     </div>

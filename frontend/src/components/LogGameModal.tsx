@@ -16,9 +16,10 @@ interface LogGameModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
+    initialGame?: any;
 }
 
-export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModalProps) {
+export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }: LogGameModalProps) {
     // State Management
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -50,8 +51,11 @@ export default function LogGameModal({ isOpen, onClose, onSuccess }: LogGameModa
             setIsCompleted(false);
             setContainsSpoilers(false);
             setSubmitError(null);
+        } else if (initialGame) {
+            setSelectedGame(initialGame);
+            setStep(2);
         }
-    }, [isOpen]);
+    }, [isOpen, initialGame]);
 
     // Search Logic
     useEffect(() => {
