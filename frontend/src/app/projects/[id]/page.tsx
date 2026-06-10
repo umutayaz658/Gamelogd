@@ -11,6 +11,7 @@ import { getImageUrl } from '@/lib/utils';
 import { MapPin, Calendar, Link as LinkIcon, Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, MoreHorizontal, ChevronDown, Clock, UserPlus, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -60,6 +61,7 @@ export default function ProjectDetailPage() {
     const [isFollowing, setIsFollowing] = useState(false);
     const [followersCount, setFollowersCount] = useState(0);
     const [isFollowLoading, setIsFollowLoading] = useState(false);
+    const [showDevlogModal, setShowDevlogModal] = useState(false);
 
     // Collapsible Roles
     const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>({
@@ -343,22 +345,32 @@ export default function ProjectDetailPage() {
                                 </div>
                             </div>
 
-                            {/* Follow Button */}
-                            <button
-                                onClick={handleFollowToggle}
-                                disabled={isFollowLoading}
-                                className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
-                                    isFollowing
-                                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
-                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
-                                } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
-                            >
-                                {isFollowing ? (
-                                    <><UserCheck className="w-4 h-4" /> Following</>
-                                ) : (
-                                    <><UserPlus className="w-4 h-4" /> Follow</>
+                            <div className="flex items-center gap-3">
+                                {isEditor && (
+                                    <button
+                                        onClick={() => setShowDevlogModal(true)}
+                                        className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
+                                    >
+                                        <Plus className="w-4 h-4" /> Log Dev
+                                    </button>
                                 )}
-                            </button>
+                                {/* Follow Button */}
+                                <button
+                                    onClick={handleFollowToggle}
+                                    disabled={isFollowLoading}
+                                    className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
+                                        isFollowing
+                                            ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
+                                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
+                                    } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                                >
+                                    {isFollowing ? (
+                                        <><UserCheck className="w-4 h-4" /> Following</>
+                                    ) : (
+                                        <><UserPlus className="w-4 h-4" /> Follow</>
+                                    )}
+                                </button>
+                            </div>
                         </div>
 
                         {/* Tabs */}
@@ -973,6 +985,16 @@ export default function ProjectDetailPage() {
                     </div>
                 </div>
             )}
+
+            {/* Create Devlog Modal */}
+            <CreateDevlogModal
+                isOpen={showDevlogModal}
+                onClose={() => setShowDevlogModal(false)}
+                defaultProjectId={project.id}
+                onSuccess={(newPost) => {
+                    setDevlogs(prev => [newPost, ...prev]);
+                }}
+            />
         </div>
     );
 }
