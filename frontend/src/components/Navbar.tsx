@@ -107,12 +107,16 @@ export default function Navbar() {
                         <Link href="/devs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
                             {t('devs')}
                         </Link>
-                        <Link href="/collabs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            {t('collabs')}
-                        </Link>
-                        <Link href="/invest" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            {t('invest')}
-                        </Link>
+                        {process.env.NODE_ENV === 'development' && (
+                            <>
+                                <Link href="/collabs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                                    {t('collabs')}
+                                </Link>
+                                <Link href="/invest" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                                    {t('invest')}
+                                </Link>
+                            </>
+                        )}
                     </div>
                 </div>
 

@@ -3,6 +3,7 @@
 import { useState, use, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
+import FilterDropdown from "@/components/FilterDropdown";
 import { Search, Filter, ArrowUpDown, LayoutGrid, List, Gamepad2, Monitor, Zap, Play, Loader2 } from 'lucide-react';
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
@@ -128,50 +129,53 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                         {/* Sticky Filters Bar */}
                         <div className="sticky top-20 z-30 bg-zinc-950/80 backdrop-blur-md border border-zinc-800 rounded-xl p-4 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl shadow-black/20">
 
-                            <div className="flex items-center gap-4 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
-                                {/* Status Filter */}
-                                <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-                                    {['all', 'unplayed', 'plan_to_play', 'playing', 'replaying', 'completed', 'dropped'].map((status) => (
-                                        <button
-                                            key={status}
-                                            onClick={() => setFilterStatus(status)}
-                                            className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-all ${filterStatus === status
-                                                ? 'bg-zinc-800 text-white shadow-sm ring-1 ring-zinc-700'
-                                                : 'text-zinc-400 hover:text-zinc-200'
-                                                }`}
-                                        >
-                                            {status.replace(/_/g, ' ')}
-                                        </button>
-                                    ))}
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
+                                {/* Status Filter wrapper (scrollable on mobile) */}
+                                <div className="overflow-x-auto w-full sm:w-auto scrollbar-none pb-2 sm:pb-0">
+                                    <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 min-w-max">
+                                        {['all', 'unplayed', 'plan_to_play', 'playing', 'replaying', 'completed', 'dropped'].map((status) => (
+                                            <button
+                                                key={status}
+                                                onClick={() => setFilterStatus(status)}
+                                                className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-all ${filterStatus === status
+                                                    ? 'bg-zinc-800 text-white shadow-sm ring-1 ring-zinc-700'
+                                                    : 'text-zinc-400 hover:text-zinc-200'
+                                                    }`}
+                                            >
+                                                {status.replace(/_/g, ' ')}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {/* Platform Filter */}
-                                <select
-                                    value={filterPlatform}
-                                    onChange={(e) => setFilterPlatform(e.target.value)}
-                                    className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 cursor-pointer hover:bg-zinc-800 transition-colors"
-                                >
-                                    <option value="all">All Platforms</option>
-                                    <option value="Steam">Steam</option>
-                                    <option value="PlayStation">PlayStation</option>
-                                    <option value="Xbox">Xbox</option>
-                                    <option value="EA">EA App</option>
-                                </select>
+                                <FilterDropdown
+                                    label="Platforms"
+                                    icon={<Gamepad2 className="h-4 w-4" />}
+                                    options={[
+                                        { value: 'Steam', label: 'Steam' },
+                                        { value: 'PlayStation', label: 'PlayStation' },
+                                        { value: 'Xbox', label: 'Xbox' },
+                                        { value: 'EA', label: 'EA App' }
+                                    ]}
+                                    value={filterPlatform === 'all' ? '' : filterPlatform}
+                                    onChange={(val) => setFilterPlatform(val || 'all')}
+                                />
                             </div>
 
                             <div className="flex items-center gap-3 w-full md:w-auto justify-end">
                                 {/* Sort */}
-                                <div className="flex items-center gap-2 text-sm text-zinc-400 bg-zinc-900 px-3 py-2 rounded-lg border border-zinc-800">
-                                    <ArrowUpDown className="h-4 w-4" />
-                                    <select
-                                        value={sortBy}
-                                        onChange={(e) => setSortBy(e.target.value)}
-                                        className="bg-transparent border-none text-white focus:ring-0 cursor-pointer p-0 text-sm"
-                                    >
-                                        <option value="playtime">Playtime</option>
-                                        <option value="name">Name</option>
-                                    </select>
-                                </div>
+                                <FilterDropdown
+                                    label="Sort"
+                                    icon={<ArrowUpDown className="h-4 w-4" />}
+                                    options={[
+                                        { value: 'playtime', label: 'Playtime' },
+                                        { value: 'name', label: 'Name' }
+                                    ]}
+                                    value={sortBy}
+                                    onChange={(val) => setSortBy(val)}
+                                    showAllOption={false}
+                                />
 
                                 <div className="h-6 w-px bg-zinc-800" />
 
