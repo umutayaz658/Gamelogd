@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { notFound } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import JobPostingCard from "@/components/JobPostingCard";
@@ -18,11 +19,16 @@ const AVAILABLE_TECH = [
 ];
 
 export default function CollabsPage() {
+    if (process.env.NODE_ENV === 'production') {
+        notFound();
+        return null;
+    }
+
     const { t } = useTranslation();
     const [jobPostings, setJobPostings] = useState<JobPosting[]>([]);
     const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
     const [loading, setLoading] = useState(true);
-    
+
     // Filter State
     const [postType, setPostType] = useState<'all' | 'job' | 'talent'>('all');
     const [filters, setFilters] = useState({
@@ -32,7 +38,7 @@ export default function CollabsPage() {
         experience_level: ''
     });
     const [techStack, setTechStack] = useState<string[]>([]);
-    
+
     // Tech Stack Drawer state
     const [showTechDrawer, setShowTechDrawer] = useState(false);
     const techDrawerRef = useRef<HTMLDivElement>(null);
@@ -52,7 +58,7 @@ export default function CollabsPage() {
                 const res = await api.get(`/job-postings/?${params.toString()}`);
                 const data = res.data.results || res.data;
                 setJobPostings(data);
-                
+
                 // If selected job is no longer in results, clear selection or select first
                 if (selectedJob && !data.find((j: JobPosting) => j.id === selectedJob.id)) {
                     setSelectedJob(null);
@@ -87,7 +93,7 @@ export default function CollabsPage() {
     }, [showTechDrawer]);
 
     const handleTechToggle = (tech: string) => {
-        setTechStack(prev => 
+        setTechStack(prev =>
             prev.includes(tech) ? prev.filter(t => t !== tech) : [...prev, tech]
         );
     };
@@ -109,8 +115,13 @@ export default function CollabsPage() {
                         <div className="mb-6 flex-shrink-0">
                             <div className="flex items-end justify-between mb-4">
                                 <div>
+<<<<<<< HEAD
                                     <h1 className="text-3xl font-bold text-white mb-2">{t('collabsJobsHub')}</h1>
                                     <p className="text-zinc-400">{t('collabsDescription')}</p>
+=======
+                                    <h1 className="text-3xl font-bold text-white mb-2">Collabs & Jobs</h1>
+                                    <p className="text-zinc-400">Find your next team or hire talented developers.</p>
+>>>>>>> origin/main
                                 </div>
                                 <button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20">
                                     <PlusCircle className="h-5 w-5" />
@@ -123,19 +134,19 @@ export default function CollabsPage() {
                                 {/* Top Row: Post Type Toggle & Search */}
                                 <div className="flex flex-col md:flex-row gap-4 items-center">
                                     <div className="flex p-1 bg-zinc-950 border border-zinc-800 rounded-xl w-full md:w-auto">
-                                        <button 
+                                        <button
                                             onClick={() => setPostType('all')}
                                             className={`flex-1 md:px-6 py-2 rounded-lg text-sm font-bold transition-colors ${postType === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                                         >
                                             {t('all')}
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => setPostType('job')}
                                             className={`flex-1 md:px-6 py-2 rounded-lg text-sm font-bold transition-colors ${postType === 'job' ? 'bg-blue-500/20 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                                         >
                                             {t('jobs')}
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => setPostType('talent')}
                                             className={`flex-1 md:px-6 py-2 rounded-lg text-sm font-bold transition-colors ${postType === 'talent' ? 'bg-purple-500/20 text-purple-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                                         >
@@ -199,9 +210,8 @@ export default function CollabsPage() {
                                     <div className="relative" ref={techDrawerRef}>
                                         <button
                                             onClick={() => setShowTechDrawer(!showTechDrawer)}
-                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                                                techStack.length > 0 || showTechDrawer ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
-                                            }`}
+                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${techStack.length > 0 || showTechDrawer ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                                                }`}
                                         >
                                             <Code2 className={`h-4 w-4 ${techStack.length > 0 ? 'text-emerald-500' : ''}`} />
                                             <span className={techStack.length > 0 ? 'text-emerald-500' : ''}>
@@ -222,11 +232,10 @@ export default function CollabsPage() {
                                                         <button
                                                             key={tech}
                                                             onClick={() => handleTechToggle(tech)}
-                                                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm transition-colors ${
-                                                                techStack.includes(tech)
+                                                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm transition-colors ${techStack.includes(tech)
                                                                     ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
                                                                     : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             {tech}
                                                             {techStack.includes(tech) && <Check className="h-3 w-3" />}
@@ -265,9 +274,9 @@ export default function CollabsPage() {
                                     <div className="flex flex-col gap-3">
                                         {jobPostings.length > 0 ? (
                                             jobPostings.map((job) => (
-                                                <JobPostingCard 
-                                                    key={job.id} 
-                                                    job={job} 
+                                                <JobPostingCard
+                                                    key={job.id}
+                                                    job={job}
                                                     selected={selectedJob?.id === job.id}
                                                     onClick={() => setSelectedJob(job)}
                                                 />
@@ -286,8 +295,8 @@ export default function CollabsPage() {
                             {/* Right Detail Pane (Desktop only natively, Mobile shows full screen when selected) */}
                             {selectedJob && (
                                 <div className="col-span-12 lg:col-span-7 h-full lg:block">
-                                    <CollabDetailPane 
-                                        job={selectedJob} 
+                                    <CollabDetailPane
+                                        job={selectedJob}
                                         onClose={() => setSelectedJob(null)}
                                     />
                                 </div>
@@ -295,13 +304,13 @@ export default function CollabsPage() {
                         </div>
 
                     </div>
-                    
+
                     {/* Mobile Detail Overlay (Only visible on mobile when selectedJob exists) */}
                     {selectedJob && (
                         <div className="lg:hidden fixed inset-0 z-50 bg-zinc-950 flex flex-col">
-                             <div className="flex-1 overflow-hidden pt-4 px-4 pb-4">
-                                <CollabDetailPane 
-                                    job={selectedJob} 
+                            <div className="flex-1 overflow-hidden pt-4 px-4 pb-4">
+                                <CollabDetailPane
+                                    job={selectedJob}
                                     onClose={() => setSelectedJob(null)}
                                 />
                             </div>

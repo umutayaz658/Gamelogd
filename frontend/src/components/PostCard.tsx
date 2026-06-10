@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send } from 'lucide-react';
 import { Post } from '@/types';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getRelativeTime } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
@@ -262,8 +262,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 @{post.user.username.toLowerCase()}
                             </Link>
                             <span className="text-zinc-700 text-sm">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline">
-                                {new Date(post.timestamp).toLocaleDateString()}
+                            <span className="text-zinc-500 text-sm hover:underline" title={new Date(post.timestamp).toLocaleString()}>
+                                {new Date(post.timestamp).toLocaleDateString()} • {getRelativeTime(post.timestamp)}
                             </span>
                             {post.news_details && !hideNewsQuote && (
                                 <span className="ml-2 text-zinc-500 text-sm font-normal">
@@ -442,6 +442,41 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         <img src={post.repost_details.gif_url} className="w-full h-full object-cover" />
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Nested Quoted Review Card */}
+                        {post.repost_review_details && (
+                            <div 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/${post.repost_review_details!.user.username}/review/${post.repost_review_details!.id}`);
+                                }}
+                                className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3 flex flex-col gap-2 transition-all cursor-pointer hover:bg-zinc-950/50"
+                            >
+                                <div className="flex items-center gap-2 mb-1">
+                                    <img
+                                        src={getImageUrl(post.repost_review_details.user.avatar, post.repost_review_details.user.username)}
+                                        alt={post.repost_review_details.user.username}
+                                        className="h-5 w-5 rounded-full object-cover"
+                                    />
+                                    <span className="font-bold text-white text-xs">{post.repost_review_details.user.real_name || post.repost_review_details.user.username}</span>
+                                    <span className="text-zinc-500 text-xs">@{post.repost_review_details.user.username.toLowerCase()}</span>
+                                    <span className="text-zinc-600 text-xs">•</span>
+                                    <span className="text-zinc-500 text-xs">{new Date(post.repost_review_details.timestamp).toLocaleDateString()}</span>
+                                </div>
+                                <div className="flex gap-3">
+                                    {post.repost_review_details.game?.cover_image && (
+                                        <img src={getImageUrl(post.repost_review_details.game.cover_image)} className="w-16 h-24 object-cover rounded-md flex-shrink-0" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-sm text-white mb-0.5">{post.repost_review_details.game?.title}</div>
+                                        <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {post.repost_review_details.rating}/10</div>
+                                        <p className="text-zinc-300 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                            {renderContentWithLinks(post.repost_review_details.content) || 'No review written.'}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>

@@ -329,6 +329,7 @@ class PostSerializer(serializers.ModelSerializer):
     reposts_count = serializers.IntegerField(source='reposts.count', read_only=True)
     is_reposted = serializers.SerializerMethodField()
     repost_details = serializers.SerializerMethodField()
+    repost_review_details = serializers.SerializerMethodField()
     
     # Media Handling
     media = PostMediaSerializer(many=True, read_only=True)
@@ -345,9 +346,10 @@ class PostSerializer(serializers.ModelSerializer):
             'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
-            'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted'
+            'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted',
+            'repost_parent_review', 'repost_review_details'
         ]
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details']
 
     def create(self, validated_data):
         uploaded_media = validated_data.pop('uploaded_media', [])
@@ -386,6 +388,11 @@ class PostSerializer(serializers.ModelSerializer):
     def get_repost_details(self, obj):
         if obj.repost_parent:
             return SimplePostSerializer(obj.repost_parent, context=self.context).data
+        return None
+
+    def get_repost_review_details(self, obj):
+        if obj.repost_parent_review:
+            return ReviewSerializer(obj.repost_parent_review, context=self.context).data
         return None
 
     def get_is_bookmarked(self, obj):

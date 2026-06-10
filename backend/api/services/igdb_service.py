@@ -47,7 +47,7 @@ def fetch_game_details(game: Game) -> Game:
     Fetches missing details for a game from IGDB and saves them to the DB.
     Returns the updated game object.
     """
-    if not game.igdb_id or game.details_fetched:
+    if game.details_fetched:
         return game
 
     if not IGDB_CLIENT_ID or not IGDB_CLIENT_SECRET:
@@ -64,12 +64,51 @@ def fetch_game_details(game: Game) -> Game:
         'Authorization': f'Bearer {token}'
     }
 
+    target_igdb_id = game.igdb_id
+
+    # Resolve IGDB ID if missing (e.g. for games synced from Steam)
+    if not target_igdb_id:
+        try:
+            # Sanitize title for IGDB search
+            safe_title = game.title.replace('"', '').replace('\\', '')
+            search_query = f'search "{safe_title}"; fields id, name, category, version_parent, parent_game; limit 10;'
+            resp = requests.post('https://api.igdb.com/v4/games', headers=headers, data=search_query, timeout=10)
+            if resp.status_code == 200 and resp.json():
+                results = resp.json()
+                best_match = None
+                
+                # Look for exact match and main game
+                for g in results:
+                    cat = g.get('category', 0)
+                    if cat in (0, 8, 9, 10, 11) and not g.get('version_parent'):
+                        if g.get('name', '').lower() == game.title.lower():
+                            best_match = g
+                            break
+                            
+                # Fallback to first result if no exact main game match
+                if not best_match:
+                    best_match = results[0]
+                    
+                target_igdb_id = best_match['id']
+                
+                # Safely save igdb_id only if it's not already taken by a duplicate game
+                if not Game.objects.filter(igdb_id=target_igdb_id).exclude(id=game.id).exists():
+                    game.igdb_id = target_igdb_id
+                    game.save(update_fields=['igdb_id'])
+            else:
+                # Could not find game on IGDB
+                game.details_fetched = True
+                game.save()
+                return game
+        except Exception as e:
+            print(f"Failed to resolve IGDB ID for {game.title}: {e}")
+            return game
     # The query asks for summary, storyline, companies, platforms, screenshots, url
     query = f"""
-        fields summary, storyline, url, cover.url,
+        fields summary, storyline, url, cover.url, first_release_date,
                involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
                platforms.name, screenshots.url, genres.name;
-        where id = {game.igdb_id};
+        where id = {target_igdb_id};
     """
 
     try:
@@ -89,6 +128,14 @@ def fetch_game_details(game: Game) -> Game:
             game.summary = igdb_data.get('summary', '')
             game.description = igdb_data.get('storyline', '')
             game.igdb_url = igdb_data.get('url', '')
+
+            # Release date
+            if 'first_release_date' in igdb_data and not game.release_date:
+                import datetime
+                try:
+                    game.release_date = datetime.datetime.fromtimestamp(igdb_data['first_release_date']).strftime('%Y-%m-%d')
+                except Exception as e:
+                    print(f"Failed to parse release date: {e}")
 
             # Cover
             if 'cover' in igdb_data and 'url' in igdb_data['cover'] and not game.cover_image:

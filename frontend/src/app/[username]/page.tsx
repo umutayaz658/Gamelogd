@@ -12,6 +12,7 @@ import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, 
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
 import EditProfileModal from "@/components/EditProfileModal";
+import FollowersFollowingModal from "@/components/FollowersFollowingModal";
 
 interface Game {
     id: number;
@@ -63,6 +64,8 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     // Top 4 State
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isFollowModalOpen, setIsFollowModalOpen] = useState(false);
+    const [followModalTab, setFollowModalTab] = useState<'followers' | 'following'>('followers');
     const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
     const [topGames, setTopGames] = useState<(Game | null)[]>([null, null, null, null]);
     const [userPosts, setUserPosts] = useState<any[]>([]);
@@ -104,6 +107,17 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             fetchProfile();
         }
     }, [username]);
+
+    const refreshProfileCounts = async () => {
+        try {
+            const res = await api.get(`/users/${username}/`);
+            setProfileUser(res.data);
+            setIsFollowing(res.data.is_following || false);
+            setFollowersCount(res.data.followers_count || 0);
+        } catch (error) {
+            console.error("Failed to refresh profile counts:", error);
+        }
+    };
 
     // Fetch Steam Status
     useEffect(() => {
@@ -489,14 +503,26 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
                                 {/* Stats */}
                                 <div className="flex items-center gap-6 md:gap-8 bg-zinc-900/50 px-6 py-3 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
-                                    <div className="text-center">
-                                        <div className="text-xl font-bold text-white">{followersCount}</div>
+                                    <button
+                                        onClick={() => {
+                                            setFollowModalTab('followers');
+                                            setIsFollowModalOpen(true);
+                                        }}
+                                        className="text-center hover:opacity-80 focus:outline-none group transition-all"
+                                    >
+                                        <div className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">{followersCount}</div>
                                         <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Followers</div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-xl font-bold text-white">{profileUser.following_count || 0}</div>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setFollowModalTab('following');
+                                            setIsFollowModalOpen(true);
+                                        }}
+                                        className="text-center hover:opacity-80 focus:outline-none group transition-all"
+                                    >
+                                        <div className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">{profileUser.following_count || 0}</div>
                                         <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Following</div>
-                                    </div>
+                                    </button>
                                     <div className="text-center">
                                         <div className="text-xl font-bold text-emerald-400">{profileUser.reviews_count || 0}</div>
                                         <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Reviews</div>
@@ -791,6 +817,14 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSelectGame={handleSelectGame}
+            />
+
+            <FollowersFollowingModal
+                isOpen={isFollowModalOpen}
+                onClose={() => setIsFollowModalOpen(false)}
+                username={username}
+                initialTab={followModalTab}
+                onCountChange={refreshProfileCounts}
             />
 
             {

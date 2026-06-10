@@ -59,3 +59,38 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     // Final Fallback: Generic Placeholder
     return "https://placehold.co/400x600?text=No+Image";
 };
+
+/**
+ * Returns a relative time string (e.g., "5m", "2h", "1d").
+ */
+export function getRelativeTime(timestamp: string | Date, lang: string = 'en'): string {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) {
+        return lang === 'tr' ? `${diffInSeconds}s` : `${diffInSeconds}s`;
+    }
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+        return lang === 'tr' ? `${diffInMinutes}dk` : `${diffInMinutes}m`;
+    }
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+        return lang === 'tr' ? `${diffInHours}s` : `${diffInHours}h`;
+    }
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) {
+        return lang === 'tr' ? `${diffInDays}g` : `${diffInDays}d`;
+    }
+    const diffInWeeks = Math.floor(diffInDays / 7);
+    if (diffInWeeks < 4) {
+        return lang === 'tr' ? `${diffInWeeks}h` : `${diffInWeeks}w`;
+    }
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths < 12) {
+        return lang === 'tr' ? `${diffInMonths}a` : `${diffInMonths}mo`;
+    }
+    const diffInYears = Math.floor(diffInDays / 365);
+    return lang === 'tr' ? `${diffInYears}y` : `${diffInYears}y`;
+}
