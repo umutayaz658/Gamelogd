@@ -100,7 +100,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity"
                             />
                             <div className="relative z-10 flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
-                                <div className="p-4 bg-black/50 backdrop-blur-md rounded-full mb-3 text-emerald-500">
+                                <div className="p-4 bg-black/50 backdrop-blur-md rounded-full mb-3 text-blue-500">
                                     <Upload className="h-8 w-8" />
                                 </div>
                                 <p className="text-white font-bold text-lg shadow-black drop-shadow-lg">Change Cover Image</p>
@@ -121,7 +121,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                         </>
                     ) : (
                         <div className="flex flex-col items-center justify-center text-zinc-600 transition-colors group-hover:text-zinc-400">
-                            <div className="p-6 rounded-full bg-zinc-900 border border-zinc-800 mb-6 group-hover:scale-110 transition-transform duration-300 group-hover:border-emerald-500/30 group-hover:bg-zinc-900/50">
+                            <div className="p-6 rounded-full bg-zinc-900 border border-zinc-800 mb-6 group-hover:scale-110 transition-transform duration-300 group-hover:border-blue-500/30 group-hover:bg-zinc-900/50">
                                 <ImageIcon className="h-12 w-12" />
                             </div>
                             <h3 className="text-xl font-bold text-zinc-300 mb-2">Upload Cover Image</h3>
@@ -146,7 +146,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                     </div>
 
                     {/* Scrollable Form Content */}
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                    <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin-dark">
                         {/* Title Input */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Project Title</label>
@@ -154,7 +154,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 type="text"
                                 required
                                 autoFocus
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all"
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
                                 value={formData.title}
                                 onChange={e => setFormData({ ...formData, title: e.target.value })}
                                 placeholder="e.g. Super Space Odyssey"
@@ -167,7 +167,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                             <textarea
                                 required
                                 rows={4}
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all resize-none leading-relaxed"
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all resize-none leading-relaxed"
                                 value={formData.description}
                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
                                 placeholder="What's this project about? What makes it special?"
@@ -180,7 +180,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Development Status</label>
                                 <div className="relative">
                                     <select
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-emerald-500/50 outline-none transition-all"
+                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all"
                                         value={formData.status}
                                         onChange={e => setFormData({ ...formData, status: e.target.value })}
                                     >
@@ -204,10 +204,10 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 >
                                     {formData.tech_stack.length > 0 ? (
                                         formData.tech_stack.map(tech => (
-                                            <span key={tech} className="bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
+                                            <span key={tech} className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
                                                 {tech}
                                                 <X 
-                                                    className="w-3 h-3 cursor-pointer hover:text-emerald-300" 
+                                                    className="w-3 h-3 cursor-pointer hover:text-blue-300" 
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setFormData({...formData, tech_stack: formData.tech_stack.filter(t => t !== tech)})
@@ -223,7 +223,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 {showTechDropdown && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowTechDropdown(false)} />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto p-2 grid grid-cols-2 gap-1 animate-in fade-in slide-in-from-top-2 custom-scrollbar">
+                                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto p-2 grid grid-cols-2 gap-1 animate-in fade-in slide-in-from-bottom-2 scrollbar-thin-dark">
                                             {AVAILABLE_TECH.map(tech => (
                                                 <button
                                                     key={tech}
@@ -235,7 +235,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                                             setFormData({...formData, tech_stack: [...formData.tech_stack, tech]});
                                                         }
                                                     }}
-                                                    className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${formData.tech_stack.includes(tech) ? 'bg-emerald-500 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
+                                                    className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${formData.tech_stack.includes(tech) ? 'bg-blue-500 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
                                                 >
                                                     {tech}
                                                 </button>
@@ -260,7 +260,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                             type="submit"
                             onClick={handleSubmit}
                             disabled={loading || !formData.title}
-                            className="px-8 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
+                            className="px-8 py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2 text-sm"
                         >
                             {loading ? 'Creating...' : (
                                 <>

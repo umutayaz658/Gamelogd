@@ -22,7 +22,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings', 'dnd_mode'
+            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
+            'reviews_count'
         ]
         read_only_fields = ['id', 'date_joined']
 
@@ -58,6 +59,7 @@ class UserSerializer(serializers.ModelSerializer):
     
     followers_count = serializers.IntegerField(source='followers.count', read_only=True)
     following_count = serializers.IntegerField(source='following.count', read_only=True)
+    reviews_count = serializers.IntegerField(source='reviews.count', read_only=True)
     is_following = serializers.SerializerMethodField()
 
     def get_is_following(self, obj):
@@ -106,6 +108,18 @@ class NotificationSerializer(serializers.ModelSerializer):
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
+
+                elif 'quoted' in obj.verb or 'reposted' in obj.verb:
+                    if model_name == 'post':
+                        return f"/{obj.target.user.username}/status/{obj.target.id}"
+
+                elif 'accepted' in obj.verb:
+                    project = getattr(obj.target, 'project', None)
+                    if project:
+                        return f"/projects/{project.id}"
+
+                elif 'followed' in obj.verb and model_name == 'project':
+                    return f"/projects/{obj.target.id}"
         except Exception as e:
             print("Error generating target_url in NotificationSerializer:", e)
         return None

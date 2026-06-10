@@ -218,7 +218,7 @@ export default function Navbar() {
                             {isMenuOpen && (
                                 <div className="absolute top-16 right-4 w-56 bg-zinc-800 border border-zinc-700 rounded-xl shadow-xl py-2 animate-in fade-in slide-in-from-top-2 duration-200">
                                     <div className="px-4 py-3 border-b border-zinc-700 mb-2">
-                                        <p className="text-sm font-bold text-white">{user.username}</p>
+                                        <p className="text-sm font-bold text-white">{user.real_name || user.username}</p>
                                         <p className="text-xs text-zinc-400 truncate">@{user.username.toLowerCase()}</p>
                                     </div>
 

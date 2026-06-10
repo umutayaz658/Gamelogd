@@ -125,15 +125,17 @@ export default function DevsPage() {
                         {/* Header Section */}
                         <div className="flex items-end justify-between mb-8">
                             <div>
-                                <h1 className="text-3xl font-bold text-white mb-2">Developer Hub</h1>
+                                <h1 className="text-3xl font-bold text-white mb-2">
+                                    <span className="text-blue-500">Developer</span> Hub
+                                </h1>
                                 <p className="text-zinc-400">Discover indie gems and follow their development journey.</p>
                             </div>
                             <button
                                 onClick={handleCreateClick}
-                                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20"
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20"
                             >
                                 <PlusCircle className="h-5 w-5" />
-                                <span>{activeTab === 'devlogs' ? 'Log Dev' : 'Create Project'}</span>
+                                <span>{activeTab === 'devlogs' ? 'Dev Log' : 'Create Project'}</span>
                             </button>
                         </div>
 
@@ -149,7 +151,7 @@ export default function DevsPage() {
                                 <Layout className="h-5 w-5" />
                                 Devlogs
                                 {activeTab === 'devlogs' && (
-                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
                             </button>
 
@@ -163,7 +165,7 @@ export default function DevsPage() {
                                 <FolderKanban className="h-5 w-5" />
                                 Projects
                                 {activeTab === 'projects' && (
-                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
                             </button>
                         </div>

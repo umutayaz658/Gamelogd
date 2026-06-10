@@ -47,7 +47,7 @@ def fetch_game_details(game: Game) -> Game:
     Fetches missing details for a game from IGDB and saves them to the DB.
     Returns the updated game object.
     """
-    if game.details_fetched:
+    if not game.igdb_id or game.details_fetched:
         return game
 
     if not IGDB_CLIENT_ID or not IGDB_CLIENT_SECRET:
@@ -103,12 +103,6 @@ def fetch_game_details(game: Game) -> Game:
         except Exception as e:
             print(f"Failed to resolve IGDB ID for {game.title}: {e}")
             return game
-
-    headers = {
-        'Client-ID': IGDB_CLIENT_ID,
-        'Authorization': f'Bearer {token}'
-    }
-
     # The query asks for summary, storyline, companies, platforms, screenshots, url
     query = f"""
         fields summary, storyline, url, cover.url,
