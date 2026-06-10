@@ -9,6 +9,7 @@ import Navbar from '@/components/Navbar';
 import LeftSidebar from '@/components/LeftSidebar';
 import ReviewCard from '@/components/ReviewCard';
 import SimilarGames from '@/components/SimilarGames';
+import { getMediaUrl } from '@/lib/utils';
 import Image from 'next/image';
 
 export default function GameDetailPage() {
@@ -126,7 +127,7 @@ export default function GameDetailPage() {
         );
     }
 
-    const coverUrl = game.cover_image ? (game.cover_image.startsWith('http') ? game.cover_image : `http://localhost:8000${game.cover_image}`) : null;
+    const coverUrl = getMediaUrl(game.cover_image);
     const bannerUrl = (game.screenshots && game.screenshots.length > 0) ? game.screenshots[0] : coverUrl;
 
     return (
