@@ -9,6 +9,7 @@ import { useLogModal } from '@/context/LogModalContext';
 import SidebarSearch from './SidebarSearch';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface Notification {
     id: number;
@@ -26,6 +27,7 @@ export default function LeftSidebar() {
     const { user } = useAuth();
     const { unreadMessages, unreadNotifications, markMessagesRead, markNotificationsRead } = useNotifications();
     const { openLogModal } = useLogModal();
+    const { t } = useTranslation();
 
     const [isNotifMode, setIsNotifMode] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -61,27 +63,29 @@ export default function LeftSidebar() {
     };
 
     const menuItems = [
-        { icon: Hash, label: 'Explore', href: '/explore' },
+        { icon: Hash, label: t('explore'), href: '/explore', key: 'explore' },
         {
             icon: Bell,
-            label: 'Notifications',
+            label: t('notifications'),
             href: '#',
             onClick: () => {
                 setIsNotifMode(true);
                 markNotificationsRead();
             },
-            badge: unreadNotifications
+            badge: unreadNotifications,
+            key: 'notifications'
         },
         {
             icon: MessageSquare,
-            label: 'Messages',
+            label: t('messages'),
             href: '/messages',
             onClick: () => markMessagesRead(),
-            badge: unreadMessages
+            badge: unreadMessages,
+            key: 'messages'
         },
-        { icon: Bookmark, label: 'Bookmarks', href: '/bookmarks' },
-        { icon: User, label: 'Profile', href: user ? `/${user.username}` : '/login' },
-        { icon: Settings, label: 'Settings', href: '/settings' },
+        { icon: Bookmark, label: t('bookmarks'), href: '/bookmarks', key: 'bookmarks' },
+        { icon: User, label: t('profile'), href: user ? `/${user.username}` : '/login', key: 'profile' },
+        { icon: Settings, label: t('settings'), href: '/settings', key: 'settings' },
     ];
 
     return (
@@ -94,7 +98,7 @@ export default function LeftSidebar() {
                 // --- VIEW A: NOTIFICATION DRAWER ---
                 <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 h-full flex flex-col overflow-hidden animate-in slide-in-from-left-4 duration-300">
                     <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
-                        <h2 className="font-bold text-white">Notifications</h2>
+                        <h2 className="font-bold text-white">{t('notifications')}</h2>
                         <div className="flex items-center gap-1">
                             <Link href="/notifications" className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors">
                                 <Maximize2 className="h-4 w-4" />
@@ -109,7 +113,7 @@ export default function LeftSidebar() {
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 space-y-2">
                         {isLoading ? (
-                            <div className="text-center py-8 text-zinc-500">Loading...</div>
+                            <div className="text-center py-8 text-zinc-500">{t('loading')}</div>
                         ) : notifications.length > 0 ? (
                             notifications.map((notif) => (
                                 <Link
@@ -133,7 +137,7 @@ export default function LeftSidebar() {
                                 </Link>
                             ))
                         ) : (
-                            <div className="text-center py-8 text-zinc-500">No notifications</div>
+                            <div className="text-center py-8 text-zinc-500">{t('noNotifications')}</div>
                         )}
                     </div>
                 </div>
@@ -148,7 +152,7 @@ export default function LeftSidebar() {
                             if (isButton) {
                                 return (
                                     <button
-                                        key={item.label}
+                                        key={item.key}
                                         onClick={item.onClick}
                                         className={`flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group w-full text-left relative ${extraClass}`}
                                     >
@@ -167,7 +171,7 @@ export default function LeftSidebar() {
 
                             return (
                                 <Link
-                                    key={item.label}
+                                    key={item.key}
                                     href={item.href}
                                     onClick={item.onClick}
                                     className={`flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group relative ${extraClass}`}
@@ -191,7 +195,7 @@ export default function LeftSidebar() {
                             className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
                         >
                             <PlusCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                            <span className="font-bold text-lg">Log Game</span>
+                            <span className="font-bold text-lg">{t('logGame')}</span>
                         </button>
                     </div>
                 </nav>

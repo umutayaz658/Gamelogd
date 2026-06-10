@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface RecommendedGame {
     id: number;
@@ -43,6 +44,7 @@ const GameCardContent = ({ game, isCenter }: { game: RecommendedGame, isCenter: 
 export default function RecommendedGames({ username }: RecommendedGamesProps) {
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [games, setGames] = useState<RecommendedGame[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeIndex, setActiveIndex] = useState(0);
@@ -108,7 +110,7 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
     if (loading) {
         return (
             <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 h-64 flex items-center justify-center mt-6">
-                <span className="text-zinc-500 text-sm">Loading recommendations...</span>
+                <span className="text-zinc-500 text-sm">{t('loadingRecommendations')}</span>
             </div>
         );
     }
@@ -179,7 +181,7 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
             <div className="flex items-center justify-between mb-2 relative z-30">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                     <Gamepad2 className="h-5 w-5 text-indigo-500" />
-                    You Might Like These
+                    {t('youMightLikeThese')}
                 </h2>
                 <div className="flex items-center gap-1">
                     <button
@@ -247,7 +249,7 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
                     onClick={() => router.push(`/${username}/recommended`)}
                     className="w-full mt-4 py-2 text-sm text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all font-medium relative z-30"
                 >
-                    Show more
+                    {t('showMore')}
                 </button>
             )}
         </div>
