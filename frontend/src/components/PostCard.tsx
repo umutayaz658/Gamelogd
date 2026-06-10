@@ -8,6 +8,8 @@ import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
+import ImageModal from '@/components/modals/ImageModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 const renderContentWithLinks = (content: string | undefined) => {
     if (!content) return null;
@@ -42,9 +44,10 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     const [isLiked, setIsLiked] = useState(post.is_liked || false);
-    const [likesCount, setLikesCount] = useState(post.likes_count || post.likes || 0);
+    const [likesCount, setLikesCount] = useState(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
     const [isBookmarked, setIsBookmarked] = useState(post.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(post.bookmarks_count || 0);
 
@@ -59,6 +62,18 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    // Image Modal states
+    const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+    const [modalImages, setModalImages] = useState<string[]>([]);
+    const [modalInitialIndex, setModalInitialIndex] = useState(0);
+
+    const openImageModal = (images: string[], index: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setModalImages(images);
+        setModalInitialIndex(index);
+        setIsImageModalOpen(true);
+    };
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -78,7 +93,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     useEffect(() => {
         setIsLiked(post.is_liked || false);
-        setLikesCount(post.likes_count || post.likes || 0);
+        setLikesCount(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
         setIsBookmarked(post.is_bookmarked || false);
         setBookmarksCount(post.bookmarks_count || 0);
     }, [post]);
@@ -191,7 +206,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             <div className="flex flex-col">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 mb-1.5 pl-12">
                     <Repeat2 className="h-3.5 w-3.5 text-green-500" />
-                    <span>{post.user.real_name || post.user.username} reposted</span>
+                    <span>{post.user.real_name || post.user.username} {t('reposted')}</span>
                 </div>
                 <PostCard post={post.repost_details} isDetailView={isDetailView} hideNewsQuote={hideNewsQuote} />
             </div>
@@ -219,7 +234,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 <div className="flex-1 min-w-0">
                     {post.reply_to_username && !post.news_details && (
                         <div className="mb-1 flex items-center gap-1 text-sm">
-                            <span className="text-zinc-500">Replying to</span>
+                            <span className="text-zinc-500">{t('replyingTo')}</span>
                             <Link
                                 href={`/${post.reply_to_username}`}
                                 className="text-emerald-500 hover:underline"
@@ -271,7 +286,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
                                         >
                                             <Trash2 className="h-4 w-4" />
-                                            Delete Post
+                                            {t('deletePost')}
                                         </button>
                                     )}
                                     <button
@@ -279,7 +294,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
                                     >
                                         <LinkIcon className="h-4 w-4" />
-                                        Copy Link
+                                        {t('copyLink')}
                                     </button>
                                 </div>
                             )}
@@ -342,8 +357,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                                         alt={`Post media ${index + 1}`}
                                                         className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
                                                         onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (media.file) window.open(getImageUrl(media.file), '_blank');
+                                                            const allImgUrls = post.media!.map(m => getImageUrl(m.file));
+                                                            openImageModal(allImgUrls, index, e);
                                                         }}
                                                     />
                                                 )}
@@ -368,7 +383,11 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             <img
                                                 src={getImageUrl(post.media_file || post.image || '')}
                                                 alt="Post media"
-                                                className="w-full max-h-[512px] object-cover"
+                                                className="w-full max-h-[512px] object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                                                onClick={(e) => {
+                                                    const imgUrl = getImageUrl(post.media_file || post.image || '');
+                                                    openImageModal([imgUrl], 0, e);
+                                                }}
                                             />
                                         )}
                                     </div>
@@ -377,7 +396,10 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         <img
                                             src={post.gif_url}
                                             alt="GIF content"
-                                            className="w-full h-auto object-cover"
+                                            className="w-full h-auto object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                                            onClick={(e) => {
+                                                openImageModal([post.gif_url || ''], 0, e);
+                                            }}
                                         />
                                     </div>
                                 )}
@@ -491,16 +513,6 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             <span className="text-sm">{post.comments || 0}</span>
                         </button>
 
-                        <button
-                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
-                            onClick={handleLike}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
-                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
-                            </div>
-                            <span className="text-sm">{likesCount || 0}</span>
-                        </button>
-
                         <div className="relative" ref={repostMenuRef}>
                             <button
                                 className={`flex items-center gap-2 hover:text-green-500 group transition-colors ${isReposted ? 'text-green-500' : ''}`}
@@ -521,7 +533,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
                                     >
                                         <Repeat2 className="h-3.5 w-3.5" />
-                                        {isReposted ? 'Undo Repost' : 'Repost'}
+                                        {isReposted ? t('undoRepost') : t('repost')}
                                     </button>
                                     <button
                                         onClick={(e) => {
@@ -532,11 +544,21 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                                        Quote Post
+                                        {t('quotePost')}
                                     </button>
                                 </div>
                             )}
                         </div>
+
+                        <button
+                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
+                            onClick={handleLike}
+                        >
+                            <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
+                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
+                            </div>
+                            <span className="text-sm">{likesCount}</span>
+                        </button>
 
                         <div className="relative" ref={shareMenuRef}>
                             <button
@@ -561,7 +583,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
                                     >
                                         <Send className="h-3.5 w-3.5 text-emerald-500" />
-                                        Send via Direct Message
+                                        {t('sendViaDm')}
                                     </button>
                                     <button
                                         onClick={(e) => {
@@ -569,12 +591,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             setShowShareMenu(false);
                                             const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
                                             navigator.clipboard.writeText(url);
-                                            alert('Link copied to clipboard!');
+                                            alert(t('linkCopied'));
                                         }}
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                     >
                                         <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
-                                        Copy Link
+                                        {t('copyLink')}
                                     </button>
                                     <button
                                         onClick={(e) => {
@@ -585,7 +607,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                     >
                                         <Share2 className="h-3.5 w-3.5 text-zinc-550" />
-                                        Share via...
+                                        {t('shareVia')}
                                     </button>
                                 </div>
                             )}
@@ -608,6 +630,13 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 itemType="post"
                 itemId={post.id}
                 title={post.content?.slice(0, 50) || post.title || 'Post'}
+            />
+            <ImageModal
+                isOpen={isImageModalOpen}
+                onClose={() => setIsImageModalOpen(false)}
+                images={modalImages}
+                initialIndex={modalInitialIndex}
+                post={post}
             />
         </div>
     );

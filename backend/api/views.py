@@ -476,7 +476,7 @@ class GameViewSet(viewsets.ModelViewSet):
         game = self.get_object()
         
         # Fetch IGDB details on demand
-        if not game.details_fetched and game.igdb_id:
+        if not game.details_fetched:
             from api.services.igdb_service import fetch_game_details
             game = fetch_game_details(game)
 
@@ -1309,7 +1309,84 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         return SupportTicket.objects.filter(user=self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        ticket = serializer.save(user=self.request.user)
+        
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            
+            if ticket.ticket_type == 'bug':
+                subject = f"New Bug Report Submission: {ticket.subject}"
+                body = (
+                    f"New Bug Report from Roark Forge Website\n"
+                    f"--------------------------------------------------\n"
+                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
+                    f"Email: {self.request.user.email}\n"
+                    f"Severity: {ticket.severity}\n"
+                    f"Subject: {ticket.subject}\n\n"
+                    f"Steps to Reproduce:\n"
+                    f"{ticket.steps_to_reproduce}\n\n"
+                    f"Message:\n"
+                    f"{ticket.description}"
+                )
+                html_body = (
+                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Bug Report from Roark Forge Website</h2>\n'
+                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
+                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
+                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
+                    f'    <strong>Severity:</strong> {ticket.severity}<br>\n'
+                    f'    <strong>Subject:</strong> {ticket.subject}\n'
+                    f'</p>\n'
+                    f'<br>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
+                    f'    <strong>Steps to Reproduce:</strong>\n'
+                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.steps_to_reproduce}</span>\n'
+                    f'</p>\n'
+                    f'<br>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
+                    f'    <strong>Message:</strong>\n'
+                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.description}</span>\n'
+                    f'</p>'
+                )
+            else:
+                subject = f"New Contact Form Submission: {ticket.subject}"
+                body = (
+                    f"New Message from Roark Forge Website\n"
+                    f"--------------------------------------------------\n"
+                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
+                    f"Email: {self.request.user.email}\n"
+                    f"Category: {ticket.category}\n"
+                    f"Subject: {ticket.subject}\n\n"
+                    f"Message:\n"
+                    f"{ticket.description}"
+                )
+                html_body = (
+                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Message from Roark Forge Website</h2>\n'
+                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
+                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
+                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
+                    f'    <strong>Category:</strong> {ticket.category}<br>\n'
+                    f'    <strong>Subject:</strong> {ticket.subject}\n'
+                    f'</p>\n'
+                    f'<br>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
+                    f'    <strong>Message:</strong>\n'
+                    f'</p>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; white-space: pre-wrap;">{ticket.description}</p>'
+                )
+            
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=['support@roarkforge.com'],
+                fail_silently=False,
+                html_message=html_body,
+            )
+        except Exception as e:
+            print(f"Failed to send support/bug email: {e}")
 
 
 from datetime import timedelta
