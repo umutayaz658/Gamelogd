@@ -24,7 +24,7 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" className="dark">
-            <body className={`${inter.className} bg-zinc-950 text-zinc-100 antialiased`} suppressHydrationWarning={true}>
+            <body className={`${inter.className} bg-zinc-950 text-zinc-100 antialiased pb-20 md:pb-0`} suppressHydrationWarning={true}>
                 <AuthProvider>
                     <NotificationProvider>
                         <LogModalProvider>
