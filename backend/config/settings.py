@@ -187,3 +187,12 @@ STEAM_API_KEY = os.environ.get('STEAM_API_KEY')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com')
 CRON_SECRET = os.environ.get('CRON_SECRET', 'gamelogd-local-cron-secret-key-12345')
 
+# Email configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.ethereal.email')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ['1', 'true']
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'gxj2bu4m6omtrgis@ethereal.email')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'B5j9SDBawTPhxWZqTt')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+
