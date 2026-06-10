@@ -6,12 +6,14 @@ import { getImageUrl } from '@/lib/utils';
 import Link from 'next/link';
 import { UserPlus, UserCheck, Code2, Calendar } from 'lucide-react';
 import api from '@/lib/api';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface ProjectCardProps {
     project: Project;
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
+    const { t } = useTranslation();
     const [isFollowing, setIsFollowing] = useState(project.is_following || false);
     const [followersCount, setFollowersCount] = useState(project.followers_count || 0);
     const [isLoading, setIsLoading] = useState(false);
@@ -61,7 +63,9 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                         project.status === 'alpha' ? 'bg-orange-500/80 border-orange-500/30 text-orange-100' :
                         'bg-zinc-800/80 border-zinc-700 text-zinc-300'
                     }`}>
-                        {project.status.replace('_', ' ')}
+                        {project.status === 'released' ? t('released') :
+                         project.status === 'in_dev' ? t('inDevelopment') :
+                         project.status.replace('_', ' ')}
                     </span>
                 </div>
             </div>
@@ -86,7 +90,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                                     : 'text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10'
                             } ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
                             onClick={handleFollowToggle}
-                            title={isFollowing ? 'Unfollow Project' : 'Follow Project'}
+                            title={isFollowing ? t('unfollowProject') : t('followProject')}
                         >
                             {isFollowing ? (
                                 <UserCheck className="w-5 h-5" />
@@ -109,7 +113,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                     </span>
                     {followersCount > 0 && (
                         <span className="text-xs text-zinc-600 ml-auto">
-                            {followersCount} followers
+                            {followersCount} {t('followers').toLowerCase()}
                         </span>
                     )}
                 </div>
