@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
-import { ExternalLink, Calendar, MessageCircle, Heart, Share2 } from 'lucide-react';
+import { ExternalLink, Calendar, MessageCircle, Heart, Share2, Send, Link as LinkIcon } from 'lucide-react';
 import PostComposer from '@/components/PostComposer';
 import PostCard from '@/components/PostCard';
 
@@ -38,6 +38,18 @@ export default function NewsDetailPage() {
     const [isLiked, setIsLiked] = useState(false);
     const [likeCount, setLikeCount] = useState(0);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [showShareMenu, setShowShareMenu] = useState(false);
+    const shareMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+                setShowShareMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -77,8 +89,21 @@ export default function NewsDetailPage() {
         }
     };
 
-    const handleShare = () => {
-        setIsShareModalOpen(true);
+    const handleShare = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: news?.title || 'Shared news',
+                    url: window.location.href,
+                });
+            } catch (error) {
+                console.error('Error sharing:', error);
+            }
+        } else {
+            navigator.clipboard.writeText(window.location.href);
+            alert('Link copied to clipboard!');
+        }
     };
 
 
@@ -166,13 +191,53 @@ export default function NewsDetailPage() {
                                     <span className="font-medium">{comments.length}</span>
                                 </button>
                             </div>
-                            <button
-                                onClick={handleShare}
-                                className="flex items-center gap-2 px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-                            >
-                                <Share2 className="h-5 w-5" />
-                                <span className="font-medium">Share</span>
-                            </button>
+                            <div className="relative" ref={shareMenuRef}>
+                                <button
+                                    onClick={() => setShowShareMenu(!showShareMenu)}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                                >
+                                    <Share2 className="h-5 w-5" />
+                                    <span className="font-medium">Share</span>
+                                </button>
+                                {showShareMenu && (
+                                    <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                setIsShareModalOpen(true);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                        >
+                                            <Send className="h-3.5 w-3.5 text-emerald-500" />
+                                            Send via Direct Message
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                navigator.clipboard.writeText(window.location.href);
+                                                alert('Link copied to clipboard!');
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
+                                            Copy Link
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                handleShare(e);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                            Share via...
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Comments Section */}
