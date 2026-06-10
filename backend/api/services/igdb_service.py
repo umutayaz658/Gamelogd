@@ -47,7 +47,7 @@ def fetch_game_details(game: Game) -> Game:
     Fetches missing details for a game from IGDB and saves them to the DB.
     Returns the updated game object.
     """
-    if not game.igdb_id or game.details_fetched:
+    if game.details_fetched:
         return game
 
     if not IGDB_CLIENT_ID or not IGDB_CLIENT_SECRET:
