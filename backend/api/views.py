@@ -100,6 +100,41 @@ class UserViewSet(viewsets.ModelViewSet):
             
         return Response({"message": f"You are now following {target_user.username}"}, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def followers(self, request, username=None):
+        user = self.get_object()
+        followers = User.objects.filter(id__in=user.followers.values_list('follower_id', flat=True)).order_by('username')
+        
+        search_query = request.query_params.get('search', '')
+        if search_query:
+            from django.db.models import Q
+            followers = followers.filter(Q(username__icontains=search_query) | Q(real_name__icontains=search_query))
+            
+        serializer = self.get_serializer(followers, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='following-list', permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def following_list(self, request, username=None):
+        user = self.get_object()
+        following = User.objects.filter(id__in=user.following.values_list('following_id', flat=True)).order_by('username')
+        
+        search_query = request.query_params.get('search', '')
+        if search_query:
+            from django.db.models import Q
+            following = following.filter(Q(username__icontains=search_query) | Q(real_name__icontains=search_query))
+            
+        serializer = self.get_serializer(following, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='remove-follower', permission_classes=[permissions.IsAuthenticated])
+    def remove_follower(self, request, username=None):
+        user = self.get_object() # This is the follower we want to remove
+        from api.models import Follow
+        deleted_count, _ = Follow.objects.filter(follower=user, following=request.user).delete()
+        if deleted_count == 0:
+            return Response({"error": "This user is not following you."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Removed {user.username} from followers."}, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def counts(self, request):
         # Unread Messages (from others)
@@ -1274,7 +1309,84 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         return SupportTicket.objects.filter(user=self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        ticket = serializer.save(user=self.request.user)
+        
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            
+            if ticket.ticket_type == 'bug':
+                subject = f"New Bug Report Submission: {ticket.subject}"
+                body = (
+                    f"New Bug Report from Roark Forge Website\n"
+                    f"--------------------------------------------------\n"
+                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
+                    f"Email: {self.request.user.email}\n"
+                    f"Severity: {ticket.severity}\n"
+                    f"Subject: {ticket.subject}\n\n"
+                    f"Steps to Reproduce:\n"
+                    f"{ticket.steps_to_reproduce}\n\n"
+                    f"Message:\n"
+                    f"{ticket.description}"
+                )
+                html_body = (
+                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Bug Report from Roark Forge Website</h2>\n'
+                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
+                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
+                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
+                    f'    <strong>Severity:</strong> {ticket.severity}<br>\n'
+                    f'    <strong>Subject:</strong> {ticket.subject}\n'
+                    f'</p>\n'
+                    f'<br>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
+                    f'    <strong>Steps to Reproduce:</strong>\n'
+                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.steps_to_reproduce}</span>\n'
+                    f'</p>\n'
+                    f'<br>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
+                    f'    <strong>Message:</strong>\n'
+                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.description}</span>\n'
+                    f'</p>'
+                )
+            else:
+                subject = f"New Contact Form Submission: {ticket.subject}"
+                body = (
+                    f"New Message from Roark Forge Website\n"
+                    f"--------------------------------------------------\n"
+                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
+                    f"Email: {self.request.user.email}\n"
+                    f"Category: {ticket.category}\n"
+                    f"Subject: {ticket.subject}\n\n"
+                    f"Message:\n"
+                    f"{ticket.description}"
+                )
+                html_body = (
+                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Message from Roark Forge Website</h2>\n'
+                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
+                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
+                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
+                    f'    <strong>Category:</strong> {ticket.category}<br>\n'
+                    f'    <strong>Subject:</strong> {ticket.subject}\n'
+                    f'</p>\n'
+                    f'<br>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
+                    f'    <strong>Message:</strong>\n'
+                    f'</p>\n'
+                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; white-space: pre-wrap;">{ticket.description}</p>'
+                )
+            
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=['support@roarkforge.com'],
+                fail_silently=False,
+                html_message=html_body,
+            )
+        except Exception as e:
+            print(f"Failed to send support/bug email: {e}")
 
 
 from datetime import timedelta
