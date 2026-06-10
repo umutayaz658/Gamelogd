@@ -8,9 +8,11 @@ import Feed from "@/components/Feed";
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function Home() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'for-you' | 'following'>('for-you');
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +58,7 @@ export default function Home() {
                     activeTab === 'for-you' && !error ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  For You
+                  {t('forYou')}
                   {activeTab === 'for-you' && !error && (
                     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
                   )}
@@ -67,14 +69,14 @@ export default function Home() {
                     activeTab === 'following' && !error ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  Following
+                  {t('following')}
                   {activeTab === 'following' && !error && (
                     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-emerald-500 rounded-full" />
                   )}
                 </button>
               </div>
             ) : (
-              <div className="py-3 text-sm font-bold text-zinc-400 border-b border-zinc-800 mb-6">Explore Feed</div>
+              <div className="py-3 text-sm font-bold text-zinc-400 border-b border-zinc-800 mb-6">{t('exploreFeed')}</div>
             )}
 
             {loading ? (
@@ -86,7 +88,7 @@ export default function Home() {
                 <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-full mb-4 text-red-500 animate-pulse">
                   <AlertTriangle className="h-8 w-8" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Something Went Wrong</h3>
+                <h3 className="text-xl font-bold text-white mb-2">{t('somethingWentWrong')}</h3>
                 <p className="text-zinc-400 text-sm max-w-sm mb-6 leading-relaxed">
                   {error}
                 </p>
@@ -96,7 +98,7 @@ export default function Home() {
                     className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-950/20 active:scale-95 cursor-pointer"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    <span>Try Again</span>
+                    <span>{t('tryAgain')}</span>
                   </button>
                 </div>
               </div>
