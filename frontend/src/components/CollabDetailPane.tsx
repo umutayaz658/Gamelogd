@@ -3,6 +3,7 @@ import { Briefcase, Users, MapPin, Zap, ArrowLeft, Send, CheckCircle2, User as U
 import Link from 'next/link';
 import { getImageUrl } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface CollabDetailPaneProps {
     job: JobPosting;
@@ -11,9 +12,24 @@ interface CollabDetailPaneProps {
 
 export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps) {
     const router = useRouter();
+    const { t } = useTranslation();
 
     const formatJobType = (type: string) => {
-        return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        switch (type) {
+            case 'full_time': return t('fullTime');
+            case 'part_time': return t('partTime');
+            case 'contract': return t('contract');
+            case 'rev_share': return t('revShare');
+            case 'hobby': return t('hobby');
+            case 'remote': return t('remote');
+            case 'on_site': return t('onSite');
+            case 'hybrid': return t('hybrid');
+            case 'junior': return t('junior');
+            case 'mid': return t('midLevel');
+            case 'senior': return t('senior');
+            case 'lead': return t('lead');
+            default: return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
     };
 
     const handleMessage = () => {
@@ -29,7 +45,7 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                     <button onClick={onClose} className="p-2 bg-zinc-800 rounded-full hover:bg-zinc-700 transition-colors">
                         <ArrowLeft className="h-5 w-5 text-white" />
                     </button>
-                    <span className="font-bold text-white">Back to List</span>
+                    <span className="font-bold text-white">{t('backToList')}</span>
                 </div>
             )}
 
@@ -62,10 +78,10 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                     <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${job.post_type === 'talent' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
-                                {job.post_type === 'talent' ? 'Talent Profile' : 'Job Offering'}
+                                {job.post_type === 'talent' ? t('talentProfile') : t('jobOffering')}
                             </span>
                             <span className="text-zinc-500 text-xs font-medium">
-                                Posted {new Date(job.created_at).toLocaleDateString()}
+                                {t('posted')} {new Date(job.created_at).toLocaleDateString()}
                             </span>
                         </div>
                         <h2 className="text-2xl md:text-3xl font-black text-white mb-2 leading-tight">
@@ -87,7 +103,7 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                                 ) : (
                                     <span className="flex items-center gap-2">
                                         <Users className="h-4 w-4" />
-                                        Indie Team (@{job.recruiter.username})
+                                        {t('indieTeam')} (@{job.recruiter.username})
                                     </span>
                                 )
                             )}
@@ -119,7 +135,7 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                     {job.tech_stack && job.tech_stack.length > 0 && (
                         <div>
                             <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 border-l-2 border-emerald-500 pl-3">
-                                Technologies
+                                {t('technologies')}
                             </h3>
                             <div className="flex flex-wrap gap-2">
                                 {job.tech_stack.map((tech, i) => (
@@ -134,7 +150,7 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                     {/* Description */}
                     <div>
                         <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 border-l-2 border-emerald-500 pl-3">
-                            {job.post_type === 'talent' ? 'About Me' : 'About the Role'}
+                            {job.post_type === 'talent' ? t('aboutMe') : t('aboutRole')}
                         </h3>
                         <div className="prose prose-invert max-w-none text-zinc-300 whitespace-pre-wrap leading-relaxed">
                             {job.description}
@@ -145,19 +161,19 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                     <div className="bg-zinc-800/50 rounded-xl p-6 border border-zinc-700/50">
                         <h4 className="text-white font-bold mb-2 flex items-center gap-2">
                             <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                            {job.post_type === 'talent' ? 'Interested in this talent?' : 'Ready to join?'}
+                            {job.post_type === 'talent' ? t('interestedInTalent') : t('readyToJoin')}
                         </h4>
                         <p className="text-zinc-400 text-sm mb-4">
                             {job.post_type === 'talent' 
-                                ? 'Send them a direct message to discuss collaboration opportunities or invite them to your project.' 
-                                : 'Reach out directly to the team to apply. Make sure to include your portfolio in your first message.'}
+                                ? t('talentContactDesc') 
+                                : t('jobContactDesc')}
                         </p>
                         <button 
                             onClick={handleMessage}
                             className="w-full md:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20"
                         >
                             <Send className="h-4 w-4" />
-                            {job.post_type === 'talent' ? 'Message Talent' : 'Apply via Message'}
+                            {job.post_type === 'talent' ? t('messageTalent') : t('applyViaMessage')}
                         </button>
                     </div>
                 </div>

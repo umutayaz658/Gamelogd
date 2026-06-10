@@ -1,6 +1,7 @@
 import { JobPosting } from '@/types';
 import { Briefcase, Users, Code2, MapPin, Zap, User as UserIcon } from 'lucide-react';
 import { getImageUrl } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface JobPostingCardProps {
     job: JobPosting;
@@ -9,6 +10,7 @@ interface JobPostingCardProps {
 }
 
 export default function JobPostingCard({ job, selected, onClick }: JobPostingCardProps) {
+    const { t } = useTranslation();
 
     const getTypeColor = (type: string) => {
         switch (type) {
@@ -24,7 +26,21 @@ export default function JobPostingCard({ job, selected, onClick }: JobPostingCar
     };
 
     const formatJobType = (type: string) => {
-        return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        switch (type) {
+            case 'full_time': return t('fullTime');
+            case 'part_time': return t('partTime');
+            case 'contract': return t('contract');
+            case 'rev_share': return t('revShare');
+            case 'hobby': return t('hobby');
+            case 'remote': return t('remote');
+            case 'on_site': return t('onSite');
+            case 'hybrid': return t('hybrid');
+            case 'junior': return t('junior');
+            case 'mid': return t('midLevel');
+            case 'senior': return t('senior');
+            case 'lead': return t('lead');
+            default: return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
     };
 
     return (
@@ -94,7 +110,7 @@ export default function JobPostingCard({ job, selected, onClick }: JobPostingCar
                     </span>
                     {job.post_type === 'talent' && (
                         <span className="px-2 py-0.5 rounded border bg-purple-500/10 text-purple-400 border-purple-500/20">
-                            Talent
+                            {t('talent')}
                         </span>
                     )}
                     {job.tech_stack && job.tech_stack.length > 0 && (
