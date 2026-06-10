@@ -100,6 +100,41 @@ class UserViewSet(viewsets.ModelViewSet):
             
         return Response({"message": f"You are now following {target_user.username}"}, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def followers(self, request, username=None):
+        user = self.get_object()
+        followers = User.objects.filter(id__in=user.followers.values_list('follower_id', flat=True)).order_by('username')
+        
+        search_query = request.query_params.get('search', '')
+        if search_query:
+            from django.db.models import Q
+            followers = followers.filter(Q(username__icontains=search_query) | Q(real_name__icontains=search_query))
+            
+        serializer = self.get_serializer(followers, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='following-list', permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def following_list(self, request, username=None):
+        user = self.get_object()
+        following = User.objects.filter(id__in=user.following.values_list('following_id', flat=True)).order_by('username')
+        
+        search_query = request.query_params.get('search', '')
+        if search_query:
+            from django.db.models import Q
+            following = following.filter(Q(username__icontains=search_query) | Q(real_name__icontains=search_query))
+            
+        serializer = self.get_serializer(following, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='remove-follower', permission_classes=[permissions.IsAuthenticated])
+    def remove_follower(self, request, username=None):
+        user = self.get_object() # This is the follower we want to remove
+        from api.models import Follow
+        deleted_count, _ = Follow.objects.filter(follower=user, following=request.user).delete()
+        if deleted_count == 0:
+            return Response({"error": "This user is not following you."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Removed {user.username} from followers."}, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def counts(self, request):
         # Unread Messages (from others)
