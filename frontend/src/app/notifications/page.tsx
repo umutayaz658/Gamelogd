@@ -187,7 +187,7 @@ export default function NotificationsPage() {
                                                 </div>
 
                                                 {/* Action Buttons for Invites */}
-                                                {notif.verb === 'invited you to join the project' && (
+                                                {notif.verb.toLowerCase().includes('invited') && (
                                                     <div className="mt-3 flex gap-2 pl-10 mb-2">
                                                         <button 
                                                             onClick={(e) => handleAcceptInvite(e, notif.target_id)}
