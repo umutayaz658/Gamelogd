@@ -4,12 +4,13 @@ import { useLogModal } from '@/context/LogModalContext';
 import LogGameModal from '@/components/LogGameModal';
 
 export default function ClientLogModalWrapper() {
-    const { isLogModalOpen, closeLogModal } = useLogModal();
+    const { isLogModalOpen, closeLogModal, initialGame } = useLogModal();
 
     return (
         <LogGameModal
             isOpen={isLogModalOpen}
             onClose={closeLogModal}
+            initialGame={initialGame}
         />
     );
 }

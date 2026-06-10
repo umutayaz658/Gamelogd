@@ -42,7 +42,7 @@ export default function DeveloperPage() {
     const [filter, setFilter] = useState<'all' | 'developer' | 'publisher'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'date' | 'rating'>('date');
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
+
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {
@@ -271,48 +271,34 @@ export default function DeveloperPage() {
                                                 ))}
                                             </div>
 
-                                            {/* Search Toggle / Input */}
-                                            <div className="flex items-center">
-                                                {isSearchOpen ? (
-                                                    <div className="relative flex items-center animate-in fade-in duration-300">
-                                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                            <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                                                        </div>
-                                                        <input 
-                                                            type="text" 
-                                                            autoFocus
-                                                            placeholder="Search games..." 
-                                                            value={searchQuery}
-                                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                                            className="bg-zinc-800/80 border border-zinc-700 text-white text-sm rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-40 md:w-64 pl-9 pr-8 py-2 placeholder-zinc-500 transition-colors"
-                                                        />
-                                                        <button 
-                                                            onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
-                                                            className="absolute right-2 text-zinc-400 hover:text-white p-1"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button 
-                                                        onClick={() => setIsSearchOpen(true)}
-                                                        className="bg-zinc-800/60 hover:bg-zinc-700/80 border border-zinc-700/50 text-zinc-300 p-2 rounded-xl transition-colors"
-                                                        title="Search Games"
-                                                    >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                                                    </button>
-                                                )}
+                                            {/* Search Input */}
+                                            <div className="relative flex items-center">
+                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                    <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                                </div>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Search games..." 
+                                                    value={searchQuery}
+                                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                                    className="bg-zinc-800/80 border border-zinc-700 text-white text-sm rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-40 md:w-64 pl-9 pr-4 py-2 placeholder-zinc-500 transition-colors outline-none"
+                                                />
                                             </div>
 
                                             {/* Sort Dropdown */}
-                                            <select 
-                                                value={sortBy}
-                                                onChange={(e) => setSortBy(e.target.value as any)}
-                                                className="bg-zinc-800/60 border border-zinc-700/50 text-zinc-300 text-sm rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block py-2 pl-3 pr-8 transition-colors outline-none cursor-pointer"
-                                            >
-                                                <option value="date">Newest First</option>
-                                                <option value="rating">Highest Rated</option>
-                                            </select>
+                                            <div className="relative">
+                                                <select 
+                                                    value={sortBy}
+                                                    onChange={(e) => setSortBy(e.target.value as any)}
+                                                    className="appearance-none bg-zinc-800/80 border border-zinc-700/50 text-zinc-300 text-sm rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block py-2 pl-3 pr-8 transition-colors outline-none cursor-pointer"
+                                                >
+                                                    <option className="bg-zinc-900 text-zinc-300" value="date">Newest First</option>
+                                                    <option className="bg-zinc-900 text-zinc-300" value="rating">Highest Rated</option>
+                                                </select>
+                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-zinc-400">
+                                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -349,52 +335,53 @@ function GameCard({ game }: { game: CompanyGame }) {
     const href = game.local_id ? `/games/${game.local_id}` : null;
 
     const card = (
-        <div className={`group relative rounded-xl overflow-hidden bg-zinc-900/60 border border-zinc-800/50 transition-all duration-300 ${href ? 'hover:border-indigo-500/50 hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] hover:scale-[1.03] cursor-pointer' : ''}`}>
+        <div className={`group relative aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 transition-all duration-500 ${href ? 'hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] hover:ring-1 hover:ring-indigo-500/50 transform hover:-translate-y-2 cursor-pointer' : ''}`}>
             {/* Cover Image */}
-            <div className="relative aspect-[3/4] w-full bg-zinc-800">
-                {game.cover_url ? (
-                    <Image
-                        src={game.cover_url}
-                        alt={game.name}
-                        fill
-                        className="object-cover transition-transform duration-500 group-hover:scale-110"
-                        unoptimized
-                    />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-3xl text-zinc-600">🎮</span>
-                    </div>
-                )}
-
-                {/* Rating Badge */}
-                {game.rating && (
-                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold text-yellow-400 border border-yellow-500/20">
-                        ★ {game.rating}
-                    </div>
-                )}
-
-                {/* Role Badge */}
-                <div className="absolute top-2 left-2 flex gap-1">
-                    {game.is_developer && (
-                        <span className="bg-emerald-500/20 backdrop-blur-sm text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
-                            DEV
-                        </span>
-                    )}
-                    {game.is_publisher && (
-                        <span className="bg-blue-500/20 backdrop-blur-sm text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-500/30">
-                            PUB
-                        </span>
-                    )}
+            {game.cover_url ? (
+                <Image
+                    src={game.cover_url}
+                    alt={game.name}
+                    fill
+                    className="object-cover transition-transform duration-700 group-hover:scale-110 group-hover:saturate-150"
+                    unoptimized
+                />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center bg-zinc-800">
+                    <span className="text-zinc-600 font-medium">No Cover</span>
                 </div>
+            )}
+
+            {/* Gradient Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
+            
+            {/* Rating Badge */}
+            {game.rating && (
+                <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold text-yellow-400 border border-yellow-500/20 z-10">
+                    ★ {game.rating}
+                </div>
+            )}
+
+            {/* Role Badge */}
+            <div className="absolute top-2 left-2 flex gap-1 z-10">
+                {game.is_developer && (
+                    <span className="bg-emerald-500/20 backdrop-blur-sm text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
+                        DEV
+                    </span>
+                )}
+                {game.is_publisher && (
+                    <span className="bg-blue-500/20 backdrop-blur-sm text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-500/30">
+                        PUB
+                    </span>
+                )}
             </div>
 
-            {/* Info */}
-            <div className="p-3">
-                <h3 className="text-sm font-bold text-white truncate group-hover:text-indigo-300 transition-colors">
+            {/* Content */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 z-10">
+                <h3 className="text-white font-bold text-sm leading-tight mb-1 drop-shadow-md truncate">
                     {game.name}
                 </h3>
                 {year && (
-                    <p className="text-xs text-zinc-500 mt-0.5">{year}</p>
+                    <p className="text-zinc-400 text-xs font-semibold">{year}</p>
                 )}
             </div>
         </div>

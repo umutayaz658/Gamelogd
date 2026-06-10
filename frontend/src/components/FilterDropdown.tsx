@@ -7,9 +7,10 @@ interface FilterDropdownProps {
     options: { value: string; label: string }[];
     value: string;
     onChange: (value: string) => void;
+    showAllOption?: boolean;
 }
 
-export default function FilterDropdown({ label, icon, options, value, onChange }: FilterDropdownProps) {
+export default function FilterDropdown({ label, icon, options, value, onChange, showAllOption = true }: FilterDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -52,13 +53,14 @@ export default function FilterDropdown({ label, icon, options, value, onChange }
                     }`}
             >
                 <div className="p-1">
-                    <button
-                        onClick={() => { onChange(''); setIsOpen(false); }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === '' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                            }`}
-                    >
-                        All {label.replace('All ', '')}
-                    </button>
+                    {showAllOption && (
+                        <button
+                            onClick={() => { onChange(''); setIsOpen(false); }}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === '' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
+                        >
+                            All {label.replace('All ', '')}
+                        </button>
+                    )}
                     {options.map((option) => (
                         <button
                             key={option.value}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { TrendingUp, ArrowUpRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -19,6 +19,53 @@ export default function RightSidebar() {
     const { t } = useTranslation();
     const [trendingNews, setTrendingNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const sidebarRef = useRef<HTMLDivElement>(null);
+    const [stickyTop, setStickyTop] = useState<number>(80);
+    const stickyTopRef = useRef<number>(80);
+
+    useEffect(() => {
+        if (loading) return;
+
+        let lastScrollY = window.scrollY;
+
+        const handleScroll = () => {
+            if (!sidebarRef.current) return;
+            const currentScrollY = window.scrollY;
+            const dY = currentScrollY - lastScrollY;
+            
+            const viewportHeight = window.innerHeight;
+            const sidebarHeight = sidebarRef.current.offsetHeight;
+            const availableSpace = viewportHeight - 80; // 80px top offset (navbar + gap)
+
+            if (sidebarHeight <= availableSpace) {
+                // If it fits, stick to the top
+                stickyTopRef.current = 80;
+                setStickyTop(80);
+            } else {
+                // Dynamic two-way sticky calculation
+                // lowerLimit keeps the bottom of the sidebar at least 80px above the viewport bottom (to avoid overlapping messages drawer)
+                const lowerLimit = viewportHeight - sidebarHeight - 80;
+                const upperLimit = 80;
+                
+                let nextTop = stickyTopRef.current - dY;
+                nextTop = Math.max(lowerLimit, Math.min(upperLimit, nextTop));
+                
+                stickyTopRef.current = nextTop;
+                setStickyTop(nextTop);
+            }
+            lastScrollY = currentScrollY;
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        window.addEventListener('resize', handleScroll);
+        // Run once initially
+        handleScroll();
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('resize', handleScroll);
+        };
+    }, [loading]);
 
     useEffect(() => {
         const fetchNews = async () => {
@@ -56,8 +103,12 @@ export default function RightSidebar() {
     }
 
     return (
-        <div className="hidden lg:block sticky top-16 h-[calc(100vh-4rem)] w-full">
-            <div className="h-full flex flex-col gap-4 overflow-y-auto scrollbar-thin-dark pr-1 pb-32">
+        <div 
+            ref={sidebarRef}
+            className="hidden lg:block w-full"
+            style={{ position: 'sticky', top: `${stickyTop}px` }}
+        >
+            <div className="flex flex-col gap-4">
                 <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 flex-shrink-0">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
