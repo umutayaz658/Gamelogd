@@ -42,7 +42,7 @@ export default function DeveloperPage() {
     const [filter, setFilter] = useState<'all' | 'developer' | 'publisher'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'date' | 'rating'>('date');
-    const [sortBy, setSortBy] = useState<'date' | 'rating'>('date');
+
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {
