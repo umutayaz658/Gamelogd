@@ -764,12 +764,6 @@ function MessagesContent() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 text-zinc-400">
-                                        <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors hidden sm:block">
-                                            <Phone className="h-5 w-5" />
-                                        </button>
-                                        <button className="p-2 hover:bg-zinc-800 rounded-full transition-colors hidden sm:block">
-                                            <Video className="h-5 w-5" />
-                                        </button>
                                         <button 
                                             onClick={() => {
                                                 setShowDetails(!showDetails);
