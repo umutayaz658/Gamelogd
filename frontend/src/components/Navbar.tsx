@@ -2,10 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { User, Settings, LogOut, ChevronDown, LogIn, PlusCircle, Search, X } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { 
+    User, Settings, LogOut, ChevronDown, LogIn, PlusCircle, Search, X, 
+    Bell, MessageSquare, Bookmark, Home, Newspaper, Code2, Briefcase, DollarSign 
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLogModal } from '@/context/LogModalContext';
+import { useNotifications } from '@/context/NotificationContext';
 import { getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 
@@ -20,8 +24,10 @@ export default function Navbar() {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
     const router = useRouter();
+    const pathname = usePathname();
     const { user, logout, isLoading } = useAuth();
     const { openLogModal } = useLogModal();
+    const { unreadMessages, unreadNotifications } = useNotifications();
 
     const handleLogout = () => {
         logout();
@@ -229,8 +235,45 @@ export default function Navbar() {
                                         className="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
                                         onClick={() => setIsMenuOpen(false)}
                                     >
-                                        <User className="h-4 w-4" />
+                                        <User className="h-4 w-4 text-zinc-400" />
                                         Profile
+                                    </Link>
+
+                                    <Link
+                                        href="/notifications"
+                                        className="flex items-center justify-between px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
+                                        onClick={() => setIsMenuOpen(false)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Bell className="h-4 w-4 text-zinc-400" />
+                                            Notifications
+                                        </div>
+                                        {unreadNotifications > 0 && (
+                                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        )}
+                                    </Link>
+
+                                    <Link
+                                        href="/messages"
+                                        className="flex items-center justify-between px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
+                                        onClick={() => setIsMenuOpen(false)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <MessageSquare className="h-4 w-4 text-zinc-400" />
+                                            Messages
+                                        </div>
+                                        {unreadMessages > 0 && (
+                                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        )}
+                                    </Link>
+
+                                    <Link
+                                        href="/bookmarks"
+                                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
+                                        onClick={() => setIsMenuOpen(false)}
+                                    >
+                                        <Bookmark className="h-4 w-4 text-zinc-400" />
+                                        Bookmarks
                                     </Link>
 
                                     <Link
@@ -238,7 +281,7 @@ export default function Navbar() {
                                         className="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
                                         onClick={() => setIsMenuOpen(false)}
                                     >
-                                        <Settings className="h-4 w-4" />
+                                        <Settings className="h-4 w-4 text-zinc-400" />
                                         Settings
                                     </Link>
 
@@ -266,6 +309,37 @@ export default function Navbar() {
                     )}
                 </div>
             </div>
+
+            {/* Mobile Bottom Navigation Dock */}
+            {user && (
+                <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/90 backdrop-blur-md border-t border-zinc-800 flex justify-around items-center h-16 md:hidden px-2 shadow-2xl">
+                    {[
+                        { label: 'Home', href: '/', icon: Home, color: 'text-emerald-500' },
+                        { label: 'News', href: '/news', icon: Newspaper, color: 'text-emerald-500' },
+                        { label: 'Devs', href: '/devs', icon: Code2, color: 'text-blue-500' },
+                        { label: 'Collabs', href: '/collabs', icon: Briefcase, color: 'text-blue-500' },
+                        { label: 'Invest', href: '/invest', icon: DollarSign, color: 'text-amber-500' }
+                    ].map((item) => {
+                        const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+                        const Icon = item.icon;
+                        return (
+                            <Link
+                                key={item.label}
+                                href={item.href}
+                                className={`flex flex-col items-center justify-center flex-1 h-full py-2 transition-all relative ${
+                                    active ? item.color : 'text-zinc-500 hover:text-zinc-300'
+                                }`}
+                            >
+                                <Icon className={`h-5 w-5 transition-transform ${active ? 'scale-110' : ''}`} />
+                                <span className="text-[10px] font-bold mt-1 tracking-wide uppercase">{item.label}</span>
+                                {active && (
+                                    <div className="absolute top-0 w-8 h-1 bg-current rounded-b-full" />
+                                )}
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
         </nav>
     );
 }
