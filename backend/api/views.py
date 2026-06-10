@@ -441,7 +441,7 @@ class GameViewSet(viewsets.ModelViewSet):
         game = self.get_object()
         
         # Fetch IGDB details on demand
-        if not game.details_fetched and game.igdb_id:
+        if not game.details_fetched:
             from api.services.igdb_service import fetch_game_details
             game = fetch_game_details(game)
 
