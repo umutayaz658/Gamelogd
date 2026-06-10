@@ -124,7 +124,12 @@ export default function ReplyModal() {
 
             if (activeItem.id) {
                 if (mode === 'quote') {
-                    formData.append('repost_parent', activeItem.id.toString());
+                    const isReviewItem = (activeItem as any).rating !== undefined;
+                    if (isReviewItem) {
+                        formData.append('repost_parent_review', activeItem.id.toString());
+                    } else {
+                        formData.append('repost_parent', activeItem.id.toString());
+                    }
                 } else {
                     const isReviewItem = (activeItem as any).rating !== undefined;
                     if (isReviewItem) {

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2 } from 'lucide-react';
 import { Review } from '@/types';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getRelativeTime } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
@@ -18,7 +18,7 @@ interface ReviewCardProps {
 
 export default function ReviewCard({ review, isDetailView = false }: ReviewCardProps) {
     const router = useRouter();
-    const { openReplyModal } = useReplyModal();
+    const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
     const baseId = useId().replace(/:/g, '-');
@@ -164,8 +164,8 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                                 @{review.user.username.toLowerCase()}
                             </Link>
                             <span className="text-zinc-700 text-sm">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline">
-                                {new Date(review.timestamp).toLocaleDateString()}
+                            <span className="text-zinc-500 text-sm hover:underline" title={new Date(review.timestamp).toLocaleString()}>
+                                {new Date(review.timestamp).toLocaleDateString()} • {getRelativeTime(review.timestamp)}
                             </span>
                         </div>
                         <div className="relative" ref={menuRef}>
@@ -201,7 +201,11 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                     {/* Review Content */}
                     <div className="flex gap-4 mb-3">
                         {/* Game Cover */}
-                        <div className="flex-shrink-0 w-24 aspect-[2/3] bg-zinc-800 rounded-lg overflow-hidden shadow-md">
+                        <Link
+                            href={`/games/${review.game.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-shrink-0 w-24 aspect-[2/3] bg-zinc-800 rounded-lg overflow-hidden shadow-md hover:opacity-90 transition-opacity block"
+                        >
                             {review.game.cover_image && (
                                 <img
                                     src={getImageUrl(review.game.cover_image)}
@@ -209,12 +213,18 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                                     className="w-full h-full object-cover"
                                 />
                             )}
-                        </div>
+                        </Link>
 
                         {/* Review Details */}
-                        <div className="flex-1 flex flex-col justify-between py-1">
+                        <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
                             <div>
-                                <h3 className="font-bold text-lg text-white leading-tight mb-1">{review.game.title}</h3>
+                                <Link
+                                    href={`/games/${review.game.id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="font-bold text-lg text-white leading-tight mb-1 hover:underline hover:text-emerald-400 block truncate"
+                                >
+                                    {review.game.title}
+                                </Link>
 
                                 {/* Rating Stars */}
                                 <div className="flex items-center gap-1 mb-2">
@@ -313,13 +323,14 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
 
                         <div className="relative">
                             <button
-                                className="flex items-center gap-2 text-zinc-500 opacity-50 cursor-not-allowed group transition-colors"
-                                title="Game logs cannot be reposted"
+                                className="flex items-center gap-2 text-zinc-500 hover:text-green-500 group transition-colors"
+                                title="Quote Review"
                                 onClick={(e) => {
                                     e.stopPropagation();
+                                    openQuoteModal({ ...review, type: 'review' } as any);
                                 }}
                             >
-                                <div className="p-2 rounded-full group-hover:bg-zinc-500/10 transition-colors">
+                                <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
                                     <Repeat2 className="h-4 w-4" />
                                 </div>
                                 <span className="text-sm">0</span>
