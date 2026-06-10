@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import api from '@/lib/api';
+import { getMediaUrl } from '@/lib/utils';
 
 export default function SimilarGames({ currentId, genres }: { currentId: string, genres?: string[] }) {
     const [games, setGames] = useState<any[]>([]);
@@ -57,7 +58,7 @@ export default function SimilarGames({ currentId, genres }: { currentId: string,
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {games.map(game => {
-                    const coverUrl = game.cover_image ? (game.cover_image.startsWith('http') ? game.cover_image : `http://localhost:8000${game.cover_image}`) : null;
+                    const coverUrl = getMediaUrl(game.cover_image);
                     
                     return (
                         <Link 

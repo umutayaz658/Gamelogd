@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, ChevronDown, LogIn, PlusCircle, Search, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLogModal } from '@/context/LogModalContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getMediaUrl } from '@/lib/utils';
 import api from '@/lib/api';
 
 export default function Navbar() {
@@ -145,9 +145,7 @@ export default function Navbar() {
                                 ) : searchResults.length > 0 ? (
                                     <div className="py-1 max-h-80 overflow-y-auto">
                                         {searchResults.map((game) => {
-                                            const coverUrl = game.cover_image
-                                                ? (game.cover_image.startsWith('http') ? game.cover_image : `http://localhost:8000${game.cover_image}`)
-                                                : null;
+                                            const coverUrl = getMediaUrl(game.cover_image);
                                             return (
                                                 <button
                                                     key={game.id}

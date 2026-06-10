@@ -3,6 +3,7 @@ import time
 from django.conf import settings
 from api.models import LibraryEntry, User
 from core.models import Game
+from core.utils import is_unwanted_game
 
 
 # Genre normalization map: non-English genre names → English
@@ -185,6 +186,10 @@ def fetch_steam_library(user_id, steam_id):
                 playtime_forever = steam_game.get('playtime_forever', 0)  # In minutes
                 
                 if not title or not appid:
+                    continue
+
+                if is_unwanted_game(title):
+                    # Skip importing unwated editions/dlcs/bundles
                     continue
 
                 # 1. Try to find existing game by steam_appid first (most reliable)

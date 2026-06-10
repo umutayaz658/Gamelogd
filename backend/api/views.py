@@ -472,12 +472,61 @@ class GameViewSet(viewsets.ModelViewSet):
             })
         return Response(result)
 
+    @action(detail=False, methods=['get'], url_path='company-info')
+    def company_info(self, request):
+        """GET /api/games/company-info/?name=Rockstar+Games"""
+        name = request.query_params.get('name', '').strip()
+        if not name:
+            return Response({"error": "Company name is required (use ?name=...)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        from api.services.igdb_service import fetch_company_info
+        info = fetch_company_info(name)
+        if not info:
+            return Response({"error": "Company not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(info)
+
+    @action(detail=False, methods=['get'], url_path='company-games')
+    def company_games(self, request):
+        """GET /api/games/company-games/?name=Rockstar+Games"""
+        name = request.query_params.get('name', '').strip()
+        if not name:
+            return Response({"error": "Company name is required (use ?name=...)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        from api.services.igdb_service import fetch_company_games
+        igdb_games = fetch_company_games(name)
+
+        # Cross-reference with local DB, and auto-create missing ones
+        for game in igdb_games:
+            local_game = Game.objects.filter(igdb_id=game['igdb_id']).first()
+            
+            if not local_game:
+                # Auto-create the game so it becomes clickable in the frontend
+                local_game = Game.objects.create(
+                    title=game['name'],
+                    igdb_id=game['igdb_id'],
+                    cover_image=game.get('cover_url') or '',
+                    release_date=game.get('release_date') or None
+                )
+                
+            game['local_id'] = local_game.id
+            
+            # Use local cover if available and IGDB didn't return one
+            if not game.get('cover_url') and local_game.cover_image:
+                cover_val = str(local_game.cover_image)
+                if cover_val.startswith('http'):
+                    game['cover_url'] = cover_val
+                elif hasattr(local_game.cover_image, 'url'):
+                    game['cover_url'] = request.build_absolute_uri(local_game.cover_image.url)
+
+        return Response(igdb_games)
+
 class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all().select_related('user', 'game')
     serializer_class = ReviewSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['user__username', 'game_id']
+    filterset_fields = ['user__username']
     ordering_fields = ['timestamp', 'rating']
     ordering = ['-timestamp']
 
