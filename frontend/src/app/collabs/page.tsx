@@ -115,13 +115,8 @@ export default function CollabsPage() {
                         <div className="mb-6 flex-shrink-0">
                             <div className="flex items-end justify-between mb-4">
                                 <div>
-<<<<<<< HEAD
                                     <h1 className="text-3xl font-bold text-white mb-2">{t('collabsJobsHub')}</h1>
                                     <p className="text-zinc-400">{t('collabsDescription')}</p>
-=======
-                                    <h1 className="text-3xl font-bold text-white mb-2">Collabs & Jobs</h1>
-                                    <p className="text-zinc-400">Find your next team or hire talented developers.</p>
->>>>>>> origin/main
                                 </div>
                                 <button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20">
                                     <PlusCircle className="h-5 w-5" />
@@ -174,11 +169,11 @@ export default function CollabsPage() {
                                         value={filters.job_type}
                                         onChange={(val) => setFilters(prev => ({ ...prev, job_type: val }))}
                                         options={[
-                                            { value: 'full_time', label: 'Full-time' },
-                                            { value: 'part_time', label: 'Part-time' },
-                                            { value: 'contract', label: 'Contract' },
-                                            { value: 'rev_share', label: 'Rev-share' },
-                                            { value: 'hobby', label: 'Hobby' },
+                                            { value: 'full_time', label: t('fullTime') },
+                                            { value: 'part_time', label: t('partTime') },
+                                            { value: 'contract', label: t('contract') },
+                                            { value: 'rev_share', label: t('revShare') },
+                                            { value: 'hobby', label: t('hobby') },
                                         ]}
                                     />
 
@@ -188,9 +183,9 @@ export default function CollabsPage() {
                                         value={filters.location_type}
                                         onChange={(val) => setFilters(prev => ({ ...prev, location_type: val }))}
                                         options={[
-                                            { value: 'remote', label: 'Remote' },
-                                            { value: 'on_site', label: 'On-site' },
-                                            { value: 'hybrid', label: 'Hybrid' },
+                                            { value: 'remote', label: t('remote') },
+                                            { value: 'on_site', label: t('onSite') },
+                                            { value: 'hybrid', label: t('hybrid') },
                                         ]}
                                     />
 
@@ -200,10 +195,10 @@ export default function CollabsPage() {
                                         value={filters.experience_level}
                                         onChange={(val) => setFilters(prev => ({ ...prev, experience_level: val }))}
                                         options={[
-                                            { value: 'junior', label: 'Junior' },
-                                            { value: 'mid', label: 'Mid-Level' },
-                                            { value: 'senior', label: 'Senior' },
-                                            { value: 'lead', label: 'Lead' },
+                                            { value: 'junior', label: t('junior') },
+                                            { value: 'mid', label: t('midLevel') },
+                                            { value: 'senior', label: t('senior') },
+                                            { value: 'lead', label: t('lead') },
                                         ]}
                                     />
 
