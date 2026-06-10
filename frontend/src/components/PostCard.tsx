@@ -237,7 +237,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="font-bold text-white hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                {post.user.username}
+                                {post.user.real_name || post.user.username}
                             </Link>
                             <Link
                                 href={`/${post.user.username}`}
@@ -399,7 +399,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         alt={post.repost_details.user.username}
                                         className="h-5 w-5 rounded-full object-cover"
                                     />
-                                    <span className="font-bold text-white text-xs">{post.repost_details.user.username}</span>
+                                    <span className="font-bold text-white text-xs">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
                                     <span className="text-zinc-500 text-xs">@{post.repost_details.user.username.toLowerCase()}</span>
                                     <span className="text-zinc-600 text-xs">•</span>
                                     <span className="text-zinc-500 text-xs">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>

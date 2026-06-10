@@ -13,7 +13,11 @@ Standard procedure for adding a new reusable React component to the Next.js fron
 
 ## 2. Design System & Aesthetics
 - **Colors:** STRICTLY use Tailwind's `zinc` palette for grays (`bg-zinc-900`, `border-zinc-800`, `text-zinc-400`). 
-- **Accents:** Primary accent color is `indigo` (`text-indigo-500`, `bg-indigo-600`), or `emerald/green` (`bg-emerald-500`) for success actions.
+- **Accents:** 
+  - **Gamer-related:** Green/emerald (`text-emerald-500`, `bg-emerald-600`)
+  - **Developer-related:** Blue (`text-blue-500`, `bg-blue-600`)
+  - **Investor-related:** Amber (`text-amber-500`, `bg-amber-600`)
+  - *Note: The core application color theme is black (using zinc grays), green/emerald, and white details.*
 - **Glassmorphism:** Use `bg-zinc-900/50 backdrop-blur-md` for floating elements like navbars or dropdowns.
 - **Borders:** Use subtle borders (`border border-zinc-800` or `border-zinc-700/50`) to define hierarchy instead of heavy drop shadows on dark backgrounds.
 
