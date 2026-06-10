@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLogModal } from '@/context/LogModalContext';
 import { getImageUrl, getMediaUrl } from '@/lib/utils';
 import api from '@/lib/api';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -22,6 +23,7 @@ export default function Navbar() {
     const router = useRouter();
     const { user, logout, isLoading } = useAuth();
     const { openLogModal } = useLogModal();
+    const { t } = useTranslation();
 
     const handleLogout = () => {
         logout();
@@ -97,20 +99,24 @@ export default function Navbar() {
                     </Link>
                     <div className="hidden md:flex items-center gap-6">
                         <Link href="/" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            Home
+                            {t('home')}
                         </Link>
                         <Link href="/news" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            News
+                            {t('news')}
                         </Link>
                         <Link href="/devs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            Devs
+                            {t('devs')}
                         </Link>
-                        <Link href="/collabs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            Collabs
-                        </Link>
-                        <Link href="/invest" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                            Invest
-                        </Link>
+                        {process.env.NODE_ENV === 'development' && (
+                            <>
+                                <Link href="/collabs" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                                    {t('collabs')}
+                                </Link>
+                                <Link href="/invest" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                                    {t('invest')}
+                                </Link>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -125,7 +131,7 @@ export default function Navbar() {
                                 value={searchQuery}
                                 onChange={handleSearchChange}
                                 onFocus={() => { if (searchQuery.trim().length >= 2) setShowResults(true); }}
-                                placeholder="Search games"
+                                placeholder={t('searchGames')}
                                 className="bg-transparent text-sm text-white placeholder-zinc-500 outline-none border-none ml-2 w-full"
                             />
                             {searchQuery && (
@@ -177,7 +183,7 @@ export default function Navbar() {
                                     </div>
                                 ) : (
                                     <div className="py-6 text-center">
-                                        <p className="text-sm text-zinc-500">No games found</p>
+                                        <p className="text-sm text-zinc-500">{t('noGamesFound')}</p>
                                     </div>
                                 )}
                             </div>
@@ -194,10 +200,10 @@ export default function Navbar() {
                             <button
                                 onClick={openLogModal}
                                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors shadow-lg shadow-emerald-900/20"
-                                title="Log a Game"
+                                title={t('logGame')}
                             >
                                 <PlusCircle className="h-5 w-5" />
-                                <span className="hidden sm:inline font-bold text-sm">Log Game</span>
+                                <span className="hidden sm:inline font-bold text-sm">{t('logGame')}</span>
                             </button>
 
                             <div
@@ -228,7 +234,7 @@ export default function Navbar() {
                                         onClick={() => setIsMenuOpen(false)}
                                     >
                                         <User className="h-4 w-4" />
-                                        Profile
+                                        {t('profile')}
                                     </Link>
 
                                     <Link
@@ -237,7 +243,7 @@ export default function Navbar() {
                                         onClick={() => setIsMenuOpen(false)}
                                     >
                                         <Settings className="h-4 w-4" />
-                                        Settings
+                                        {t('settings')}
                                     </Link>
 
                                     <div className="my-2 border-t border-zinc-700" />
@@ -247,7 +253,7 @@ export default function Navbar() {
                                         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-rose-500 hover:bg-rose-500/10 transition-colors text-left"
                                     >
                                         <LogOut className="h-4 w-4" />
-                                        Log Out
+                                        {t('logOut')}
                                     </button>
                                 </div>
                             )}
@@ -259,7 +265,7 @@ export default function Navbar() {
                             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                         >
                             <LogIn className="h-4 w-4" />
-                            Login
+                            {t('login')}
                         </Link>
                     )}
                 </div>
