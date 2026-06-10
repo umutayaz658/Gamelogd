@@ -5,40 +5,57 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
-export const getImageUrl = (path: string | null | undefined, name?: string) => {
-    // 1. If path exists and is valid
-    if (path) {
-        // Check if it's already a full web URL
-        if (path.startsWith("http")) {
-            let finalUrl = path;
-            // Force HTTPS for Cloudinary to prevent Mixed Content errors
-            if (finalUrl.startsWith("http://res.cloudinary.com")) {
-                finalUrl = finalUrl.replace("http://", "https://");
-            }
-            const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
-            return finalUrl.replace('http://localhost:8000', apiBase);
-        }
+/**
+ * Returns the backend base URL (without /api suffix).
+ * Uses NEXT_PUBLIC_API_URL env, stripping /api if present.
+ */
+export function getApiBase(): string {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
+    return apiUrl.replace(/\/api\/?$/, '');
+}
 
-        // CRITICAL: Fix double slashes or filesystem paths if any
-        if (path.includes("\\")) {
-            console.error("Detected filesystem path! This is wrong:", path);
-            // Fall through to fallback instead of returning error image immediately?
-            // Or stick to error image if path was explicitly provided but wrong.
-            // Let's stick to error image for explicit wrong paths to help debugging.
-            return "https://placehold.co/400x600?text=Path+Error";
-        }
+/**
+ * Resolves any media URL (cover images, avatars, screenshots) to a full absolute URL.
+ * Handles: full URLs, relative paths, localhost→production replacement.
+ */
+export function getMediaUrl(path: string | null | undefined): string | null {
+    if (!path) return null;
 
-        // Ensure path starts with / if appending
-        const cleanPath = path.startsWith("/") ? path : `/${path}`;
-        const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
-        return `${apiBase}${cleanPath}`;
+    // Already a full URL
+    if (path.startsWith('http')) {
+        let url = path;
+        // Force HTTPS for Cloudinary
+        if (url.startsWith('http://res.cloudinary.com')) {
+            url = url.replace('http://', 'https://');
+        }
+        // Replace hardcoded localhost with actual backend base
+        if (url.includes('localhost:8000') || url.includes('127.0.0.1:8000')) {
+            const apiBase = getApiBase();
+            url = url.replace(/https?:\/\/(localhost|127\.0\.0\.1):8000/g, apiBase);
+        }
+        return url;
     }
 
-    // 2. Fallback: Use Name for Avatar
+    // Filesystem path (should never happen but defensive)
+    if (path.includes('\\')) {
+        console.error('Detected filesystem path:', path);
+        return null;
+    }
+
+    // Relative path — prepend backend base
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${getApiBase()}${cleanPath}`;
+}
+
+export const getImageUrl = (path: string | null | undefined, name?: string) => {
+    const resolved = getMediaUrl(path);
+    if (resolved) return resolved;
+
+    // Fallback: Use Name for Avatar
     if (name) {
         return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random&color=fff`;
     }
 
-    // 3. Final Fallback: Generic Placeholder
+    // Final Fallback: Generic Placeholder
     return "https://placehold.co/400x600?text=No+Image";
 };
