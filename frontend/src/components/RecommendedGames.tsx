@@ -49,6 +49,7 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
     const [loading, setLoading] = useState(true);
     const [activeIndex, setActiveIndex] = useState(0);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
 
     const hasPlatformLinked = !!user?.steam_id;
 
@@ -106,6 +107,14 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
     useEffect(() => {
         fetchGames();
     }, [username]);
+
+    useEffect(() => {
+        if (games.length <= 1 || isHovered) return;
+        const interval = setInterval(() => {
+            setActiveIndex((prev) => (prev + 1) % games.length);
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [activeIndex, games.length, isHovered]);
 
     if (loading) {
         return (
@@ -177,7 +186,11 @@ export default function RecommendedGames({ username }: RecommendedGamesProps) {
     };
 
     return (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 mt-6 overflow-hidden relative">
+        <div 
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 mt-6 overflow-hidden relative"
+        >
             <div className="flex items-center justify-between mb-2 relative z-30">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                     <Gamepad2 className="h-5 w-5 text-indigo-500" />

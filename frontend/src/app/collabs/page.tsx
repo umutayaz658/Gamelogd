@@ -9,6 +9,7 @@ import CollabDetailPane from "@/components/CollabDetailPane";
 import { PlusCircle, Search, Briefcase, MapPin, Zap, Filter, Code2, Check, X } from 'lucide-react';
 import api from '@/lib/api';
 import { JobPosting } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 const AVAILABLE_TECH = [
     "Unity", "Unreal Engine", "Godot", "C#", "C++", "Python", "JavaScript",
@@ -17,6 +18,7 @@ const AVAILABLE_TECH = [
 ];
 
 export default function CollabsPage() {
+    const { t } = useTranslation();
     const [jobPostings, setJobPostings] = useState<JobPosting[]>([]);
     const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
     const [loading, setLoading] = useState(true);
@@ -107,12 +109,12 @@ export default function CollabsPage() {
                         <div className="mb-6 flex-shrink-0">
                             <div className="flex items-end justify-between mb-4">
                                 <div>
-                                    <h1 className="text-3xl font-bold text-white mb-2">Collabs & Jobs Hub</h1>
-                                    <p className="text-zinc-400">Find your next team or hire talented developers.</p>
+                                    <h1 className="text-3xl font-bold text-white mb-2">{t('collabsJobsHub')}</h1>
+                                    <p className="text-zinc-400">{t('collabsDescription')}</p>
                                 </div>
                                 <button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20">
                                     <PlusCircle className="h-5 w-5" />
-                                    <span>Post a Collab</span>
+                                    <span>{t('postCollab')}</span>
                                 </button>
                             </div>
 
@@ -125,19 +127,19 @@ export default function CollabsPage() {
                                             onClick={() => setPostType('all')}
                                             className={`flex-1 md:px-6 py-2 rounded-lg text-sm font-bold transition-colors ${postType === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                                         >
-                                            All
+                                            {t('all')}
                                         </button>
                                         <button 
                                             onClick={() => setPostType('job')}
                                             className={`flex-1 md:px-6 py-2 rounded-lg text-sm font-bold transition-colors ${postType === 'job' ? 'bg-blue-500/20 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                                         >
-                                            Jobs
+                                            {t('jobs')}
                                         </button>
                                         <button 
                                             onClick={() => setPostType('talent')}
                                             className={`flex-1 md:px-6 py-2 rounded-lg text-sm font-bold transition-colors ${postType === 'talent' ? 'bg-purple-500/20 text-purple-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                                         >
-                                            Talent
+                                            {t('talent')}
                                         </button>
                                     </div>
 
@@ -145,7 +147,7 @@ export default function CollabsPage() {
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-500" />
                                         <input
                                             type="text"
-                                            placeholder="Search by title or description..."
+                                            placeholder={t('collabsSearchPlaceholder')}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 pl-10 pr-4 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-zinc-600"
                                             value={filters.search}
                                             onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
@@ -156,7 +158,7 @@ export default function CollabsPage() {
                                 {/* Bottom Row: Dropdowns */}
                                 <div className="flex flex-wrap gap-3 items-center">
                                     <FilterDropdown
-                                        label="Job Type"
+                                        label={t('jobType')}
                                         icon={<Filter className="h-4 w-4" />}
                                         value={filters.job_type}
                                         onChange={(val) => setFilters(prev => ({ ...prev, job_type: val }))}
@@ -170,7 +172,7 @@ export default function CollabsPage() {
                                     />
 
                                     <FilterDropdown
-                                        label="Location"
+                                        label={t('location')}
                                         icon={<MapPin className="h-4 w-4" />}
                                         value={filters.location_type}
                                         onChange={(val) => setFilters(prev => ({ ...prev, location_type: val }))}
@@ -182,7 +184,7 @@ export default function CollabsPage() {
                                     />
 
                                     <FilterDropdown
-                                        label="Level"
+                                        label={t('level')}
                                         icon={<Zap className="h-4 w-4" />}
                                         value={filters.experience_level}
                                         onChange={(val) => setFilters(prev => ({ ...prev, experience_level: val }))}
@@ -203,16 +205,16 @@ export default function CollabsPage() {
                                         >
                                             <Code2 className={`h-4 w-4 ${techStack.length > 0 ? 'text-emerald-500' : ''}`} />
                                             <span className={techStack.length > 0 ? 'text-emerald-500' : ''}>
-                                                {techStack.length > 0 ? `${techStack.length} Tech Selected` : 'Tech Stack'}
+                                                {techStack.length > 0 ? `${techStack.length} ${t('techSelected')}` : t('techStack')}
                                             </span>
                                         </button>
 
                                         {showTechDrawer && (
                                             <div className="absolute top-full left-0 mt-2 w-72 md:w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-50 p-4">
                                                 <div className="flex justify-between items-center mb-3">
-                                                    <span className="text-sm font-bold text-white">Select Technologies</span>
+                                                    <span className="text-sm font-bold text-white">{t('selectTechnologies')}</span>
                                                     {techStack.length > 0 && (
-                                                        <button onClick={() => setTechStack([])} className="text-xs text-zinc-400 hover:text-white">Clear All</button>
+                                                        <button onClick={() => setTechStack([])} className="text-xs text-zinc-400 hover:text-white">{t('clearAll')}</button>
                                                     )}
                                                 </div>
                                                 <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto custom-scrollbar">
@@ -244,7 +246,7 @@ export default function CollabsPage() {
                                             }}
                                             className="ml-auto text-sm font-medium text-red-400 hover:text-red-300 transition-colors px-3 py-2 flex items-center gap-1"
                                         >
-                                            <X className="h-4 w-4" /> Clear All
+                                            <X className="h-4 w-4" /> {t('clearAll')}
                                         </button>
                                     )}
                                 </div>
@@ -273,8 +275,8 @@ export default function CollabsPage() {
                                         ) : (
                                             <div className="py-20 text-center text-zinc-500 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
                                                 <Briefcase className="h-12 w-12 mx-auto mb-4 text-zinc-700" />
-                                                <p className="text-lg font-medium text-zinc-300">No postings found.</p>
-                                                <p className="text-sm text-zinc-500">Try adjusting your filters.</p>
+                                                <p className="text-lg font-medium text-zinc-300">{t('noPostingsFound')}</p>
+                                                <p className="text-sm text-zinc-500">{t('tryAdjustingFilters')}</p>
                                             </div>
                                         )}
                                     </div>

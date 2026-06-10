@@ -11,6 +11,7 @@ import { Post, Project } from '@/types';
 import CreateProjectModal from '@/components/modals/CreateProjectModal';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -25,6 +26,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function DevsPage() {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'devlogs' | 'projects'>('devlogs');
     const [devlogs, setDevlogs] = useState<Post[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -126,16 +128,16 @@ export default function DevsPage() {
                         <div className="flex items-end justify-between mb-8">
                             <div>
                                 <h1 className="text-3xl font-bold text-white mb-2">
-                                    <span className="text-blue-500">Developer</span> Hub
+                                    <span className="text-blue-500">{t('developerHub').split(' ')[0]}</span> {t('developerHub').split(' ').slice(1).join(' ')}
                                 </h1>
-                                <p className="text-zinc-400">Discover indie gems and follow their development journey.</p>
+                                <p className="text-zinc-400">{t('devsDescription')}</p>
                             </div>
                             <button
                                 onClick={handleCreateClick}
                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20"
                             >
                                 <PlusCircle className="h-5 w-5" />
-                                <span>{activeTab === 'devlogs' ? 'Dev Log' : 'Create Project'}</span>
+                                <span>{activeTab === 'devlogs' ? t('devLog') : t('createProject')}</span>
                             </button>
                         </div>
 
@@ -145,11 +147,11 @@ export default function DevsPage() {
                                 onClick={() => setActiveTab('devlogs')}
                                 className={`flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'devlogs'
                                     ? 'text-white'
-                                    : 'text-zinc-500 hover:text-zinc-300'
+                                    : 'text-zinc-550 hover:text-zinc-350'
                                     }`}
                             >
                                 <Layout className="h-5 w-5" />
-                                Devlogs
+                                {t('devlogs')}
                                 {activeTab === 'devlogs' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
@@ -159,11 +161,11 @@ export default function DevsPage() {
                                 onClick={() => setActiveTab('projects')}
                                 className={`flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'projects'
                                     ? 'text-white'
-                                    : 'text-zinc-500 hover:text-zinc-300'
+                                    : 'text-zinc-550 hover:text-zinc-350'
                                     }`}
                             >
                                 <FolderKanban className="h-5 w-5" />
-                                Projects
+                                {t('projects')}
                                 {activeTab === 'projects' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
@@ -183,23 +185,30 @@ export default function DevsPage() {
                                 }`}
                             >
                                 <ArrowUpDown className="w-4 h-4" />
-                                {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                                {sortOrder === 'newest' ? t('newest') : t('oldest')}
                             </button>
 
                             {/* Status Filter */}
-                            {STATUS_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.value}
-                                    onClick={() => setSelectedStatus(selectedStatus === opt.value ? '' : opt.value)}
-                                    className={`px-3.5 py-2 rounded-xl text-sm font-medium transition-all border ${
-                                        selectedStatus === opt.value
-                                            ? opt.activeClass
-                                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
-                                    }`}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
+                            {STATUS_OPTIONS.map(opt => {
+                                const statusLabel = opt.value === 'in_dev' 
+                                    ? (t('inDevelopment' as any) || opt.label) 
+                                    : opt.value === 'released' 
+                                        ? (t('released' as any) || opt.label) 
+                                        : opt.label;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        onClick={() => setSelectedStatus(selectedStatus === opt.value ? '' : opt.value)}
+                                        className={`px-3.5 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                            selectedStatus === opt.value
+                                                ? opt.activeClass
+                                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                                        }`}
+                                    >
+                                        {statusLabel}
+                                    </button>
+                                );
+                            })}
 
                             {/* Following Filter */}
                             {user && (
@@ -212,7 +221,7 @@ export default function DevsPage() {
                                     }`}
                                 >
                                     <UserCheck className="w-4 h-4" />
-                                    Following
+                                    {t('following')}
                                 </button>
                             )}
 
@@ -223,10 +232,10 @@ export default function DevsPage() {
                                     showTechPicker || selectedTechs.length > 0
                                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
-                                }`}
+                                  }`}
                             >
                                 <SlidersHorizontal className="w-4 h-4" />
-                                Tech Stack
+                                {t('techStack')}
                                 {selectedTechs.length > 0 && (
                                     <span className="bg-emerald-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
                                         {selectedTechs.length}
@@ -254,7 +263,7 @@ export default function DevsPage() {
                                     onClick={clearAllFilters}
                                     className="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto underline underline-offset-2"
                                 >
-                                    Clear all
+                                    {t('clearAll')}
                                 </button>
                             )}
                         </div>
@@ -263,7 +272,7 @@ export default function DevsPage() {
                         {showTechPicker && (
                             <div className="mb-6 p-5 bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
                                 <div className="flex items-center justify-between mb-4">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Select Technologies</label>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('selectTechnologies')}</label>
                                     <button onClick={() => setShowTechPicker(false)} className="text-zinc-500 hover:text-white p-1">
                                         <X className="w-4 h-4" />
                                     </button>
@@ -300,7 +309,7 @@ export default function DevsPage() {
                                         ))
                                     ) : (
                                         <div className="text-center py-20 text-zinc-500">
-                                            No devlogs found. Be the first to post!
+                                            {t('noDevlogsFound')}
                                         </div>
                                     )}
                                 </div>
@@ -312,7 +321,7 @@ export default function DevsPage() {
                                         ))
                                     ) : (
                                         <div className="text-center py-20 text-zinc-500">
-                                            {hasActiveFilters ? 'No projects match your filters.' : 'No projects found.'}
+                                            {hasActiveFilters ? t('noProjectsMatch') : t('noProjectsFound')}
                                         </div>
                                     )}
                                 </div>
