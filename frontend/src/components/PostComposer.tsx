@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { Post } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface PostComposerProps {
     onPostCreated: (post: Post) => void;
@@ -18,6 +19,7 @@ interface PostComposerProps {
 
 export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     // Create Post State
     const [content, setContent] = useState('');
@@ -188,12 +190,12 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                 <div className="flex-1 relative">
                     {replyingTo && (
                         <div className="mb-2">
-                            <span className="text-zinc-500 text-sm">Replying to </span>
+                            <span className="text-zinc-500 text-sm">{t('replyingTo')} </span>
                             <span className="text-emerald-500 text-sm font-medium">@{replyingTo.username}</span>
                         </div>
                     )}
                     <textarea
-                        placeholder="What's happening in the game world?"
+                        placeholder={t('whatsHappening')}
                         className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0 text-lg mb-2 resize-none min-h-[60px]"
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
@@ -227,7 +229,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     {showPollCreator && (
                         <div className="mb-4 p-4 bg-zinc-950/50 rounded-xl border border-zinc-800 animate-in slide-in-from-top-2">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-sm font-bold text-zinc-400">Poll Options</span>
+                                <span className="text-sm font-bold text-zinc-400">{t('pollOptions')}</span>
                                 <button onClick={togglePollCreator} className="text-zinc-500 hover:text-red-500 transition-colors">
                                     <X className="h-4 w-4" />
                                 </button>
@@ -318,12 +320,12 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             {isPosting ? (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin" />
-                                    Posting...
+                                    {t('loading')}
                                 </>
                             ) : (
                                 <>
                                     <Send className="h-4 w-4" />
-                                    Post
+                                    {t('post')}
                                 </>
                             )}
                         </button>

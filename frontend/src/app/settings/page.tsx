@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { 
     User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe, 
     FileText, HelpCircle, ChevronRight, ExternalLink, MessageCircle, Bug, Zap, Play, 
-    Loader2, X, Search, Check, AlertTriangle, Info 
+    Loader2, X, Search, Check, AlertTriangle, Info, Send 
 } from 'lucide-react';
 
 const colors = {
@@ -192,7 +192,28 @@ const translations = {
         tosContent: "By utilizing Gamelogd, you agree to comply with standard platform guidelines. All content generated, including comments, game ratings, and project pitch descriptions must respect intellectual property rights and follow respectful community interaction standards. Abuse, harassment, scraping, or malicious API exploitation are strictly prohibited and will lead to swift account termination without warnings.",
         privacyContent: "Your privacy is paramount at Gamelogd. We collect registration details (username, email), optional platform integration coordinates (Steam ID, connection state toggles), and system settings. When syncing Steam libraries, we process only public game playtimes to calculate preferences and display achievements. We do not sell user data to advertising entities, and users maintain complete control over profile visibility through the Privacy & Safety control settings.",
         cookieContent: "Gamelogd utilizes essential cookies to maintain authenticated session tokens (JWT tokens) and secure persistent settings. Performance cookies may be used to load user settings preferences (accent color, font sizes) immediately on application mount. No non-essential tracking cookies are loaded without explicit choice.",
-        blogContent: "Gamelogd Blog Hub:\n\n• Devlog Tools Launch (June 2026): A review of the new Project management and Devlog timeline system.\n• Understanding Game DNA (May 2026): How our system maps playtimes to create your genre distribution chart.\n• Investor Pitching Best Practices (April 2026): Tips on setting a realistic funding goal and detailing tech stacks."
+        blogContent: "Gamelogd Blog Hub:\n\n• Devlog Tools Launch (June 2026): A review of the new Project management and Devlog timeline system.\n• Understanding Game DNA (May 2026): How our system maps playtimes to create your genre distribution chart.\n• Investor Pitching Best Practices (April 2026): Tips on setting a realistic funding goal and detailing tech stacks.",
+        categoryGeneral: "General Inquiry",
+        categoryAccount: "Account Security",
+        categoryBilling: "Billing / Subscription",
+        categoryPartnership: "Investment Support",
+        categoryFeedback: "Feedback & Suggestions",
+        severityLow: "Low - Visual / Minor tweak",
+        severityMedium: "Medium - Feature broken but workaround exists",
+        severityHigh: "High - Essential feature completely broken",
+        severityCritical: "Critical - App crash / data loss vulnerability",
+        faqQ1: "How do I secure my Gamelogd account?",
+        faqA1: "You can update your password under My Account > Account Security. We recommend using a unique password and connecting active platform profiles like Steam or Twitch.",
+        faqQ2: "Can I change my username or email?",
+        faqA2: "Yes, you can edit your profile details including your username under My Account section. Changing username updates your profile share URL.",
+        faqQ3: "How do I sync my Steam games library?",
+        faqA3: "Navigate to Connected Accounts, enter your public Steam ID 64, and click Save Connection. Make sure your Steam profile privacy state is set to Public.",
+        faqQ4: "Why are some synced games not showing in library?",
+        faqA4: "Syncing process may take several minutes depending on the library size. Only games with recorded playtime or achievements are imported.",
+        faqQ5: "What is Game DNA?",
+        faqA5: "Game DNA is Gamelogd's custom metric system that analyzes synced playtimes to generate visual distribution charts showing your favorite genres.",
+        faqQ6: "How do I apply for developer jobs?",
+        faqA6: "Browse open roles inside the Dev Hub. If your linked skill badges match the role requirements, you can click Apply to share your developer profile."
     },
     Turkish: {
         settings: "Ayarlar",
@@ -318,7 +339,28 @@ const translations = {
         tosContent: "Gamelogd'u kullanarak standart platform kurallarına uymayı kabul etmiş olursunuz. Yorumlar, oyun derecelendirmeleri ve proje sunum açıklamaları dahil olmak üzere oluşturulan tüm içerikler fikri mülkiyet haklarına saygı duymalı ve topluluk etkileşim standartlarına uygun olmalıdır. Kötüye kullanım, taciz veya kötü niyetli API kullanımı kesinlikle yasaktır ve hesapların uyarısız kapatılmasına yol açacaktır.",
         privacyContent: "Gizliliğiniz Gamelogd için son derece önemlidir. Kayıt bilgilerini (kullanıcı adı, e-posta), isteğe bağlı platform entegrasyon koordinatlarını (Steam ID, bağlantı durumu anahtarları) ve sistem ayarlarını toplarız. Steam kütüphanelerini eşitlerken, yalnızca tercihleri hesaplamak ve başarımları göstermek için herkese açık oyun sürelerini işleriz. Kullanıcı verilerini reklam şirketlerine satmayız ve kullanıcılar Gizlilik & Güvenlik ayarları aracılığıyla profil görünürlüğünü tamamen kontrol edebilirler.",
         cookieContent: "Gamelogd, oturumlarınızı (JWT) sürdürmek ve ayarları güvenli şekilde saklamak için gerekli çerezleri kullanır. Görünüm ayarlarını (vurgu rengi, yazı tipi boyutları) hemen yüklemek için tercih çerezleri kullanılabilir. İsteğe bağlı hiçbir takip çerezi onayınız olmadan yüklenmez.",
-        blogContent: "Gamelogd Blog Merkezi:\n\n• Devlog Araçları Yayında (Haziran 2026): Yeni Proje yönetimi ve Devlog zaman akışı sistemine genel bir bakış.\n• Oyun DNA'sını Anlamak (Mayıs 2026): Sistemimizin oyun sürelerini tür dağılım şemasına nasıl dönüştürdüğü.\n• Yatırımcı Sunumu En İyi Uygulamaları (Nisan 2026): Gerçekçi bir finansman hedefi belirleme ve teknoloji yığınlarını detaylandırma tüyoları."
+        blogContent: "Gamelogd Blog Merkezi:\n\n• Devlog Araçları Yayında (Haziran 2026): Yeni Proje yönetimi ve Devlog zaman akışı sistemine genel bir bakış.\n• Oyun DNA'sını Anlamak (Mayıs 2026): Sistemimizin oyun sürelerini tür dağılım şemasına nasıl dönüştürdüğü.\n• Yatırımcı Sunumu En İyi Uygulamaları (Nisan 2026): Gerçekçi bir finansman hedefi belirleme ve teknoloji yığınlarını detaylandırma tüyoları.",
+        categoryGeneral: "Genel Sorgu",
+        categoryAccount: "Hesap Güvenliği",
+        categoryBilling: "Ödeme / Abonelik",
+        categoryPartnership: "Yatırım Desteği",
+        categoryFeedback: "Geri Bildirim & Öneriler",
+        severityLow: "Düşük - Görsel / Küçük düzeltme",
+        severityMedium: "Orta - Özellik bozuk ama alternatif çözüm var",
+        severityHigh: "Yüksek - Temel özellik tamamen bozuk",
+        severityCritical: "Kritik - Uygulama çökmesi / veri kaybı riski",
+        faqQ1: "Gamelogd hesabımı nasıl güvenli hale getirebilirim?",
+        faqA1: "Şifrenizi Hesabım > Hesap Güvenliği altından güncelleyebilirsiniz. Benzersiz bir şifre kullanmanızı ve doğrulama için Steam veya Twitch hesaplarınızı bağlamanızı öneririz.",
+        faqQ2: "Kullanıcı adımı veya e-postamı değiştirebilir miyim?",
+        faqA2: "Evet, kullanıcı adınız dahil tüm profil detaylarınızı Hesabım sekmesinden düzenleyebilirsiniz. Kullanıcı adı değişikliği profil bağlantı URL'nizi günceller.",
+        faqQ3: "Steam oyun kütüphanemi nasıl eşitlerim?",
+        faqA3: "Bağlı Hesaplar sekmesine gidin, genel Steam ID 64 numaranızı girin ve Kaydet'e tıklayın. Steam profil gizlilik ayarlarınızın Herkese Açık olduğundan emin olun.",
+        faqQ4: "Eşitlenen bazı oyunlar kütüphanemde neden görünmüyor?",
+        faqA4: "Kütüphane boyutunuza bağlı olarak eşitleme birkaç dakika sürebilir. Ayrıca, yalnızca oynama süresi veya başarımı olan oyunlar içe aktarılır.",
+        faqQ5: "Game DNA nedir?",
+        faqA5: "Game DNA, en sevdiğiniz oyun türlerini gösteren görsel dağılım şemaları oluşturmak için oyun sürelerinizi analiz eden Gamelogd'a özel bir metrik sistemidir.",
+        faqQ6: "Geliştirici iş ilanlarına nasıl başvurabilirim?",
+        faqA6: "Geliştirici Merkezindeki (Dev Hub) aktif rollere göz atın. Profilinizdeki yetenek rozetleri gereksinimlerle eşleşiyorsa Başvur butonuna tıklayarak profilinizi paylaşabilirsiniz."
     },
     Spanish: {
         settings: "Ajustes",
@@ -433,7 +475,28 @@ const translations = {
         tosContent: "Al utilizar Gamelogd, usted acepta cumplir con las pautas de la plataforma.",
         privacyContent: "Su privacidad es primordial en Gamelogd. Recopilamos detalles de registro y configuraciones.",
         cookieContent: "Gamelogd utiliza cookies esenciales para mantener sesiones.",
-        blogContent: "Gamelogd Blog: Lanzamientos de herramientas Devlog, comprensión de Game DNA y mejores prácticas."
+        blogContent: "Gamelogd Blog: Lanzamientos de herramientas Devlog, comprensión de Game DNA y mejores prácticas.",
+        categoryGeneral: "Consulta General",
+        categoryAccount: "Seguridad de la Cuenta",
+        categoryBilling: "Facturación / Suscripción",
+        categoryPartnership: "Soporte de Inversiones",
+        categoryFeedback: "Comentarios y Sugerencias",
+        severityLow: "Bajo - Visual / Ajuste menor",
+        severityMedium: "Medio - Función rota pero hay alternativa",
+        severityHigh: "Alto - Función principal rota por completo",
+        severityCritical: "Crítico - Caída de la app / riesgo de pérdida de datos",
+        faqQ1: "¿Cómo protejo mi cuenta de Gamelogd?",
+        faqA1: "Puedes actualizar tu contraseña en Mi Cuenta > Seguridad de la Cuenta. Recomendamos usar una contraseña única y conectar Steam o Twitch.",
+        faqQ2: "¿Puedo cambiar mi nombre de usuario?",
+        faqA2: "Sí, puedes editar tu nombre de usuario en la sección Mi Cuenta. Cambiar el nombre de usuario actualizará la URL de tu perfil.",
+        faqQ3: "¿Cómo sincronizo mi biblioteca de Steam?",
+        faqA3: "Ve a Cuentas Conectadas, ingresa tu Steam ID 64 público y haz clic en Guardar. Asegúrate de que la privacidad de tu perfil de Steam sea Pública.",
+        faqQ4: "¿Por qué no aparecen algunos juegos sincronizados?",
+        faqA4: "La sincronización puede tardar unos minutos según el tamaño de la biblioteca. Solo se importan juegos con tiempo de juego registrado.",
+        faqQ5: "¿Qué es el DNA del Juego?",
+        faqA5: "El DNA del Juego es una métrica personalizada que analiza tus tiempos de juego para generar gráficos visuales de tus géneros favoritos.",
+        faqQ6: "¿Cómo postulo a trabajos de desarrollo?",
+        faqA6: "Explora los roles activos en el Dev Hub. Si tus habilidades coinciden con los requisitos, haz clic en Aplicar para compartir tu perfil."
     },
     French: {
         settings: "Paramètres",
@@ -548,7 +611,28 @@ const translations = {
         tosContent: "En utilisant Gamelogd, vous acceptez de respecter les règles de la plateforme.",
         privacyContent: "Votre vie privée est essentielle sur Gamelogd. Nous collectons des données de profil et des paramètres.",
         cookieContent: "Gamelogd utilise des cookies essentiels pour maintenir les sessions.",
-        blogContent: "Gamelogd Blog: Mises à jour des outils Devlog, compréhension de Game DNA et meilleures pratiques."
+        blogContent: "Gamelogd Blog: Mises à jour des outils Devlog, compréhension de Game DNA et meilleures pratiques.",
+        categoryGeneral: "Demande Générale",
+        categoryAccount: "Sécurité du Compte",
+        categoryBilling: "Facturation / Abonnement",
+        categoryPartnership: "Soutien aux Investissements",
+        categoryFeedback: "Commentaires & Suggestions",
+        severityLow: "Faible - Visuel / Ajustement mineur",
+        severityMedium: "Moyen - Fonctionnalité cassée mais contournement possible",
+        severityHigh: "Élevé - Fonctionnalité principale complètement cassée",
+        severityCritical: "Critique - Plantage de l'app / perte de données",
+        faqQ1: "Comment sécuriser mon compte Gamelogd ?",
+        faqA1: "Mettez à jour votre mot de passe sous Mon Compte > Sécurité. Nous vous conseillons d'utiliser un mot de passe unique et de lier Steam ou Twitch.",
+        faqQ2: "Puis-je changer mon nom d'utilisateur ?",
+        faqA2: "Oui, modifiez vos coordonnées sous Mon Compte. Changer de nom d'utilisateur met à jour l'URL de partage de votre profil.",
+        faqQ3: "Comment synchroniser ma bibliothèque Steam ?",
+        faqA3: "Allez dans Comptes Connectés, saisissez votre Steam ID 64 public et cliquez sur Enregistrer. Votre profil Steam doit être Public.",
+        faqQ4: "Pourquoi certains jeux synchronisés n'apparaissent pas ?",
+        faqA4: "La synchronisation peut prendre quelques minutes selon la taille de la bibliothèque. Seuls les jeux avec du temps de jeu sont importés.",
+        faqQ5: "Qu'est-ce que l'ADN du Jeu ?",
+        faqA5: "L'ADN du Jeu analyse vos temps de jeu synchronisés pour générer des graphiques montrant vos genres et mécaniques favoris.",
+        faqQ6: "Comment postuler à des offres de développement ?",
+        faqA6: "Parcourez les offres dans le Dev Hub. Si vos compétences correspondent, cliquez sur Postuler pour partager votre profil."
     },
     German: {
         settings: "Einstellungen",
@@ -663,7 +747,28 @@ const translations = {
         tosContent: "Durch die Nutzung von Gamelogd stimmen Sie den Plattformregeln zu.",
         privacyContent: "Datenschutz ist wichtig. Wir erfassen Profildaten und Einstellungen.",
         cookieContent: "Gamelogd verwendet Cookies, um Sitzungen aufrechtzuerhalten.",
-        blogContent: "Gamelogd Blog: Updates zu Devlog-Tools, Verständnis von Game DNA und Pitch-Tipps."
+        blogContent: "Gamelogd Blog: Updates zu Devlog-Tools, Verständnis von Game DNA und Pitch-Tipps.",
+        categoryGeneral: "Allgemeine Anfrage",
+        categoryAccount: "Kontosicherheit",
+        categoryBilling: "Abrechnung / Abonnement",
+        categoryPartnership: "Investitionsunterstützung",
+        categoryFeedback: "Feedback & Vorschläge",
+        severityLow: "Niedrig - Visuell / Kleine Anpassung",
+        severityMedium: "Mittel - Funktion defekt, aber Workaround vorhanden",
+        severityHigh: "Hoch - Hauptfunktion komplett defekt",
+        severityCritical: "Kritisch - App-Absturz / Datenverlustrisiko",
+        faqQ1: "Wie sichere ich mein Gamelogd-Konto?",
+        faqA1: "Aktualisieren Sie Ihr Passwort unter Mein Konto > Kontosicherheit. Wir empfehlen ein sicheres Passwort und die Verknüpfung mit Steam oder Twitch.",
+        faqQ2: "Kann ich meinen Benutzernamen ändern?",
+        faqA2: "Ja, Sie können Ihren Benutzernamen unter Mein Konto ändern. Dadurch wird auch die URL Ihres Profils aktualisiert.",
+        faqQ3: "Wie synchronisiere ich meine Steam-Bibliothek?",
+        faqA3: "Gehen Sie zu Verknüpfte Konten, geben Sie Ihre öffentliche Steam-ID 64 ein und klicken Sie auf Speichern. Ihr Steam-Profil muss öffentlich sein.",
+        faqQ4: "Warum werden einige synchronisierte Spiele nicht angezeigt?",
+        faqA4: "Die Synchronisierung kann je nach Größe der Bibliothek einige Minuten dauern. Es werden nur Spiele mit Spielzeit importiert.",
+        faqQ5: "Was ist Game DNA?",
+        faqA5: "Game DNA analysiert Ihre Spielzeiten, um visuelle Diagramme zu erstellen, die Ihre bevorzugten Genres und Spielmechaniken zeigen.",
+        faqQ6: "Wie bewerbe ich mich auf Entwickler-Jobs?",
+        faqA6: "Durchsuchen Sie offene Stellen im Dev Hub. Wenn Ihre Fähigkeiten passen, klicken Sie auf Bewerben, um Ihr Profil zu teilen."
     }
 };
 
@@ -1104,6 +1209,7 @@ function SettingsContent() {
                 category: supportCategory,
                 description: supportDescription
             });
+
             alert(t('successSupportSubmit'));
             setSupportTicketOpen(false);
             setSupportSubject('');
@@ -1651,29 +1757,7 @@ function SettingsContent() {
                                             </div>
                                         </div>
 
-                                        {/* Color Theme */}
-                                        <div className="space-y-3">
-                                            <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('accentColor')}</label>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                {['Emerald', 'Blue', 'Purple', 'Orange'].map((color) => (
-                                                    <button
-                                                        key={color}
-                                                        onClick={() => handleDisplaySettingsChange('accentColor', color)}
-                                                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${displaySettings.accentColor === color
-                                                            ? 'bg-zinc-800 border-zinc-600 ring-1 ring-zinc-600'
-                                                            : 'bg-zinc-950 border-zinc-800 hover:bg-zinc-900'
-                                                            }`}
-                                                    >
-                                                        <div className={`h-4 w-4 rounded-full ${color === 'Emerald' ? 'bg-emerald-500' :
-                                                            color === 'Blue' ? 'bg-blue-500' :
-                                                                color === 'Purple' ? 'bg-purple-500' :
-                                                                    'bg-orange-500'
-                                                            }`} />
-                                                        <span className="font-medium text-sm">{color}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
+
                                     </div>
                                 </div>
                             )}
@@ -2022,72 +2106,137 @@ function SettingsContent() {
             {/* Contact Support Modal */}
             {supportTicketOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                    <div className="w-full max-w-3xl bg-zinc-950/75 border border-white/10 rounded-[28px] p-8 md:p-10 shadow-[0_25px_60px_rgba(0,0,0,0.85)] relative animate-in zoom-in-95 duration-200 backdrop-blur-xl">
+                        
+                        {/* Top Light Edge */}
+                        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent"></div>
+                        
                         <button 
                             onClick={() => setSupportTicketOpen(false)}
-                            className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
+                            className="absolute top-6 right-6 text-zinc-400 hover:text-white hover:bg-white/10 p-2 rounded-full transition-all"
                         >
                             <X className="h-5 w-5" />
                         </button>
-                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                            <MessageCircle className={activeColor.text} />
-                            {t('contactSupport')}
-                        </h3>
-                        <form onSubmit={handleContactSupport} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('categoryLabel')}</label>
-                                <select 
-                                    value={supportCategory}
-                                    onChange={(e) => setSupportCategory(e.target.value)}
-                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus}`}
-                                >
-                                    <option value="General">General Inquiry</option>
-                                    <option value="Account">Account Security</option>
-                                    <option value="Billing">Billing / Subscription</option>
-                                    <option value="Partnership">Investment Support</option>
-                                    <option value="Feedback">Feedback & Suggestions</option>
-                                </select>
+
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-8 md:gap-10">
+                            
+                            {/* Left Side: Branding */}
+                            <div className="flex flex-col justify-between space-y-8 md:space-y-0 pr-0 md:pr-4 md:border-r border-zinc-800/60">
+                                <div className="space-y-4">
+                                    <div className="text-xl font-bold tracking-wider font-sans text-white">
+                                        ROARK <span className="text-zinc-600">|</span> <span className="font-light">Forge</span>
+                                    </div>
+                                    <h3 className="text-3xl font-extrabold text-white leading-tight font-sans mt-6">
+                                        Let's build <br />
+                                        <span className="bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">the future.</span>
+                                    </h3>
+                                    <p className="text-sm text-zinc-400 font-light leading-relaxed max-w-xs">
+                                        Have a question, partnership inquiry, or just want to explore the Roark Forge ecosystem? We're here to help forge your vision into reality.
+                                    </p>
+                                </div>
+                                
+                                <div className="space-y-6 pt-4">
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Direct Inquiry</div>
+                                        <a href="mailto:contact@roarkforge.com" className="text-sm text-indigo-300 hover:text-white transition-colors hover:underline">contact@roarkforge.com</a>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Location</div>
+                                        <div className="text-sm text-zinc-400 font-medium">Digital Forward</div>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('subjectLabel')}</label>
-                                <input 
-                                    type="text" 
-                                    required
-                                    value={supportSubject}
-                                    onChange={(e) => setSupportSubject(e.target.value)}
-                                    placeholder={t('subjectPlaceholder')}
-                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus}`}
-                                />
+
+                            {/* Right Side: Form */}
+                            <div>
+                                <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                    <MessageCircle className="h-5 w-5 text-indigo-300" />
+                                    {t('contactSupport')}
+                                </h4>
+                                <form onSubmit={handleContactSupport} className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-zinc-300">{t('realName')}</label>
+                                            <input 
+                                                type="text" 
+                                                disabled
+                                                value={user?.real_name || user?.username || ''}
+                                                className="w-full bg-zinc-900/50 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-zinc-300">Email</label>
+                                            <input 
+                                                type="email" 
+                                                disabled
+                                                value={user?.email || ''}
+                                                className="w-full bg-zinc-900/50 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-zinc-300">{t('categoryLabel')}</label>
+                                            <select 
+                                                value={supportCategory}
+                                                onChange={(e) => setSupportCategory(e.target.value)}
+                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
+                                            >
+                                                <option value="General" className="bg-zinc-950">{t('categoryGeneral')}</option>
+                                                <option value="Account" className="bg-zinc-950">{t('categoryAccount')}</option>
+                                                <option value="Billing" className="bg-zinc-950">{t('categoryBilling')}</option>
+                                                <option value="Partnership" className="bg-zinc-950">{t('categoryPartnership')}</option>
+                                                <option value="Feedback" className="bg-zinc-950">{t('categoryFeedback')}</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-zinc-300">{t('subjectLabel')}</label>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={supportSubject}
+                                                onChange={(e) => setSupportSubject(e.target.value)}
+                                                placeholder={t('subjectPlaceholder')}
+                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-zinc-300">{t('descriptionLabel')}</label>
+                                        <textarea 
+                                            rows={4}
+                                            required
+                                            value={supportDescription}
+                                            onChange={(e) => setSupportDescription(e.target.value)}
+                                            placeholder={t('descPlaceholder')}
+                                            className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all resize-none"
+                                        />
+                                    </div>
+
+                                    <div className="pt-2 flex justify-end gap-3">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setSupportTicketOpen(false)}
+                                            className="px-4 py-2.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl text-sm font-medium transition-colors"
+                                        >
+                                            {t('cancel')}
+                                        </button>
+                                        <button 
+                                            type="submit"
+                                            disabled={isSubmittingSupport}
+                                            className="px-5 py-2.5 bg-white text-black hover:bg-zinc-200 disabled:opacity-50 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-100 shadow-lg shadow-white/5"
+                                        >
+                                            {isSubmittingSupport ? <Loader2 className="h-4 w-4 animate-spin text-black" /> : null}
+                                            <span>{t('submitRequest')}</span>
+                                            <Send className="h-3.5 w-3.5 text-black" />
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('descriptionLabel')}</label>
-                                <textarea 
-                                    rows={4}
-                                    required
-                                    value={supportDescription}
-                                    onChange={(e) => setSupportDescription(e.target.value)}
-                                    placeholder={t('descPlaceholder')}
-                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus} resize-none`}
-                                />
-                            </div>
-                            <div className="pt-2 flex justify-end gap-3">
-                                <button 
-                                    type="button"
-                                    onClick={() => setSupportTicketOpen(false)}
-                                    className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
-                                >
-                                    {t('cancel')}
-                                </button>
-                                <button 
-                                    type="submit"
-                                    disabled={isSubmittingSupport}
-                                    className={`px-4 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2`}
-                                >
-                                    {isSubmittingSupport ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                                    <span>{t('submitRequest')}</span>
-                                </button>
-                            </div>
-                        </form>
+                        </div>
+
                     </div>
                 </div>
             )}
@@ -2095,84 +2244,127 @@ function SettingsContent() {
             {/* Report a Problem Modal */}
             {reportProblemOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                    <div className="w-full max-w-3xl bg-zinc-950/75 border border-white/10 rounded-[28px] p-8 md:p-10 shadow-[0_25px_60px_rgba(0,0,0,0.85)] relative animate-in zoom-in-95 duration-200 backdrop-blur-xl">
+                        
+                        {/* Top Light Edge */}
+                        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent"></div>
+                        
                         <button 
                             onClick={() => setReportProblemOpen(false)}
-                            className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
+                            className="absolute top-6 right-6 text-zinc-400 hover:text-white hover:bg-white/10 p-2 rounded-full transition-all"
                         >
                             <X className="h-5 w-5" />
                         </button>
-                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                            <Bug className={activeColor.text} />
-                            {t('reportProblem')}
-                        </h3>
-                        <form onSubmit={handleReportProblem} className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('bugTitleLabel')}</label>
-                                    <input 
-                                        type="text" 
-                                        required
-                                        value={bugTitle}
-                                        onChange={(e) => setBugTitle(e.target.value)}
-                                        placeholder={t('bugTitlePlaceholder')}
-                                        className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus}`}
-                                    />
+
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-8 md:gap-10">
+                            
+                            {/* Left Side: Branding */}
+                            <div className="flex flex-col justify-between space-y-8 md:space-y-0 pr-0 md:pr-4 md:border-r border-zinc-800/60">
+                                <div className="space-y-4">
+                                    <div className="text-xl font-bold tracking-wider font-sans text-white">
+                                        ROARK <span className="text-zinc-600">|</span> <span className="font-light">Forge</span>
+                                    </div>
+                                    <h3 className="text-3xl font-extrabold text-white leading-tight font-sans mt-6">
+                                        Let's build <br />
+                                        <span className="bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">the future.</span>
+                                    </h3>
+                                    <p className="text-sm text-zinc-400 font-light leading-relaxed max-w-xs">
+                                        Have a question, partnership inquiry, or just want to explore the Roark Forge ecosystem? We're here to help forge your vision into reality.
+                                    </p>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('severityLabel')}</label>
-                                    <select 
-                                        value={bugSeverity}
-                                        onChange={(e) => setBugSeverity(e.target.value)}
-                                        className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus}`}
-                                    >
-                                        <option value="Low">Low - Visual / Minor tweak</option>
-                                        <option value="Medium">Medium - Feature broken but workaround exists</option>
-                                        <option value="High">High - Essential feature completely broken</option>
-                                        <option value="Critical">Critical - App crash / data loss vulnerability</option>
-                                    </select>
+                                
+                                <div className="space-y-6 pt-4">
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Direct Inquiry</div>
+                                        <a href="mailto:contact@roarkforge.com" className="text-sm text-indigo-300 hover:text-white transition-colors hover:underline">contact@roarkforge.com</a>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Location</div>
+                                        <div className="text-sm text-zinc-400 font-medium">Digital Forward</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('stepsLabel')}</label>
-                                <textarea 
-                                    rows={3}
-                                    required
-                                    value={bugSteps}
-                                    onChange={(e) => setBugSteps(e.target.value)}
-                                    placeholder={t('stepsPlaceholder')}
-                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus} resize-none`}
-                                />
+
+                            {/* Right Side: Form */}
+                            <div>
+                                <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                    <Bug className="h-5 w-5 text-indigo-300" />
+                                    {t('reportProblem')}
+                                </h4>
+                                <form onSubmit={handleReportProblem} className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-zinc-300">{t('bugTitleLabel')}</label>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={bugTitle}
+                                                onChange={(e) => setBugTitle(e.target.value)}
+                                                placeholder={t('bugTitlePlaceholder')}
+                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-zinc-300">{t('severityLabel')}</label>
+                                            <select 
+                                                value={bugSeverity}
+                                                onChange={(e) => setBugSeverity(e.target.value)}
+                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
+                                            >
+                                                <option value="Low" className="bg-zinc-950">{t('severityLow')}</option>
+                                                <option value="Medium" className="bg-zinc-950">{t('severityMedium')}</option>
+                                                <option value="High" className="bg-zinc-950">{t('severityHigh')}</option>
+                                                <option value="Critical" className="bg-zinc-950">{t('severityCritical')}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-zinc-300">{t('stepsLabel')}</label>
+                                        <textarea 
+                                            rows={3}
+                                            required
+                                            value={bugSteps}
+                                            onChange={(e) => setBugSteps(e.target.value)}
+                                            placeholder={t('stepsPlaceholder')}
+                                            className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all resize-none"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-zinc-300">{t('descriptionLabel')}</label>
+                                        <textarea 
+                                            rows={3}
+                                            required
+                                            value={bugDescription}
+                                            onChange={(e) => setBugDescription(e.target.value)}
+                                            placeholder={t('bugDescPlaceholder')}
+                                            className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all resize-none"
+                                        />
+                                    </div>
+
+                                    <div className="pt-2 flex justify-end gap-3">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setReportProblemOpen(false)}
+                                            className="px-4 py-2.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl text-sm font-medium transition-colors"
+                                        >
+                                            {t('cancel')}
+                                        </button>
+                                        <button 
+                                            type="submit"
+                                            disabled={isSubmittingBug}
+                                            className="px-5 py-2.5 bg-white text-black hover:bg-zinc-200 disabled:opacity-50 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-100 shadow-lg shadow-white/5"
+                                        >
+                                            {isSubmittingBug ? <Loader2 className="h-4 w-4 animate-spin text-black" /> : null}
+                                            <span>{t('submitBug')}</span>
+                                            <Send className="h-3.5 w-3.5 text-black" />
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('descriptionLabel')}</label>
-                                <textarea 
-                                    rows={3}
-                                    required
-                                    value={bugDescription}
-                                    onChange={(e) => setBugDescription(e.target.value)}
-                                    placeholder={t('bugDescPlaceholder')}
-                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${activeColor.borderFocus} resize-none`}
-                                />
-                            </div>
-                            <div className="pt-2 flex justify-end gap-3">
-                                <button 
-                                    type="button"
-                                    onClick={() => setReportProblemOpen(false)}
-                                    className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
-                                >
-                                    {t('cancel')}
-                                </button>
-                                <button 
-                                    type="submit"
-                                    disabled={isSubmittingBug}
-                                    className={`px-4 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2`}
-                                >
-                                    {isSubmittingBug ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                                    <span>{t('submitBug')}</span>
-                                </button>
-                            </div>
-                        </form>
+                        </div>
+
                     </div>
                 </div>
             )}

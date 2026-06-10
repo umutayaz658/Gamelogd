@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import RecommendedGames from '@/components/RecommendedGames';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface NewsItem {
     id: number;
@@ -15,6 +16,7 @@ interface NewsItem {
 export default function RightSidebar() {
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [trendingNews, setTrendingNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -47,7 +49,7 @@ export default function RightSidebar() {
         return (
             <div className="hidden lg:block sticky top-20">
                 <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 h-64 flex items-center justify-center">
-                    <span className="text-zinc-500 text-sm">Loading trends...</span>
+                    <span className="text-zinc-500 text-sm">{t('loadingTrends')}</span>
                 </div>
             </div>
         );
@@ -60,7 +62,7 @@ export default function RightSidebar() {
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
                             <TrendingUp className="h-5 w-5 text-emerald-500" />
-                            Trending News
+                            {t('whatHappeningRight')}
                         </h2>
                     </div>
 
@@ -90,7 +92,7 @@ export default function RightSidebar() {
                         onClick={() => router.push('/news')}
                         className="w-full mt-4 py-2 text-sm text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all font-medium"
                     >
-                        Show more
+                        {t('showMore')}
                     </button>
                 </div>
 
