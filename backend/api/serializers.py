@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -558,21 +558,42 @@ class NewsSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return Bookmark.objects.filter(user=request.user, news=obj).exists()
         return False
+class MessageReactionSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = MessageReaction
+        fields = ['id', 'emoji', 'username', 'user']
+
+class SimpleMessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.username', read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'content', 'sender_username', 'image', 'gif_url']
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     is_me = serializers.SerializerMethodField()
     shared_post_details = SimplePostSerializer(source='shared_post', read_only=True)
     shared_review_details = ReviewSerializer(source='shared_review', read_only=True)
     shared_news_details = NewsSerializer(source='shared_news', read_only=True)
+    reactions = MessageReactionSerializer(many=True, read_only=True)
+    reply_to_details = SimpleMessageSerializer(source='reply_to', read_only=True)
 
     class Meta:
         model = Message
         fields = [
             'id', 'conversation', 'sender', 'content', 'is_read', 'created_at', 'is_me',
             'image', 'gif_url', 'shared_post', 'shared_review', 'shared_news',
-            'shared_post_details', 'shared_review_details', 'shared_news_details'
+            'shared_post_details', 'shared_review_details', 'shared_news_details',
+            'reactions', 'reply_to', 'reply_to_details'
         ]
-        read_only_fields = ['id', 'sender', 'created_at', 'is_me', 'shared_post_details', 'shared_review_details', 'shared_news_details']
+        read_only_fields = [
+            'id', 'sender', 'created_at', 'is_me', 
+            'shared_post_details', 'shared_review_details', 'shared_news_details', 
+            'reactions', 'reply_to_details'
+        ]
 
     def get_is_me(self, obj):
         request = self.context.get('request')
