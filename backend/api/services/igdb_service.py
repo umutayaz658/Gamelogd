@@ -47,7 +47,7 @@ def fetch_game_details(game: Game) -> Game:
     Fetches missing details for a game from IGDB and saves them to the DB.
     Returns the updated game object.
     """
-    if not game.igdb_id or game.details_fetched:
+    if game.details_fetched:
         return game
 
     if not IGDB_CLIENT_ID or not IGDB_CLIENT_SECRET:
@@ -58,6 +58,45 @@ def fetch_game_details(game: Game) -> Game:
     if not token:
         print(f"Failed to get IGDB token. Skipping detail fetch for game {game.id} ({game.title})")
         return game # Failed to auth, just return what we have
+
+    headers = {
+        'Client-ID': IGDB_CLIENT_ID,
+        'Authorization': f'Bearer {token}'
+    }
+
+    # Resolve IGDB ID if missing (e.g. for games synced from Steam)
+    if not game.igdb_id:
+        try:
+            # Sanitize title for IGDB search
+            safe_title = game.title.replace('"', '').replace('\\', '')
+            search_query = f'search "{safe_title}"; fields id, name, category, version_parent, parent_game; limit 10;'
+            resp = requests.post('https://api.igdb.com/v4/games', headers=headers, data=search_query, timeout=10)
+            if resp.status_code == 200 and resp.json():
+                results = resp.json()
+                best_match = None
+                
+                # Look for exact match and main game
+                for g in results:
+                    cat = g.get('category', 0)
+                    if cat in (0, 8, 9, 10, 11) and not g.get('version_parent'):
+                        if g.get('name', '').lower() == game.title.lower():
+                            best_match = g
+                            break
+                            
+                # Fallback to first result if no exact main game match
+                if not best_match:
+                    best_match = results[0]
+                    
+                game.igdb_id = best_match['id']
+                game.save(update_fields=['igdb_id'])
+            else:
+                # Could not find game on IGDB
+                game.details_fetched = True
+                game.save()
+                return game
+        except Exception as e:
+            print(f"Failed to resolve IGDB ID for {game.title}: {e}")
+            return game
 
     headers = {
         'Client-ID': IGDB_CLIENT_ID,
