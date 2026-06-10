@@ -105,7 +105,7 @@ def fetch_game_details(game: Game) -> Game:
             return game
     # The query asks for summary, storyline, companies, platforms, screenshots, url
     query = f"""
-        fields summary, storyline, url, cover.url,
+        fields summary, storyline, url, cover.url, first_release_date,
                involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
                platforms.name, screenshots.url, genres.name;
         where id = {target_igdb_id};
@@ -128,6 +128,14 @@ def fetch_game_details(game: Game) -> Game:
             game.summary = igdb_data.get('summary', '')
             game.description = igdb_data.get('storyline', '')
             game.igdb_url = igdb_data.get('url', '')
+
+            # Release date
+            if 'first_release_date' in igdb_data and not game.release_date:
+                import datetime
+                try:
+                    game.release_date = datetime.datetime.fromtimestamp(igdb_data['first_release_date']).strftime('%Y-%m-%d')
+                except Exception as e:
+                    print(f"Failed to parse release date: {e}")
 
             # Cover
             if 'cover' in igdb_data and 'url' in igdb_data['cover'] and not game.cover_image:
