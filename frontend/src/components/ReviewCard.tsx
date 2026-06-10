@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2 } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -310,6 +310,21 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                             </div>
                             <span className="text-sm">0</span>
                         </button>
+
+                        <div className="relative">
+                            <button
+                                className="flex items-center gap-2 text-zinc-500 opacity-50 cursor-not-allowed group transition-colors"
+                                title="Game logs cannot be reposted"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                }}
+                            >
+                                <div className="p-2 rounded-full group-hover:bg-zinc-500/10 transition-colors">
+                                    <Repeat2 className="h-4 w-4" />
+                                </div>
+                                <span className="text-sm">0</span>
+                            </button>
+                        </div>
 
                         <button
                             className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}

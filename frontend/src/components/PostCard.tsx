@@ -491,16 +491,6 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             <span className="text-sm">{post.comments || 0}</span>
                         </button>
 
-                        <button
-                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
-                            onClick={handleLike}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
-                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
-                            </div>
-                            <span className="text-sm">{likesCount || 0}</span>
-                        </button>
-
                         <div className="relative" ref={repostMenuRef}>
                             <button
                                 className={`flex items-center gap-2 hover:text-green-500 group transition-colors ${isReposted ? 'text-green-500' : ''}`}
@@ -537,6 +527,16 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </div>
                             )}
                         </div>
+
+                        <button
+                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
+                            onClick={handleLike}
+                        >
+                            <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
+                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
+                            </div>
+                            <span className="text-sm">{likesCount || 0}</span>
+                        </button>
 
                         <div className="relative" ref={shareMenuRef}>
                             <button
