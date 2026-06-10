@@ -9,6 +9,29 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 
+const renderContentWithLinks = (content: string | undefined) => {
+    if (!content) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    return parts.map((part, index) => {
+        if (part.match(urlRegex)) {
+            return (
+                <a
+                    key={index}
+                    href={part}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-emerald-500 hover:text-emerald-400 hover:underline break-all font-medium"
+                >
+                    {part}
+                </a>
+            );
+        }
+        return part;
+    });
+};
+
 interface PostCardProps {
     post: Post;
     isDetailView?: boolean;
@@ -214,7 +237,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="font-bold text-white hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                {post.user.username}
+                                {post.user.real_name || post.user.username}
                             </Link>
                             <Link
                                 href={`/${post.user.username}`}
@@ -264,11 +287,37 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     </div>
 
 
-                    {/* Split Layout for Content and Media */}
-                    <div className="flex flex-col sm:flex-row gap-4 mt-2 mb-3">
-                        {/* LEFT SIDE: Media */}
+                    {/* Content and Media Layout */}
+                    <div className="flex flex-col gap-3 mt-2 mb-3">
+                        {/* Title and Text */}
+                        <div className="min-w-0 flex flex-col">
+                            {post.title && (
+                                <div className="mb-2">
+                                    {post.project_parent && (
+                                        <div className="mb-1">
+                                            <Link
+                                                href={`/projects/${post.project_parent}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="text-emerald-500 hover:text-emerald-400 font-bold text-sm hover:underline transition-colors tracking-wide"
+                                            >
+                                                {post.project_details?.title || 'PROJECT DEVLOG'}
+                                            </Link>
+                                        </div>
+                                    )}
+                                    <h3 className={`font-bold text-white mb-2 leading-tight ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
+                                        {post.title}
+                                    </h3>
+                                </div>
+                            )}
+
+                            <p className={`text-zinc-300 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : 'line-clamp-6 sm:line-clamp-[10]'}`}>
+                                {renderContentWithLinks(post.content)}
+                            </p>
+                        </div>
+
+                        {/* Media (Images/Videos/Gifs) */}
                         {((post.media && post.media.length > 0) || post.media_file || post.image || post.gif_url) && (
-                            <div className="w-full sm:w-2/5 shrink-0">
+                            <div className="w-full max-w-[450px]">
                                 {(post.media && post.media.length > 0) ? (
                                     <div className={`grid gap-1 rounded-xl overflow-hidden border border-zinc-800 ${
                                         post.media.length === 1 ? 'grid-cols-1' :
@@ -307,24 +356,24 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         ))}
                                     </div>
                                 ) : (post.media_file || post.image) ? (
-                                    <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black aspect-[4/3]">
+                                    <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black max-h-[512px] flex items-center justify-center">
                                         {post.media_type === 'video' ? (
                                             <video
                                                 src={getImageUrl(post.media_file || post.image || '')}
                                                 controls
-                                                className="w-full h-full object-contain bg-black"
+                                                className="w-full max-h-[512px] object-contain bg-black"
                                                 onClick={(e) => e.stopPropagation()}
                                             />
                                         ) : (
                                             <img
                                                 src={getImageUrl(post.media_file || post.image || '')}
                                                 alt="Post media"
-                                                className="w-full h-full object-cover"
+                                                className="w-full max-h-[512px] object-cover"
                                             />
                                         )}
                                     </div>
                                 ) : post.gif_url && (
-                                    <div className="rounded-xl overflow-hidden border border-zinc-800">
+                                    <div className="rounded-xl overflow-hidden border border-zinc-800 max-h-[400px]">
                                         <img
                                             src={post.gif_url}
                                             alt="GIF content"
@@ -335,68 +384,44 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             </div>
                         )}
 
-                        {/* RIGHT SIDE: Title and Text */}
-                        <div className="flex-1 min-w-0 flex flex-col">
-                            {post.title && (
-                                <div className="mb-2">
-                                    {post.project_parent && (
-                                        <div className="mb-1">
-                                            <Link
-                                                href={`/projects/${post.project_parent}`}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="text-emerald-500 hover:text-emerald-400 font-bold text-sm hover:underline transition-colors tracking-wide"
-                                            >
-                                                {post.project_details?.title || 'PROJECT DEVLOG'}
-                                            </Link>
-                                        </div>
-                                    )}
-                                    <h3 className={`font-bold text-white mb-2 leading-tight ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
-                                        {post.title}
-                                    </h3>
+                        {/* Nested Quoted Post Card */}
+                        {post.repost_details && (
+                            <div 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/${post.repost_details!.user.username}/status/${post.repost_details!.id}`);
+                                }}
+                                className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3 flex flex-col gap-2 transition-all cursor-pointer hover:bg-zinc-950/50"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <img
+                                        src={getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username)}
+                                        alt={post.repost_details.user.username}
+                                        className="h-5 w-5 rounded-full object-cover"
+                                    />
+                                    <span className="font-bold text-white text-xs">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
+                                    <span className="text-zinc-500 text-xs">@{post.repost_details.user.username.toLowerCase()}</span>
+                                    <span className="text-zinc-600 text-xs">•</span>
+                                    <span className="text-zinc-500 text-xs">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
                                 </div>
-                            )}
-
-                            <p className={`text-zinc-300 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : 'line-clamp-6 sm:line-clamp-[10]'}`}>
-                                {post.content}
-                            </p>
-
-                            {/* Nested Quoted Post Card */}
-                            {post.repost_details && (
-                                <div 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        router.push(`/${post.repost_details!.user.username}/status/${post.repost_details!.id}`);
-                                    }}
-                                    className="mt-3 border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3 flex flex-col gap-2 transition-all cursor-pointer hover:bg-zinc-950/50"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <img
-                                            src={getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username)}
-                                            alt={post.repost_details.user.username}
-                                            className="h-5 w-5 rounded-full object-cover"
-                                        />
-                                        <span className="font-bold text-white text-xs">{post.repost_details.user.username}</span>
-                                        <span className="text-zinc-500 text-xs">@{post.repost_details.user.username.toLowerCase()}</span>
-                                        <span className="text-zinc-600 text-xs">•</span>
-                                        <span className="text-zinc-500 text-xs">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
+                                {post.repost_details.title && (
+                                    <h4 className="font-bold text-sm text-white">{post.repost_details.title}</h4>
+                                )}
+                                <p className="text-zinc-300 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                    {renderContentWithLinks(post.repost_details.content)}
+                                </p>
+                                {(post.repost_details.media_file || post.repost_details.image) && (
+                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
+                                        <img src={getImageUrl(post.repost_details.media_file || post.repost_details.image || '')} className="w-full h-full object-cover" />
                                     </div>
-                                    {post.repost_details.title && (
-                                        <h4 className="font-bold text-sm text-white">{post.repost_details.title}</h4>
-                                    )}
-                                    <p className="text-zinc-300 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">{post.repost_details.content}</p>
-                                    {(post.repost_details.media_file || post.repost_details.image) && (
-                                        <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
-                                            <img src={getImageUrl(post.repost_details.media_file || post.repost_details.image || '')} className="w-full h-full object-cover" />
-                                        </div>
-                                    )}
-                                    {post.repost_details.gif_url && (
-                                        <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
-                                            <img src={post.repost_details.gif_url} className="w-full h-full object-cover" />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                                )}
+                                {post.repost_details.gif_url && (
+                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
+                                        <img src={post.repost_details.gif_url} className="w-full h-full object-cover" />
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Render Poll */}

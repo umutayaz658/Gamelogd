@@ -26,6 +26,7 @@ def default_user_settings():
         "language": "English",
         "fontSize": "Medium",
         "accentColor": "Emerald",
+        "steamStatusPrivate": False,
         "connected_accounts": {
             "psn": {"connected": False, "username": ""},
             "xbox": {"connected": False, "username": ""},

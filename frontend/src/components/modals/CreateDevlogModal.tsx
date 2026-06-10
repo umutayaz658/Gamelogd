@@ -145,7 +145,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                                 {/* Add More Button */}
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="aspect-square rounded-xl border-2 border-dashed border-zinc-800 hover:border-emerald-500/50 hover:bg-zinc-900 transition-all flex flex-col items-center justify-center gap-2 text-zinc-500 hover:text-emerald-500"
+                                    className="aspect-square rounded-xl border-2 border-dashed border-zinc-800 hover:border-blue-500/50 hover:bg-zinc-900 transition-all flex flex-col items-center justify-center gap-2 text-zinc-500 hover:text-blue-500"
                                 >
                                     <Plus className="h-8 w-8" />
                                     <span className="text-xs font-bold uppercase">Add Media</span>
@@ -169,7 +169,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                             </div>
 
                             <div className="relative z-10 flex flex-col items-center gap-3">
-                                <div className="p-5 rounded-full bg-zinc-800/80 backdrop-blur-sm border border-zinc-700 group-hover:bg-emerald-600 group-hover:border-emerald-500 group-hover:text-white transition-all duration-300">
+                                <div className="p-5 rounded-full bg-zinc-800/80 backdrop-blur-sm border border-zinc-700 group-hover:bg-blue-600 group-hover:border-blue-500 group-hover:text-white transition-all duration-300">
                                     <Upload className="h-10 w-10 text-zinc-400 group-hover:text-white" />
                                 </div>
                                 <div>
@@ -195,7 +195,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                     {/* Bottom Project Info Overlay (Only if no media, or sleek bar if media exists?) */}
                     {currentProject && mediaItems.length === 0 && (
                         <div className="absolute bottom-0 left-0 right-0 p-6 text-left pointer-events-none">
-                            <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Posting to</p>
+                            <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Posting to</p>
                             <h3 className="text-2xl font-black text-white leading-none shadow-black drop-shadow-lg">{currentProject.title}</h3>
                         </div>
                     )}
@@ -221,7 +221,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                     </div>
 
                     {/* Form Content */}
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                    <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin-dark">
 
                         {/* Project Selector - Prominent */}
                         <div className="space-y-2">
@@ -229,7 +229,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                             <div className="relative">
                                 <select
                                     required
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-emerald-500/50 outline-none transition-all font-medium text-lg"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all font-medium text-lg"
                                     value={selectedProject}
                                     onChange={e => setSelectedProject(Number(e.target.value))}
                                 >
@@ -250,7 +250,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                             <input
                                 type="text"
                                 required
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold placeholder:text-zinc-700 focus:border-emerald-500/50 outline-none transition-all"
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold placeholder:text-zinc-700 focus:border-blue-500/50 outline-none transition-all"
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
                                 placeholder="e.g. Update #4: New Combat System"
@@ -262,7 +262,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                             <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Details</label>
                             <textarea
                                 required
-                                className="flex-1 w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 outline-none transition-all resize-none leading-relaxed min-h-[150px]"
+                                className="flex-1 w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 outline-none transition-all resize-none leading-relaxed min-h-[150px]"
                                 value={content}
                                 onChange={e => setContent(e.target.value)}
                                 placeholder="What have you been working on? Share the details..."
@@ -283,7 +283,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
                             type="submit"
                             onClick={handleSubmit}
                             disabled={loading || !selectedProject || !title}
-                            className="px-8 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
+                            className="px-8 py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2 text-sm"
                         >
                             {loading ? 'Posting...' : (
                                 <>

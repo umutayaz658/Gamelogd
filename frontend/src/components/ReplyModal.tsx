@@ -2,6 +2,7 @@
 
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useFeed } from '@/context/FeedContext';
+import { Post, Review } from '@/types';
 import { X, Loader2, ImagePlay, Smile, BarChart2, Plus, Trash2, FileImage } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { getImageUrl } from '@/lib/utils';
@@ -13,7 +14,8 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import api from '@/lib/api';
 
 export default function ReplyModal() {
-    const { isOpen, activeItem, mode, closeReplyModal } = useReplyModal();
+    const { isOpen, activeItem: rawActiveItem, mode, closeReplyModal } = useReplyModal();
+    const activeItem = rawActiveItem as (Post | Review) | null;
     const { addFeedItem } = useFeed();
     const { user } = useAuth();
 
