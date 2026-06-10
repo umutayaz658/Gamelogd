@@ -976,10 +976,13 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        conversation_id = self.request.query_params.get('conversation_id')
-        if conversation_id:
-            return Message.objects.filter(conversation_id=conversation_id, conversation__participants=self.request.user).order_by('created_at')
-        return Message.objects.none()
+        user = self.request.user
+        if self.action == 'list':
+            conversation_id = self.request.query_params.get('conversation_id')
+            if conversation_id:
+                return Message.objects.filter(conversation_id=conversation_id, conversation__participants=user).order_by('created_at')
+            return Message.objects.none()
+        return Message.objects.filter(conversation__participants=user)
 
     def list(self, request, *args, **kwargs):
         conversation_id = request.query_params.get('conversation_id')
@@ -1002,6 +1005,30 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Update conversation timestamp
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=['updated_at'])
+
+    @action(detail=True, methods=['post'], url_path='react')
+    def react(self, request, pk=None):
+        message = self.get_object()
+        emoji = request.data.get('emoji')
+        if not emoji:
+            return Response({"error": "Emoji is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from api.models import MessageReaction
+        # Toggle reaction
+        reaction = MessageReaction.objects.filter(message=message, user=request.user, emoji=emoji).first()
+        if reaction:
+            reaction.delete()
+            action_performed = 'removed'
+        else:
+            MessageReaction.objects.create(message=message, user=request.user, emoji=emoji)
+            action_performed = 'added'
+            
+        serializer = self.get_serializer(message)
+        return Response({
+            "status": "success",
+            "action": action_performed,
+            "message": serializer.data
+        }, status=status.HTTP_200_OK)
 
 from api.models import LibraryEntry
 from .serializers import LibraryEntrySerializer

@@ -232,11 +232,26 @@ class Message(models.Model):
     shared_review = models.ForeignKey('core.Review', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
     shared_news = models.ForeignKey('core.News', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
 
+    # Replying
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
+
     class Meta:
         ordering = ['created_at']
 
     def __str__(self):
         return f"Message from {self.sender} in {self.conversation}"
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(Message, related_name='reactions', on_delete=models.CASCADE)
+    user = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    emoji = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('message', 'user', 'emoji')
+
+    def __str__(self):
+        return f"{self.user.username} reacted {self.emoji} to message {self.message.id}"
 
 class SupportTicket(models.Model):
     TICKET_TYPE_CHOICES = [
