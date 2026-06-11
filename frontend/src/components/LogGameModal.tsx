@@ -209,7 +209,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }
                         </div>
                     </div>
                 ) : (
-                    <div className="flex flex-col md:flex-row h-full">
+                    <div className="w-full flex flex-col md:flex-row h-full">
                         {/* Left Column: Game Info (Clickable to change game) */}
                         <button
                             onClick={() => setStep(1)}
