@@ -198,7 +198,7 @@ export default function Navbar() {
                         <>
                             {/* Log Game Button (Visible on all logged in screens) */}
                             <button
-                                onClick={openLogModal}
+                                onClick={() => openLogModal()}
                                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors shadow-lg shadow-emerald-900/20"
                                 title={t('logGame')}
                             >
