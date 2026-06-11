@@ -15,10 +15,14 @@ export function LogModalProvider({ children }: { children: ReactNode }) {
     const [initialGame, setInitialGame] = useState<any>(null);
 
     const openLogModal = (game?: any) => {
-        setInitialGame(game || null);
+        const isValidGame = game && typeof game.id === 'number' && typeof game.title === 'string';
+        setInitialGame(isValidGame ? game : null);
         setIsLogModalOpen(true);
     };
-    const closeLogModal = () => setIsLogModalOpen(false);
+    const closeLogModal = () => {
+        setIsLogModalOpen(false);
+        setInitialGame(null);
+    };
 
     return (
         <LogModalContext.Provider value={{ isLogModalOpen, initialGame, openLogModal, closeLogModal }}>
