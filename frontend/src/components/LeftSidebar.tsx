@@ -191,7 +191,7 @@ export default function LeftSidebar() {
 
                         {/* Log Game CTA Button - Solid Green, Below Settings with Spacing */}
                         <button
-                            onClick={openLogModal}
+                            onClick={() => openLogModal()}
                             className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
                         >
                             <PlusCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
