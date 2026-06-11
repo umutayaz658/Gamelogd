@@ -162,6 +162,11 @@ STORAGES = {
     },
 }
 
+# Legacy storage configurations for compatibility with older third-party packages (like django-cloudinary-storage)
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage" if os.environ.get('CLOUDINARY_URL') else "django.core.files.storage.FileSystemStorage"
+
+
 # Cloudinary Setup
 if os.environ.get('CLOUDINARY_URL'):
     CLOUDINARY_STORAGE = {
