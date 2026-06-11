@@ -26,8 +26,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'cloudinary_storage',
     'django.contrib.staticfiles',
+    'cloudinary_storage',
     'cloudinary',
     'rest_framework',
     'rest_framework.authtoken',
@@ -165,6 +165,10 @@ STORAGES = {
 # Legacy storage configurations for compatibility with older third-party packages (like django-cloudinary-storage)
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage" if os.environ.get('CLOUDINARY_URL') else "django.core.files.storage.FileSystemStorage"
+
+# Do not crash the build if some static files referenced in CSS files (e.g. source maps, missing svgs) are missing.
+WHITENOISE_MANIFEST_STRICT = False
+
 
 
 # Cloudinary Setup
