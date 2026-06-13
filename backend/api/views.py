@@ -484,6 +484,7 @@ class RegisterView(generics.CreateAPIView):
             msg.send()
         except Exception as e:
             print("Failed to send verification email:", e)
+            print(f"DEVELOPMENT ONLY - Verification code for {user.email}: {code}")
 
         return Response({
             'status': 'verification_required',
@@ -569,6 +570,7 @@ class ResendVerificationView(generics.GenericAPIView):
             msg.send()
         except Exception as e:
             print("Failed to send verification email:", e)
+            print(f"DEVELOPMENT ONLY - Resent verification code for {user.email}: {code}")
 
         return Response({'message': 'New verification code sent.'}, status=status.HTTP_200_OK)
 
