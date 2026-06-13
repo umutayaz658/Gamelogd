@@ -209,3 +209,9 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'gxj2bu4m6omtrgis@ethereal.e
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'B5j9SDBawTPhxWZqTt')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
+# Security Headers Settings
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+
+
