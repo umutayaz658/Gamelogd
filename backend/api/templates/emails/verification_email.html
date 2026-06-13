@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamelogd - E-posta Doğrulama</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #09090b;
+            color: #d4d4d8;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: 900;
+            color: #ffffff;
+            text-decoration: none;
+            letter-spacing: -0.05em;
+        }
+        .logo span {
+            color: #10b981;
+        }
+        .card {
+            background-color: #18181b;
+            border: 1px border #27272a;
+            border-radius: 16px;
+            padding: 40px 30px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        h1 {
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: 800;
+            margin-top: 0;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-top: 0;
+            margin-bottom: 24px;
+            color: #a1a1aa;
+        }
+        .code-container {
+            background-color: #09090b;
+            border: 2px solid #27272a;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 30px 0;
+            display: inline-block;
+        }
+        .code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 36px;
+            font-weight: 800;
+            color: #10b981;
+            letter-spacing: 0.15em;
+            padding-left: 0.15em; /* Offset letter-spacing */
+            margin: 0;
+        }
+        .expiry-text {
+            font-size: 13px;
+            color: #71717a;
+            margin-top: 10px;
+            margin-bottom: 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 35px;
+            padding-top: 20px;
+            border-top: 1px solid #27272a;
+        }
+        .footer-text {
+            font-size: 12px;
+            color: #52525b;
+            margin: 0;
+        }
+        .footer-links {
+            margin-top: 10px;
+        }
+        .footer-links a {
+            color: #10b981;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="https://gamelogd.net" class="logo">Game<span>logd</span></a>
+        </div>
+        <div class="card">
+            <h1>E-posta Adresini Doğrula</h1>
+            <p>Selam,</p>
+            <p>Gamelogd'a hoş geldin! Kayıt işlemini tamamlamak ve hesabını aktifleştirmek için aşağıdaki 6 haneli doğrulama kodunu kullanabilirsin:</p>
+            <div class="code-container">
+                <div class="code">{{ code }}</div>
+            </div>
+            <p class="expiry-text">Bu kod <strong>5 dakika</strong> geçerlidir. Eğer kayıt işlemini sen başlatmadıysan bu e-postayı güvenle göz ardı edebilirsin.</p>
+        </div>
+        <div class="footer">
+            <p class="footer-text">&copy; 2026 Gamelogd. Tüm hakları saklıdır.</p>
+            <div class="footer-links">
+                <a href="https://gamelogd.net">gamelogd.net</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

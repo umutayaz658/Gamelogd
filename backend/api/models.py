@@ -5,6 +5,10 @@ from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings as django_settings
+from django.utils import timezone
+from datetime import timedelta
+import random
+
 
 class Interest(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -270,3 +274,26 @@ class SupportTicket(models.Model):
 
     def __str__(self):
         return f"{self.ticket_type.upper()} - {self.subject} by {self.user.username}"
+
+
+class EmailVerification(models.Model):
+    user = models.OneToOneField(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='email_verification')
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=5)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def generate_code(cls):
+        return str(random.randint(100000, 999999))
+
+    def __str__(self):
+        return f"OTP code for {self.user.email}: {self.code}"
+

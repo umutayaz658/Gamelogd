@@ -112,9 +112,9 @@ export default function RegisterPage() {
             // 2. API Call
             await api.post('/register/', payload);
 
-            // 3. Success
-            alert('Registration successful! Please login.');
-            router.push('/login');
+            // 3. Redirect to Email Verification page
+            const emailEncoded = encodeURIComponent(formData.email);
+            router.push(`/verify-email?email=${emailEncoded}`);
 
         } catch (err: any) {
             console.error('Registration Error:', err.response?.data || err.message);

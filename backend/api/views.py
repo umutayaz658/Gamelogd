@@ -12,6 +12,12 @@ from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostS
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.db.models import Q
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.conf import settings
+from api.models import EmailVerification
+
 from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
 
 class CustomAuthToken(ObtainAuthToken):
@@ -455,6 +461,117 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # Create user but set is_active=False
+        user = serializer.save(is_active=False)
+        
+        # Generate code
+        code = EmailVerification.generate_code()
+        EmailVerification.objects.create(user=user, code=code)
+        
+        # Send Email
+        try:
+            subject = 'Gamelogd - E-posta Doğrulama Kodu'
+            html_content = render_to_string('emails/verification_email.html', {'code': code})
+            text_content = strip_tags(html_content)
+            
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@gamelogd.net')
+            msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
+            msg.attach_alternative(html_content, "text/html")
+            msg.send()
+        except Exception as e:
+            print("Failed to send verification email:", e)
+
+        return Response({
+            'status': 'verification_required',
+            'email': user.email
+        }, status=status.HTTP_201_CREATED)
+
+
+class VerifyEmailView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email')
+        code = request.data.get('code')
+
+        if not email or not code:
+            return Response({'error': 'Email and verification code are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({'error': 'User not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.is_active:
+            return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        verification = getattr(user, 'email_verification', None)
+        if not verification or verification.code != str(code).strip():
+            return Response({'error': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if verification.is_expired():
+            return Response({'error': 'Verification code has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Success! Activate user and delete verification code
+        user.is_active = True
+        user.save()
+        verification.delete()
+
+        # Login user immediately by generating auth token
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user_id': user.pk,
+            'email': user.email,
+            'username': user.username,
+            'message': 'Email verified successfully.'
+        }, status=status.HTTP_200_OK)
+
+
+class ResendVerificationView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email')
+
+        if not email:
+            return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({'error': 'User not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.is_active:
+            return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate new code
+        code = EmailVerification.generate_code()
+        
+        # Update or create verification
+        verification, created = EmailVerification.objects.get_or_create(user=user, defaults={'code': code})
+        if not created:
+            verification.code = code
+            verification.expires_at = timezone.now() + timedelta(minutes=5)
+            verification.save()
+
+        # Send Email
+        try:
+            subject = 'Gamelogd - Yeni E-posta Doğrulama Kodu'
+            html_content = render_to_string('emails/verification_email.html', {'code': code})
+            text_content = strip_tags(html_content)
+            
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@gamelogd.net')
+            msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
+            msg.attach_alternative(html_content, "text/html")
+            msg.send()
+        except Exception as e:
+            print("Failed to send verification email:", e)
+
+        return Response({'message': 'New verification code sent.'}, status=status.HTTP_200_OK)
+
 
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
