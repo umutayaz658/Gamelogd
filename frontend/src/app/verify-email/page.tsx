@@ -14,7 +14,7 @@ function VerifyEmailForm() {
     const email = searchParams.get('email') || '';
 
     const [code, setCode] = useState<string[]>(Array(6).fill(''));
-    const [timeLeft, setTimeLeft] = useState(120); // 2 minutes (120s)
+    const [resendCooldown, setResendCooldown] = useState(60); // 60 seconds cooldown
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isResending, setIsResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -29,14 +29,14 @@ function VerifyEmailForm() {
         }
     }, [email, router]);
 
-    // Countdown timer
+    // Cooldown timer
     useEffect(() => {
-        if (timeLeft <= 0) return;
+        if (resendCooldown <= 0) return;
         const timer = setInterval(() => {
-            setTimeLeft(prev => prev - 1);
+            setResendCooldown(prev => prev - 1);
         }, 1000);
         return () => clearInterval(timer);
-    }, [timeLeft]);
+    }, [resendCooldown]);
 
     // Focus first input on mount
     useEffect(() => {
@@ -90,21 +90,21 @@ function VerifyEmailForm() {
     };
 
     const handleResend = async () => {
-        if (timeLeft > 0 || isResending) return;
+        if (resendCooldown > 0 || isResending) return;
         setIsResending(true);
         setError(null);
         setSuccessMsg(null);
 
         try {
             await api.post('/resend-verification/', { email });
-            setSuccessMsg('Yeni doğrulama kodu e-posta adresinize gönderildi.');
-            setTimeLeft(120); // Reset timer to 2 minutes
+            setSuccessMsg('A new verification code has been sent to your email address.');
+            setResendCooldown(60); // Reset cooldown to 60s
             setCode(Array(6).fill(''));
             setTimeout(() => {
                 inputRefs.current[0]?.focus();
             }, 50);
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Kod gönderilemedi. Lütfen tekrar deneyin.');
+            setError(err.response?.data?.error || 'Failed to send code. Please try again.');
         } finally {
             setIsResending(false);
         }
@@ -114,7 +114,7 @@ function VerifyEmailForm() {
         e.preventDefault();
         const verificationCode = code.join('');
         if (verificationCode.length < 6) {
-            setError('Lütfen 6 haneli doğrulama kodunu girin.');
+            setError('Please enter the 6-digit verification code.');
             return;
         }
 
@@ -128,22 +128,16 @@ function VerifyEmailForm() {
                 code: verificationCode
             });
 
-            setSuccessMsg('Doğrulama başarılı! Giriş yapılıyor...');
-            
+            setSuccessMsg('Verification successful! Logging in...');
+
             // Login user via AuthContext to fetch details and set cookie
             const token = res.data.token;
             await login(token);
 
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Doğrulama başarısız. Lütfen girdiğiniz kodu kontrol edin.');
+            setError(err.response?.data?.error || 'Verification failed. Please check the code you entered.');
             setIsSubmitting(false);
         }
-    };
-
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     return (
@@ -153,9 +147,9 @@ function VerifyEmailForm() {
                 <div className="mx-auto w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-4 text-emerald-500">
                     <Mail className="h-6 w-6" />
                 </div>
-                <h1 className="text-2xl font-bold text-white mb-2">E-posta Doğrulama</h1>
+                <h1 className="text-2xl font-bold text-white mb-2">Email Verification</h1>
                 <p className="text-zinc-400 text-sm">
-                    Hesabınızı aktifleştirmek için <span className="text-zinc-200 font-medium">{email}</span> adresine gönderdiğimiz 6 haneli kodu girin.
+                    To activate your account, enter the 6-digit code we sent to <span className="text-zinc-200 font-medium">{email}</span>.
                 </p>
             </div>
 
@@ -177,27 +171,23 @@ function VerifyEmailForm() {
                     ))}
                 </div>
 
-                {/* Countdown Timer or Resend */}
+                {/* Resend Cooldown Button */}
                 <div className="text-center text-sm">
-                    {timeLeft > 0 ? (
-                        <p className="text-zinc-500">
-                            Kalan süre: <span className="text-emerald-500 font-mono font-bold">{formatTime(timeLeft)}</span>
-                        </p>
-                    ) : (
-                        <button
-                            type="button"
-                            onClick={handleResend}
-                            disabled={isResending}
-                            className="text-emerald-500 hover:text-emerald-400 font-bold transition-colors flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
-                        >
-                            {isResending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <RefreshCw className="h-4 w-4" />
-                            )}
-                            Kodu Tekrar Gönder
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        onClick={handleResend}
+                        disabled={resendCooldown > 0 || isResending}
+                        className="text-emerald-500 hover:text-emerald-400 font-bold transition-colors flex items-center justify-center gap-2 mx-auto disabled:opacity-50 disabled:text-zinc-500 disabled:hover:text-zinc-500"
+                    >
+                        {isResending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4" />
+                        )}
+                        {resendCooldown > 0 
+                            ? `Resend Code in ${resendCooldown}s` 
+                            : 'Resend Code'}
+                    </button>
                 </div>
 
                 {/* Feedback Messages */}
@@ -221,10 +211,10 @@ function VerifyEmailForm() {
                     {isSubmitting ? (
                         <>
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Doğrulanıyor...
+                            Verifying...
                         </>
                     ) : (
-                        'Hesabı Doğrula'
+                        'Verify Account'
                     )}
                 </button>
             </form>
@@ -233,7 +223,7 @@ function VerifyEmailForm() {
             <div className="mt-8 text-center text-sm">
                 <Link href="/login" className="text-zinc-500 hover:text-zinc-300 transition-colors inline-flex items-center gap-2 font-medium">
                     <ArrowLeft className="h-4 w-4" />
-                    Giriş ekranına geri dön
+                    Back to login
                 </Link>
             </div>
         </div>
@@ -246,7 +236,7 @@ export default function VerifyEmailPage() {
             <Suspense fallback={
                 <div className="flex flex-col items-center gap-4 text-zinc-400">
                     <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-                    Yükleniyor...
+                    Loading...
                 </div>
             }>
                 <VerifyEmailForm />

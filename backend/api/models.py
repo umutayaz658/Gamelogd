@@ -276,9 +276,11 @@ class SupportTicket(models.Model):
         return f"{self.ticket_type.upper()} - {self.subject} by {self.user.username}"
 
 
-class EmailVerification(models.Model):
-    user = models.OneToOneField(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='email_verification')
+class PendingRegistration(models.Model):
+    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150, unique=True)
     code = models.CharField(max_length=6)
+    registration_data = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -295,5 +297,5 @@ class EmailVerification(models.Model):
         return str(random.randint(100000, 999999))
 
     def __str__(self):
-        return f"OTP code for {self.user.email}: {self.code}"
+        return f"Pending registration for {self.email} (Code: {self.code})"
 

@@ -16,7 +16,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
-from api.models import EmailVerification
+from api.models import PendingRegistration
+from api.services.email_service import send_verification_email, send_support_ticket_email
 
 from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
 
@@ -31,13 +32,34 @@ class CustomAuthToken(ObtainAuthToken):
         # Find the user by email or username
         user = User.objects.filter(Q(email=username_or_email) | Q(username=username_or_email)).first()
 
-        if user and user.check_password(password):
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'token': token.key,
-                'user_id': user.pk,
-                'email': user.email
-            })
+        if user:
+            if user.check_password(password):
+                # Check if user has verified their email
+                if not user.is_active:
+                    return Response({
+                        'status': 'verification_required',
+                        'email': user.email,
+                        'error': 'Please verify your email address before logging in.'
+                    }, status=status.HTTP_403_FORBIDDEN)
+
+                token, created = Token.objects.get_or_create(user=user)
+                return Response({
+                    'token': token.key,
+                    'user_id': user.pk,
+                    'email': user.email
+                })
+        else:
+            # Check if there is a pending registration
+            pending = PendingRegistration.objects.filter(Q(email=username_or_email) | Q(username=username_or_email)).first()
+            if pending:
+                from django.contrib.auth.hashers import check_password as django_check_password
+                hashed_pw = pending.registration_data.get('password')
+                if hashed_pw and django_check_password(password, hashed_pw):
+                    return Response({
+                        'status': 'verification_required',
+                        'email': pending.email,
+                        'error': 'Please verify your email address before logging in.'
+                    }, status=status.HTTP_403_FORBIDDEN)
         
         return Response({'non_field_errors': ['Unable to log in with provided credentials.']}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -465,30 +487,44 @@ class RegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        # Create user but set is_active=False
-        user = serializer.save(is_active=False)
         
+        validated_data = serializer.validated_data
+        
+        # Pre-hash password so we don't store cleartext password in the pending table
+        from django.contrib.auth.hashers import make_password
+        raw_password = validated_data.get('password')
+        if raw_password:
+            validated_data['password'] = make_password(raw_password)
+            
+        email = validated_data.get('email')
+        username = validated_data.get('username')
+        
+        # Clean up any existing pending registration for this email/username
+        if email:
+            PendingRegistration.objects.filter(email=email).delete()
+        if username:
+            PendingRegistration.objects.filter(username=username).delete()
+            
         # Generate code
-        code = EmailVerification.generate_code()
-        EmailVerification.objects.create(user=user, code=code)
+        code = PendingRegistration.generate_code()
+        
+        # Save pending registration
+        PendingRegistration.objects.create(
+            email=email,
+            username=username,
+            code=code,
+            registration_data=validated_data
+        )
         
         # Send Email
         try:
-            subject = 'Gamelogd - E-posta Doğrulama Kodu'
-            html_content = render_to_string('emails/verification_email.html', {'code': code})
-            text_content = strip_tags(html_content)
-            
-            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@gamelogd.net')
-            msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
-            msg.attach_alternative(html_content, "text/html")
-            msg.send()
+            send_verification_email(email, code)
         except Exception as e:
             print("Failed to send verification email:", e)
-            print(f"DEVELOPMENT ONLY - Verification code for {user.email}: {code}")
 
         return Response({
             'status': 'verification_required',
-            'email': user.email
+            'email': email
         }, status=status.HTTP_201_CREATED)
 
 
@@ -502,24 +538,56 @@ class VerifyEmailView(generics.GenericAPIView):
         if not email or not code:
             return Response({'error': 'Email and verification code are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.filter(email=email).first()
-        if not user:
-            return Response({'error': 'User not found.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Look up pending registration
+        pending = PendingRegistration.objects.filter(email=email).first()
+        if not pending:
+            user_exists = User.objects.filter(email=email, is_active=True).exists()
+            if user_exists:
+                return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No pending registration found for this email.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if user.is_active:
-            return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        verification = getattr(user, 'email_verification', None)
-        if not verification or verification.code != str(code).strip():
+        if pending.code != str(code).strip():
             return Response({'error': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if verification.is_expired():
+        if pending.is_expired():
             return Response({'error': 'Verification code has expired.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Success! Activate user and delete verification code
-        user.is_active = True
-        user.save()
-        verification.delete()
+        # Success! Extract registration data and create user
+        data = pending.registration_data
+        
+        # Clean up legacy inactive users with same email or username (if any)
+        username = data.get('username')
+        if email:
+            User.objects.filter(email=email).delete()
+        if username:
+            User.objects.filter(username=username).delete()
+
+        interests_data = data.pop('interests', [])
+        roles_data = data.pop('roles', [])
+        password = data.pop('password')
+        
+        if roles_data:
+            if 'Gamer' in roles_data: data['is_gamer'] = True
+            if 'Developer' in roles_data: data['is_developer'] = True
+            if 'Investor' in roles_data: data['is_investor'] = True
+            
+        if 'birth_date' in data and data['birth_date']:
+            from datetime import datetime
+            if isinstance(data['birth_date'], str):
+                data['birth_date'] = datetime.strptime(data['birth_date'], '%Y-%m-%d').date()
+
+        # Create active user
+        user = User.objects.create(is_active=True, password=password, **data)
+        
+        # Add interests
+        if interests_data:
+            from django.utils.text import slugify
+            for interest_name in interests_data:
+                interest_obj, _ = Interest.objects.get_or_create(name=interest_name, defaults={'slug': slugify(interest_name)})
+                user.interests.add(interest_obj)
+
+        # Delete pending registration
+        pending.delete()
 
         # Login user immediately by generating auth token
         token, created = Token.objects.get_or_create(user=user)
@@ -528,7 +596,7 @@ class VerifyEmailView(generics.GenericAPIView):
             'user_id': user.pk,
             'email': user.email,
             'username': user.username,
-            'message': 'Email verified successfully.'
+            'message': 'Email verified and account created successfully.'
         }, status=status.HTTP_200_OK)
 
 
@@ -541,36 +609,24 @@ class ResendVerificationView(generics.GenericAPIView):
         if not email:
             return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.filter(email=email).first()
-        if not user:
-            return Response({'error': 'User not found.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if user.is_active:
-            return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+        pending = PendingRegistration.objects.filter(email=email).first()
+        if not pending:
+            user_exists = User.objects.filter(email=email, is_active=True).exists()
+            if user_exists:
+                return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No pending registration found for this email.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Generate new code
-        code = EmailVerification.generate_code()
-        
-        # Update or create verification
-        verification, created = EmailVerification.objects.get_or_create(user=user, defaults={'code': code})
-        if not created:
-            verification.code = code
-            verification.expires_at = timezone.now() + timedelta(minutes=5)
-            verification.save()
+        code = PendingRegistration.generate_code()
+        pending.code = code
+        pending.expires_at = timezone.now() + timedelta(minutes=5)
+        pending.save()
 
         # Send Email
         try:
-            subject = 'Gamelogd - Yeni E-posta Doğrulama Kodu'
-            html_content = render_to_string('emails/verification_email.html', {'code': code})
-            text_content = strip_tags(html_content)
-            
-            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@gamelogd.net')
-            msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
-            msg.attach_alternative(html_content, "text/html")
-            msg.send()
+            send_verification_email(email, code)
         except Exception as e:
             print("Failed to send verification email:", e)
-            print(f"DEVELOPMENT ONLY - Resent verification code for {user.email}: {code}")
 
         return Response({'message': 'New verification code sent.'}, status=status.HTTP_200_OK)
 
@@ -1458,79 +1514,7 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         ticket = serializer.save(user=self.request.user)
         
         try:
-            from django.core.mail import send_mail
-            from django.conf import settings
-            
-            if ticket.ticket_type == 'bug':
-                subject = f"New Bug Report Submission: {ticket.subject}"
-                body = (
-                    f"New Bug Report from Roark Forge Website\n"
-                    f"--------------------------------------------------\n"
-                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
-                    f"Email: {self.request.user.email}\n"
-                    f"Severity: {ticket.severity}\n"
-                    f"Subject: {ticket.subject}\n\n"
-                    f"Steps to Reproduce:\n"
-                    f"{ticket.steps_to_reproduce}\n\n"
-                    f"Message:\n"
-                    f"{ticket.description}"
-                )
-                html_body = (
-                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Bug Report from Roark Forge Website</h2>\n'
-                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
-                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
-                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
-                    f'    <strong>Severity:</strong> {ticket.severity}<br>\n'
-                    f'    <strong>Subject:</strong> {ticket.subject}\n'
-                    f'</p>\n'
-                    f'<br>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
-                    f'    <strong>Steps to Reproduce:</strong>\n'
-                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.steps_to_reproduce}</span>\n'
-                    f'</p>\n'
-                    f'<br>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
-                    f'    <strong>Message:</strong>\n'
-                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.description}</span>\n'
-                    f'</p>'
-                )
-            else:
-                subject = f"New Contact Form Submission: {ticket.subject}"
-                body = (
-                    f"New Message from Roark Forge Website\n"
-                    f"--------------------------------------------------\n"
-                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
-                    f"Email: {self.request.user.email}\n"
-                    f"Category: {ticket.category}\n"
-                    f"Subject: {ticket.subject}\n\n"
-                    f"Message:\n"
-                    f"{ticket.description}"
-                )
-                html_body = (
-                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Message from Roark Forge Website</h2>\n'
-                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
-                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
-                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
-                    f'    <strong>Category:</strong> {ticket.category}<br>\n'
-                    f'    <strong>Subject:</strong> {ticket.subject}\n'
-                    f'</p>\n'
-                    f'<br>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
-                    f'    <strong>Message:</strong>\n'
-                    f'</p>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; white-space: pre-wrap;">{ticket.description}</p>'
-                )
-            
-            send_mail(
-                subject=subject,
-                message=body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=['support@roarkforge.com'],
-                fail_silently=False,
-                html_message=html_body,
-            )
+            send_support_ticket_email(ticket, self.request.user)
         except Exception as e:
             print(f"Failed to send support/bug email: {e}")
 
@@ -1674,5 +1658,3 @@ class FeedViewSet(viewsets.ViewSet):
         merged_items.sort(key=lambda x: x[0], reverse=True)
         results = [item[1] for item in merged_items[:50]]
         return Response(results)
-            
-
