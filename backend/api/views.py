@@ -496,6 +496,12 @@ class RegisterView(generics.CreateAPIView):
         if raw_password:
             validated_data['password'] = make_password(raw_password)
             
+        # Convert date objects to ISO string for safe JSON serialization
+        if 'birth_date' in validated_data and validated_data['birth_date']:
+            from datetime import date
+            if isinstance(validated_data['birth_date'], date):
+                validated_data['birth_date'] = validated_data['birth_date'].isoformat()
+            
         email = validated_data.get('email')
         username = validated_data.get('username')
         
