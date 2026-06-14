@@ -144,6 +144,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This username is reserved.")
         if '/' in value or '?' in value or '&' in value or '%' in value:
              raise serializers.ValidationError("Username contains invalid characters.")
+        
+        user = User.objects.filter(username=value).first()
+        if user and user.is_active:
+            raise serializers.ValidationError("A user with that username already exists.")
         return value
 
     def validate_password(self, value):
@@ -152,12 +156,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        user = User.objects.filter(email=value).first()
+        if user and user.is_active:
             raise serializers.ValidationError("A user with that email already exists.")
         return value
 
     def create(self, validated_data):
         print("DEBUG: Validated Data received:", validated_data)
+        
+        email = validated_data.get('email')
+        username = validated_data.get('username')
+        
+        # Clean up any unverified, inactive users with matching email or username
+        if email:
+            User.objects.filter(email=email, is_active=False).delete()
+        if username:
+            User.objects.filter(username=username, is_active=False).delete()
         
         interests_data = validated_data.pop('interests', [])
         roles_data = validated_data.pop('roles', [])
@@ -169,7 +183,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             if 'Developer' in roles_data: validated_data['is_developer'] = True
             if 'Investor' in roles_data: validated_data['is_investor'] = True
 
-        # Create user securely
+        # Create user securely (will default to is_active=False in view, but here we can create normally)
         user = User.objects.create_user(password=password, **validated_data)
 
         # Handle Interests
