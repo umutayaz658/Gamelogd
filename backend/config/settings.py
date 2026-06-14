@@ -201,11 +201,27 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '47915710744-n0ou1hdfknaur
 CRON_SECRET = os.environ.get('CRON_SECRET', 'gamelogd-local-cron-secret-key-12345')
 
 # Email configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.ethereal.email')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ['1', 'true']
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'gxj2bu4m6omtrgis@ethereal.email')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'B5j9SDBawTPhxWZqTt')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+# In development (Docker local): print emails to console (terminal logs)
+# In production: use Resend SMTP to send real emails from noreply@gamelogd.net
+EMAIL_HOST_PASSWORD = (
+    os.environ.get('EMAIL_HOST_PASSWORD') or 
+    os.environ.get('resend_api') or 
+    os.environ.get('RESEND_API_KEY')
+)
+
+if EMAIL_HOST_PASSWORD:
+    # Production: Resend SMTP (or any SMTP provider)
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.resend.com')
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 465))
+    EMAIL_USE_TLS = False
+    EMAIL_USE_SSL = True
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'resend')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Gamelogd <noreply@gamelogd.net>')
+else:
+    # Development: print emails to console (docker logs backend)
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = 'Gamelogd <noreply@gamelogd.net>'
+
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@gamelogd.net')
 

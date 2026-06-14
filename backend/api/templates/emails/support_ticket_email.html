@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamelogd - {% if is_bug %}Bug Report{% else %}Support Ticket{% endif %}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #09090b;
+            color: #d4d4d8;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: 900;
+            color: #ffffff;
+            text-decoration: none;
+            letter-spacing: -0.05em;
+        }
+        .logo span {
+            color: #10b981;
+        }
+        .card {
+            background-color: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 16px;
+            padding: 30px 25px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 800;
+            margin-top: 0;
+            margin-bottom: 20px;
+            letter-spacing: -0.02em;
+            border-bottom: 1px solid #27272a;
+            padding-bottom: 12px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #10b981;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .meta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .meta-table td {
+            padding: 8px 0;
+            font-size: 14px;
+            vertical-align: top;
+        }
+        .meta-label {
+            color: #71717a;
+            width: 120px;
+            font-weight: 600;
+        }
+        .meta-value {
+            color: #e4e4e7;
+        }
+        .content-box {
+            background-color: #09090b;
+            border: 1px solid #27272a;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #e4e4e7;
+            white-space: pre-wrap;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 35px;
+            padding-top: 20px;
+            border-top: 1px solid #27272a;
+        }
+        .footer-text {
+            font-size: 12px;
+            color: #52525b;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="https://gamelogd.net" class="logo">Game<span>logd</span></a>
+        </div>
+        
+        <div class="card">
+            <h1>{% if is_bug %}New Bug Report{% else %}New Support Ticket{% endif %}</h1>
+            
+            <div class="section-title">User Information</div>
+            <table class="meta-table">
+                <tr>
+                    <td class="meta-label">Username:</td>
+                    <td class="meta-value">{{ user.username }}</td>
+                </tr>
+                <tr>
+                    <td class="meta-label">Full Name:</td>
+                    <td class="meta-value">{% if user.real_name %}{{ user.real_name }}{% else %}-{% endif %}</td>
+                </tr>
+                <tr>
+                    <td class="meta-label">Email:</td>
+                    <td class="meta-value">{{ user.email }}</td>
+                </tr>
+            </table>
+
+            <div class="section-title">Ticket Details</div>
+            <table class="meta-table">
+                <tr>
+                    <td class="meta-label">Subject:</td>
+                    <td class="meta-value"><strong>{{ ticket.subject }}</strong></td>
+                </tr>
+                {% if is_bug %}
+                <tr>
+                    <td class="meta-label">Severity:</td>
+                    <td class="meta-value">
+                        <span style="color: {% if ticket.severity == 'High' or ticket.severity == 'Critical' %}#ef4444{% else %}#f59e0b{% endif %}; font-weight: bold;">
+                            {{ ticket.severity }}
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td class="meta-label">Category:</td>
+                    <td class="meta-value">{{ ticket.category }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <td class="meta-label">Created At:</td>
+                    <td class="meta-value">{{ ticket.created_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+            </table>
+
+            {% if is_bug and ticket.steps_to_reproduce %}
+            <div class="section-title">Steps to Reproduce</div>
+            <div class="content-box" style="margin-bottom: 20px;">{{ ticket.steps_to_reproduce }}</div>
+            {% endif %}
+
+            <div class="section-title">Message / Description</div>
+            <div class="content-box">{{ ticket.description }}</div>
+        </div>
+        
+        <div class="footer">
+            <p class="footer-text">&copy; 2026 Gamelogd. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
