@@ -225,3 +225,9 @@ else:
 
 SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@gamelogd.net')
 
+# Security Headers Settings
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+
+
