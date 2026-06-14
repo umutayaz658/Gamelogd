@@ -488,50 +488,68 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        validated_data = serializer.validated_data
-        
-        # Pre-hash password so we don't store cleartext password in the pending table
-        from django.contrib.auth.hashers import make_password
-        raw_password = validated_data.get('password')
-        if raw_password:
-            validated_data['password'] = make_password(raw_password)
-            
-        # Convert date objects to ISO string for safe JSON serialization
-        if 'birth_date' in validated_data and validated_data['birth_date']:
-            from datetime import date
-            if isinstance(validated_data['birth_date'], date):
-                validated_data['birth_date'] = validated_data['birth_date'].isoformat()
-            
-        email = validated_data.get('email')
-        username = validated_data.get('username')
-        
-        # Clean up any existing pending registration for this email/username
-        if email:
-            PendingRegistration.objects.filter(email=email).delete()
-        if username:
-            PendingRegistration.objects.filter(username=username).delete()
-            
-        # Generate code
-        code = PendingRegistration.generate_code()
-        
-        # Save pending registration
-        PendingRegistration.objects.create(
-            email=email,
-            username=username,
-            code=code,
-            registration_data=validated_data
-        )
-        
-        # Send Email
         try:
-            send_verification_email(email, code)
-        except Exception as e:
-            print("Failed to send verification email:", e)
+            import json
+            from datetime import date, datetime
+            from django.contrib.auth.hashers import make_password
+            
+            validated_data = serializer.validated_data
+            
+            # Convert to a plain dict with JSON-safe values
+            safe_data = {}
+            for key, value in validated_data.items():
+                if isinstance(value, (date, datetime)):
+                    safe_data[key] = value.isoformat()
+                elif isinstance(value, list):
+                    safe_data[key] = list(value)
+                else:
+                    safe_data[key] = value
+            
+            # Pre-hash password so we don't store cleartext in the pending table
+            raw_password = safe_data.get('password')
+            if raw_password:
+                safe_data['password'] = make_password(raw_password)
+                
+            email = safe_data.get('email')
+            username = safe_data.get('username')
+            
+            # Verify the data is truly JSON-serializable before saving
+            json.dumps(safe_data)
+            
+            # Clean up any existing pending registration for this email/username
+            if email:
+                PendingRegistration.objects.filter(email=email).delete()
+            if username:
+                PendingRegistration.objects.filter(username=username).delete()
+                
+            # Generate code
+            code = PendingRegistration.generate_code()
+            
+            # Save pending registration
+            PendingRegistration.objects.create(
+                email=email,
+                username=username,
+                code=code,
+                registration_data=safe_data
+            )
+            
+            # Send Email
+            try:
+                send_verification_email(email, code)
+            except Exception as e:
+                print(f"Failed to send verification email: {e}")
 
-        return Response({
-            'status': 'verification_required',
-            'email': email
-        }, status=status.HTTP_201_CREATED)
+            return Response({
+                'status': 'verification_required',
+                'email': email
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Registration processing failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class VerifyEmailView(generics.GenericAPIView):
