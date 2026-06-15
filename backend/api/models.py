@@ -294,7 +294,8 @@ class PendingRegistration(models.Model):
 
     @classmethod
     def generate_code(cls):
-        return str(random.randint(100000, 999999))
+        import secrets
+        return "".join(secrets.choice("0123456789") for _ in range(6))
 
     def __str__(self):
         return f"Pending registration for {self.email} (Code: {self.code})"
