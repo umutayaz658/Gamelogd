@@ -533,11 +533,8 @@ class RegisterView(generics.CreateAPIView):
                 registration_data=safe_data
             )
             
-            # Send Email
-            try:
-                send_verification_email(email, code)
-            except Exception as e:
-                print(f"Failed to send verification email: {e}")
+            # Send Email (async - does not block response)
+            send_verification_email(email, code)
 
             return Response({
                 'status': 'verification_required',
@@ -646,11 +643,8 @@ class ResendVerificationView(generics.GenericAPIView):
         pending.expires_at = timezone.now() + timedelta(minutes=5)
         pending.save()
 
-        # Send Email
-        try:
-            send_verification_email(email, code)
-        except Exception as e:
-            print("Failed to send verification email:", e)
+        # Send Email (async - does not block response)
+        send_verification_email(email, code)
 
         return Response({'message': 'New verification code sent.'}, status=status.HTTP_200_OK)
 
@@ -1537,10 +1531,8 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         ticket = serializer.save(user=self.request.user)
         
-        try:
-            send_support_ticket_email(ticket, self.request.user)
-        except Exception as e:
-            print(f"Failed to send support/bug email: {e}")
+        # Send email (async - does not block response)
+        send_support_ticket_email(ticket, self.request.user)
 
 
 from datetime import timedelta
