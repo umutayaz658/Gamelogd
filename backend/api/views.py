@@ -4,19 +4,18 @@ from rest_framework import viewsets, permissions, filters, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post
-from api.models import User, Notification, SupportTicket
+from api.models import User, Notification, SupportTicket, Interest, PendingRegistration
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
-from django.db.models import Q
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
-from api.models import PendingRegistration
 from api.services.email_service import send_verification_email, send_support_ticket_email
 
 from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
@@ -578,37 +577,46 @@ class VerifyEmailView(generics.GenericAPIView):
         
         # Clean up legacy inactive users with same email or username (if any)
         username = data.get('username')
-        if email:
-            User.objects.filter(email=email).delete()
-        if username:
-            User.objects.filter(username=username).delete()
 
-        interests_data = data.pop('interests', [])
-        roles_data = data.pop('roles', [])
-        password = data.pop('password')
-        
-        if roles_data:
-            if 'Gamer' in roles_data: data['is_gamer'] = True
-            if 'Developer' in roles_data: data['is_developer'] = True
-            if 'Investor' in roles_data: data['is_investor'] = True
-            
-        if 'birth_date' in data and data['birth_date']:
-            from datetime import datetime
-            if isinstance(data['birth_date'], str):
-                data['birth_date'] = datetime.strptime(data['birth_date'], '%Y-%m-%d').date()
+        try:
+            with transaction.atomic():
+                if email:
+                    User.objects.filter(email=email).delete()
+                if username:
+                    User.objects.filter(username=username).delete()
 
-        # Create active user
-        user = User.objects.create(is_active=True, password=password, **data)
-        
-        # Add interests
-        if interests_data:
-            from django.utils.text import slugify
-            for interest_name in interests_data:
-                interest_obj, _ = Interest.objects.get_or_create(name=interest_name, defaults={'slug': slugify(interest_name)})
-                user.interests.add(interest_obj)
+                interests_data = data.pop('interests', [])
+                roles_data = data.pop('roles', [])
+                password = data.pop('password')
+                
+                if roles_data:
+                    if 'Gamer' in roles_data: data['is_gamer'] = True
+                    if 'Developer' in roles_data: data['is_developer'] = True
+                    if 'Investor' in roles_data: data['is_investor'] = True
+                    
+                if 'birth_date' in data and data['birth_date']:
+                    from datetime import datetime
+                    if isinstance(data['birth_date'], str):
+                        data['birth_date'] = datetime.strptime(data['birth_date'], '%Y-%m-%d').date()
 
-        # Delete pending registration
-        pending.delete()
+                # Create active user
+                user = User.objects.create(is_active=True, password=password, **data)
+                
+                # Add interests
+                if interests_data:
+                    from django.utils.text import slugify
+                    for interest_name in interests_data:
+                        interest_obj, _ = Interest.objects.get_or_create(name=interest_name, defaults={'slug': slugify(interest_name)})
+                        user.interests.add(interest_obj)
+
+                # Delete pending registration
+                pending.delete()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Registration processing failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Login user immediately by generating auth token
         token, created = Token.objects.get_or_create(user=user)
