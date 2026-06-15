@@ -3,11 +3,200 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import PhoneInput from 'react-phone-number-input';
+import PhoneInput, { getCountryCallingCode } from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
-import { User, Mail, Lock, ArrowRight, ArrowLeft, Gamepad2, Code2, Briefcase, Check, Smartphone, Monitor, Gamepad, Loader2 } from 'lucide-react';
+import { User, Mail, Lock, ArrowRight, ArrowLeft, Gamepad2, Code2, Briefcase, Check, Smartphone, Monitor, Gamepad, Loader2, ChevronDown, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { useRef } from 'react';
+
+interface CustomCountrySelectProps {
+    value?: string;
+    onChange: (value?: string) => void;
+    options: { value?: string; label: string }[];
+}
+
+function CustomCountrySelect({ value, onChange, options }: CustomCountrySelectProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [dropdownRef]);
+
+    const filteredOptions = options.filter(opt => {
+        if (!opt.value) return false;
+        const name = opt.label.toLowerCase();
+        const code = opt.value.toLowerCase();
+        const query = search.toLowerCase();
+        return name.includes(query) || code.includes(query);
+    });
+
+    return (
+        <div className="relative shrink-0" ref={dropdownRef}>
+            <button
+                type="button"
+                onClick={() => { setIsOpen(!isOpen); setSearch(''); }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm font-semibold transition-all duration-200 focus:outline-none ${
+                    isOpen
+                        ? 'bg-zinc-800 border-zinc-700 text-white'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                }`}
+            >
+                <span className="text-zinc-200 font-semibold text-xs uppercase">
+                    {value ? `${value} (+${getCountryCallingCode(value as any)})` : 'Select'}
+                </span>
+                <ChevronDown className={`h-3 w-3 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-64 max-h-72 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 flex flex-col">
+                    <style>{`
+                        .custom-scrollbar::-webkit-scrollbar {
+                            width: 5px;
+                        }
+                        .custom-scrollbar::-webkit-scrollbar-track {
+                            background: transparent;
+                        }
+                        .custom-scrollbar::-webkit-scrollbar-thumb {
+                            background: #27272a;
+                            border-radius: 99px;
+                        }
+                        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                            background: #3f3f46;
+                        }
+                    `}</style>
+                    {/* Search Box */}
+                    <div className="p-2 border-b border-zinc-800 flex items-center gap-2 bg-zinc-950/30">
+                        <Search className="h-4 w-4 text-zinc-500 shrink-0" />
+                        <input
+                            type="text"
+                            placeholder="Search country..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full bg-transparent text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none border-none ring-0"
+                            autoFocus
+                        />
+                    </div>
+                    {/* Country List */}
+                    <div className="overflow-y-auto p-1 flex-1 custom-scrollbar">
+                        {filteredOptions.length === 0 ? (
+                            <div className="text-zinc-600 text-xs text-center py-4">No countries found</div>
+                        ) : (
+                            filteredOptions.map((option) => {
+                                const callingCode = option.value ? getCountryCallingCode(option.value as any) : '';
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(option.value);
+                                            setIsOpen(false);
+                                        }}
+                                        className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                            value === option.value
+                                                ? 'bg-emerald-500/10 text-emerald-500 font-semibold'
+                                                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 truncate">
+                                            <span className="truncate text-xs">{option.label}</span>
+                                            <span className="text-zinc-500 text-[10px] font-bold shrink-0">
+                                                (+{callingCode})
+                                            </span>
+                                        </div>
+                                        {value === option.value && <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CustomGenderSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [dropdownRef]);
+
+    const options = [
+        { value: 'Male', label: 'Male' },
+        { value: 'Female', label: 'Female' },
+        { value: 'Non-binary', label: 'Non-binary' },
+        { value: 'Prefer not to say', label: 'Prefer not to say' }
+    ];
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    return (
+        <div className="relative w-full" ref={dropdownRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between bg-zinc-950/50 border rounded-xl py-2.5 px-4 text-sm font-medium transition-all duration-200 focus:outline-none ${
+                    isOpen
+                        ? 'border-emerald-500/50 ring-1 ring-emerald-500/50 text-white'
+                        : 'border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                }`}
+            >
+                <span className={value ? "text-zinc-200 font-semibold" : "text-zinc-600"}>
+                    {selectedOption ? selectedOption.label : 'Select Gender'}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-full bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 p-1">
+                    {options.map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                                onChange(option.value);
+                                setIsOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                                value === option.value
+                                    ? 'bg-emerald-500/10 text-emerald-500 font-bold'
+                                    : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                            }`}
+                        >
+                            {option.label}
+                            {value === option.value && <Check className="h-4 w-4 text-emerald-500" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function RegisterPage() {
     const [currentStep, setCurrentStep] = useState(1);
@@ -232,7 +421,11 @@ export default function RegisterPage() {
                                         placeholder="Phone number"
                                         value={formData.phoneNumber}
                                         onChange={(value?: string) => setFormData({ ...formData, phoneNumber: value || '' })}
-                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 placeholder:text-zinc-600 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all"
+                                        countrySelectComponent={CustomCountrySelect}
+                                        numberInputProps={{
+                                            className: "w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-zinc-200 placeholder:text-zinc-600 pl-2 self-stretch"
+                                        }}
+                                        className="flex items-center gap-2 w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2 pl-2.5 pr-4 text-zinc-200 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all"
                                     />
                                 </div>
 
@@ -309,17 +502,10 @@ export default function RegisterPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-zinc-400 text-sm font-bold mb-2">Gender</label>
-                                        <select
-                                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none"
+                                        <CustomGenderSelect
                                             value={formData.gender}
-                                            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                                        >
-                                            <option value="">Select Gender</option>
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Non-binary">Non-binary</option>
-                                            <option value="Prefer not to say">Prefer not to say</option>
-                                        </select>
+                                            onChange={(val) => setFormData({ ...formData, gender: val })}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-zinc-400 text-sm font-bold mb-2">Birth Date</label>
