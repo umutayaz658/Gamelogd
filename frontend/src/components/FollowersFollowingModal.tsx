@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { X, Search, Loader2, UserMinus, UserCheck, UserPlus } from 'lucide-react';
+import { X, Search, Loader2, UserMinus, UserCheck, UserPlus, MoreHorizontal } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import ConfirmModal from './ui/ConfirmModal';
 
 interface User {
     id: number;
@@ -13,6 +14,7 @@ interface User {
     real_name?: string;
     avatar?: string;
     is_following?: boolean;
+    is_blocked?: boolean;
 }
 
 interface FollowersFollowingModalProps {
@@ -36,6 +38,15 @@ export default function FollowersFollowingModal({
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+    const [openMenuUserId, setOpenMenuUserId] = useState<number | null>(null);
+
+    // Confirm Modal State
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [confirmConfig, setConfirmConfig] = useState({
+        title: '',
+        message: '',
+        onConfirm: () => {}
+    });
 
     // Sync activeTab with initialTab when modal opens
     useEffect(() => {
@@ -143,6 +154,31 @@ export default function FollowersFollowingModal({
         }
     };
 
+    const handleBlockUser = async (targetUser: User) => {
+        if (!currentUser) return;
+        setConfirmConfig({
+            title: 'Block User',
+            message: `Are you sure you want to block @${targetUser.username}?`,
+            onConfirm: async () => {
+                setActionLoadingId(targetUser.id);
+                try {
+                    await api.post(`/users/${targetUser.username}/block/`);
+                    setUsers(prev => prev.filter(u => u.id !== targetUser.id));
+                    if (onCountChange) {
+                        onCountChange();
+                    }
+                } catch (error) {
+                    console.error("Block failed:", error);
+                    alert("Failed to block user.");
+                } finally {
+                    setActionLoadingId(null);
+                    setOpenMenuUserId(null);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
+    };
+
     if (!isOpen) return null;
 
     const isOwnProfile = currentUser?.username === username;
@@ -246,9 +282,9 @@ export default function FollowersFollowingModal({
                                             </div>
                                         </Link>
 
-                                        {/* Action Button */}
+                                        {/* Action Button & Menu */}
                                         {!isSelf && currentUser && (
-                                            <div className="ml-3">
+                                            <div className="ml-3 flex items-center gap-2 relative">
                                                 {activeTab === 'followers' && isOwnProfile ? (
                                                     <button
                                                         onClick={() => handleRemoveFollower(user)}
@@ -289,6 +325,26 @@ export default function FollowersFollowingModal({
                                                         )}
                                                     </button>
                                                 )}
+
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => setOpenMenuUserId(openMenuUserId === user.id ? null : user.id)}
+                                                        className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-zinc-200"
+                                                    >
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </button>
+
+                                                    {openMenuUserId === user.id && (
+                                                        <div className="absolute right-0 mt-1 w-24 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl z-50 p-1 animate-in fade-in duration-100">
+                                                            <button
+                                                                onClick={() => handleBlockUser(user)}
+                                                                className="w-full text-left px-2 py-1 text-[11px] text-red-500 hover:bg-red-500/10 rounded-md font-bold transition-colors"
+                                                            >
+                                                                Block
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -306,6 +362,15 @@ export default function FollowersFollowingModal({
                     )}
                 </div>
             </div>
+            <ConfirmModal
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={confirmConfig.onConfirm}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                isDanger={true}
+                confirmText="Block"
+            />
         </div>
     );
 }
