@@ -300,3 +300,25 @@ class PendingRegistration(models.Model):
     def __str__(self):
         return f"Pending registration for {self.email} (Code: {self.code})"
 
+
+class Block(models.Model):
+    blocker = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='blocking_users', on_delete=models.CASCADE)
+    blocked = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='blocked_users', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+    def save(self, *args, **kwargs):
+        # Automatically clean up any mutual follows when blocking
+        from api.models import Follow
+        Follow.objects.filter(
+            models.Q(follower=self.blocker, following=self.blocked) |
+            models.Q(follower=self.blocked, following=self.blocker)
+        ).delete()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.blocker} blocked {self.blocked}"
+
+

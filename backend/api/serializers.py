@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
+            'followers_count', 'following_count', 'is_following', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
         read_only_fields = ['id', 'date_joined']
@@ -61,6 +61,8 @@ class UserSerializer(serializers.ModelSerializer):
     following_count = serializers.IntegerField(source='following.count', read_only=True)
     reviews_count = serializers.IntegerField(source='reviews.count', read_only=True)
     is_following = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()
+    has_blocked_me = serializers.SerializerMethodField()
 
     def get_is_following(self, obj):
         request = self.context.get('request')
@@ -69,6 +71,22 @@ class UserSerializer(serializers.ModelSerializer):
             # Follow model: follower=request.user, following=obj
             from api.models import Follow
             return Follow.objects.filter(follower=request.user, following=obj).exists()
+        return False
+
+    def get_is_blocked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if request.user has blocked obj
+            from api.models import Block
+            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
+        return False
+
+    def get_has_blocked_me(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if obj has blocked request.user
+            from api.models import Block
+            return Block.objects.filter(blocker=obj, blocked=request.user).exists()
         return False
 
 class NotificationSerializer(serializers.ModelSerializer):
