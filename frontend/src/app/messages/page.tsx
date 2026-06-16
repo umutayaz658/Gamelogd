@@ -16,6 +16,7 @@ import { useNotifications } from '@/context/NotificationContext';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import Link from 'next/link';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 
 // API Data Types
 interface MessageReaction {
@@ -267,6 +268,15 @@ function MessagesContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isMessagesLoading, setIsMessagesLoading] = useState(false);
     const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+    
+    // Confirm Modal State
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [confirmConfig, setConfirmConfig] = useState({
+        title: '',
+        message: '',
+        onConfirm: () => {},
+        isDanger: false
+    });
     
     // Do Not Disturb
     const [dndMode, setDndMode] = useState(user?.dnd_mode || false);
@@ -537,37 +547,58 @@ function MessagesContent() {
 
     const handleRemoveMember = async (username: string) => {
         if (!selectedChatId) return;
-        if (!window.confirm(`Are you sure you want to remove @${username} from this group?`)) return;
-        try {
-            await api.post(`/conversations/${selectedChatId}/remove-member/`, { username });
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to remove member:", error);
-        }
+        setConfirmConfig({
+            title: 'Remove Member',
+            message: `Are you sure you want to remove @${username} from this group?`,
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${selectedChatId}/remove-member/`, { username });
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to remove member:", error);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleMakeAdmin = async (username: string) => {
         if (!selectedChatId) return;
-        if (!window.confirm(`Promote @${username} to Admin?`)) return;
-        try {
-            await api.post(`/conversations/${selectedChatId}/make-admin/`, { username });
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to make admin:", error);
-        }
+        setConfirmConfig({
+            title: 'Promote to Admin',
+            message: `Promote @${username} to Admin?`,
+            isDanger: false,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${selectedChatId}/make-admin/`, { username });
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to make admin:", error);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleLeaveGroup = async () => {
         if (!selectedChatId) return;
-        if (!window.confirm("Are you sure you want to leave this group chat?")) return;
-        try {
-            await api.post(`/conversations/${selectedChatId}/leave/`);
-            setSelectedChatId(null);
-            setShowDetails(false);
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to leave group:", error);
-        }
+        setConfirmConfig({
+            title: 'Leave Group',
+            message: "Are you sure you want to leave this group chat?",
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${selectedChatId}/leave/`);
+                    setSelectedChatId(null);
+                    setShowDetails(false);
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to leave group:", error);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleGroupDetailsSave = async () => {
@@ -611,12 +642,21 @@ function MessagesContent() {
     // Chat rendering metadata helpers
     const getChatName = (chat: Conversation) => {
         if (chat.is_group) return chat.name || "Group Chat";
+        if (chat.other_user?.is_blocked) {
+            return `${chat.other_user?.real_name || chat.other_user?.username} (Blocked)`;
+        }
+        if (chat.other_user?.has_blocked_me) {
+            return "Gamer";
+        }
         return chat.other_user?.real_name || chat.other_user?.username || "Gamer Chat";
     };
 
     const getChatAvatar = (chat: Conversation) => {
         if (chat.is_group) {
             return chat.avatar || "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?q=80&w=100&auto=format&fit=crop";
+        }
+        if (chat.other_user?.is_blocked || chat.other_user?.has_blocked_me) {
+            return "https://ui-avatars.com/api/?name=%3F&background=3f3f46&color=a1a1aa";
         }
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
@@ -672,7 +712,7 @@ function MessagesContent() {
                     </div>
 
                     {/* Conversation List */}
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin-dark">
                         {conversations.length === 0 ? (
                             <div className="p-4 text-center text-zinc-500 text-sm">
                                 No conversations yet.
@@ -778,7 +818,7 @@ function MessagesContent() {
                                 </div>
 
                                 {/* Messages Area */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin-dark">
                                     {isMessagesLoading ? (
                                         <div className="flex justify-center py-4">
                                             <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
@@ -880,141 +920,171 @@ function MessagesContent() {
                                         ))
                                     )}
                                     <div ref={messagesEndRef} />
-                                </div>
-
-                                {/* Input Composer Area */}
-                                <div className="p-4 border-t border-zinc-800 bg-zinc-950">
-                                    <form onSubmit={handleSendMessage} className="flex flex-col gap-2 relative">
-                                        
-                                        {/* Replying To Preview */}
-                                        {replyingTo && (
-                                            <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-zinc-900/60 border-l-4 border-emerald-500 border border-zinc-800/80 text-left animate-in slide-in-from-bottom-2 duration-200">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="text-[10px] font-bold text-emerald-400">
-                                                        Replying to @{replyingTo.sender.username}
+                                                  {/* Input Composer Area */}
+                                {!activeChat.is_group && activeChat.other_user?.is_blocked ? (
+                                    <div className="flex flex-col items-center justify-center gap-2.5 p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-400 text-sm animate-in fade-in duration-200">
+                                        <p className="font-semibold text-zinc-400">You have blocked @{activeChat.other_user.username}</p>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setConfirmConfig({
+                                                    title: 'Unblock User',
+                                                    message: `Are you sure you want to unblock @${activeChat.other_user!.username}?`,
+                                                    isDanger: false,
+                                                    onConfirm: async () => {
+                                                        try {
+                                                            await api.post(`/users/${activeChat.other_user!.username}/unblock/`);
+                                                            fetchConversations();
+                                                        } catch (err) {
+                                                            console.error("Failed to unblock:", err);
+                                                        }
+                                                    }
+                                                });
+                                                setIsConfirmOpen(true);
+                                            }}
+                                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-md shadow-emerald-950/20"
+                                        >
+                                            Unblock User
+                                        </button>
+                                    </div>
+                                ) : !activeChat.is_group && activeChat.other_user?.has_blocked_me ? (
+                                    <div className="flex items-center justify-center p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-550 text-sm italic font-semibold animate-in fade-in duration-200">
+                                        You cannot message this user.
+                                    </div>
+                                ) : (
+                                    <div className="p-4 border-t border-zinc-800 bg-zinc-950">
+                                        <form onSubmit={handleSendMessage} className="flex flex-col gap-2 relative">
+                                            
+                                            {/* Replying To Preview */}
+                                            {replyingTo && (
+                                                <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-zinc-900/60 border-l-4 border-emerald-500 border border-zinc-800/80 text-left animate-in slide-in-from-bottom-2 duration-200">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-[10px] font-bold text-emerald-400">
+                                                            Replying to @{replyingTo.sender.username}
+                                                        </div>
+                                                        <div className="text-xs text-zinc-400 truncate mt-0.5">
+                                                            {replyingTo.content || (replyingTo.image ? '📷 Photo' : replyingTo.gif_url ? 'GIF' : 'Attachment')}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xs text-zinc-400 truncate mt-0.5">
-                                                        {replyingTo.content || (replyingTo.image ? '📷 Photo' : replyingTo.gif_url ? 'GIF' : 'Attachment')}
-                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setReplyingTo(null)}
+                                                        className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white transition-colors ml-2"
+                                                    >
+                                                        <X className="h-4 w-4" />
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setReplyingTo(null)}
-                                                    className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white transition-colors ml-2"
+                                            )}
+                                            
+                                            {/* Media Upload / GIF Previews */}
+                                            {(previewUrl || selectedGif) && (
+                                                <div className="relative p-2 rounded-xl border border-zinc-800 bg-black/40 flex items-center gap-3 w-fit animate-in zoom-in-95 duration-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearMedia}
+                                                        className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white p-0.5 rounded-full z-10 transition-colors"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                    <img src={previewUrl || selectedGif!} className="h-16 w-auto rounded object-cover border border-zinc-800" alt="Composer Preview" />
+                                                    <span className="text-xs text-zinc-500 font-medium">{selectedGif ? 'GIF selected' : 'Image ready'}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-2">
+                                                {/* Hidden file input */}
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    className="hidden"
+                                                    accept="image/png, image/jpeg, image/gif"
+                                                    onChange={handleFileSelect}
+                                                />
+                                                
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    className="p-2 text-zinc-400 hover:text-white transition-colors"
+                                                    title="Upload Image"
                                                 >
-                                                    <X className="h-4 w-4" />
+                                                    <ImageIcon className="h-5 w-5" />
+                                                </button>
+                                                
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowGifPicker(!showGifPicker);
+                                                        setShowEmojiPicker(false);
+                                                    }}
+                                                    className={`p-2 transition-colors ${showGifPicker ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+                                                    title="Select GIF"
+                                                >
+                                                    <FileImage className="h-5 w-5" />
+                                                </button>
+
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        setShowEmojiPicker(!showEmojiPicker);
+                                                        setShowGifPicker(false);
+                                                    }}
+                                                    className={`p-2 transition-colors ${showEmojiPicker ? 'text-yellow-500' : 'text-zinc-400 hover:text-yellow-500'}`}
+                                                    title="Add Emoji"
+                                                >
+                                                    <Smile className="h-5 w-5" />
+                                                </button>
+                                                
+                                                <input
+                                                    type="text"
+                                                    value={inputText}
+                                                    onChange={(e) => setInputText(e.target.value)}
+                                                    placeholder="Type a message..."
+                                                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
+                                                />
+                                                
+                                                <button
+                                                    type="submit"
+                                                    disabled={isSending || (!inputText.trim() && !selectedFile && !selectedGif)}
+                                                    className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-950/20"
+                                                >
+                                                    {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                                                 </button>
                                             </div>
-                                        )}
-                                        
-                                        {/* Media Upload / GIF Previews */}
-                                        {(previewUrl || selectedGif) && (
-                                            <div className="relative p-2 rounded-xl border border-zinc-800 bg-black/40 flex items-center gap-3 w-fit animate-in zoom-in-95 duration-200">
-                                                <button
-                                                    type="button"
-                                                    onClick={clearMedia}
-                                                    className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white p-0.5 rounded-full z-10 transition-colors"
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                                <img src={previewUrl || selectedGif!} className="h-16 w-auto rounded object-cover border border-zinc-800" alt="Composer Preview" />
-                                                <span className="text-xs text-zinc-500 font-medium">{selectedGif ? 'GIF selected' : 'Image ready'}</span>
-                                            </div>
-                                        )}
 
-                                        <div className="flex items-center gap-2">
-                                            {/* Hidden file input */}
-                                            <input
-                                                type="file"
-                                                ref={fileInputRef}
-                                                className="hidden"
-                                                accept="image/png, image/jpeg, image/gif"
-                                                onChange={handleFileSelect}
-                                            />
-                                            
-                                            <button 
-                                                type="button" 
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="p-2 text-zinc-400 hover:text-white transition-colors"
-                                                title="Upload Image"
-                                            >
-                                                <ImageIcon className="h-5 w-5" />
-                                            </button>
-                                            
-                                            <button 
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowGifPicker(!showGifPicker);
-                                                    setShowEmojiPicker(false);
-                                                }}
-                                                className={`p-2 transition-colors ${showGifPicker ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
-                                                title="Select GIF"
-                                            >
-                                                <FileImage className="h-5 w-5" />
-                                            </button>
-
-                                            <button 
-                                                type="button" 
-                                                onClick={() => {
-                                                    setShowEmojiPicker(!showEmojiPicker);
-                                                    setShowGifPicker(false);
-                                                }}
-                                                className={`p-2 transition-colors ${showEmojiPicker ? 'text-yellow-500' : 'text-zinc-400 hover:text-yellow-500'}`}
-                                                title="Add Emoji"
-                                            >
-                                                <Smile className="h-5 w-5" />
-                                            </button>
-                                            
-                                            <input
-                                                type="text"
-                                                value={inputText}
-                                                onChange={(e) => setInputText(e.target.value)}
-                                                placeholder="Type a message..."
-                                                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
-                                            />
-                                            
-                                            <button
-                                                type="submit"
-                                                disabled={isSending || (!inputText.trim() && !selectedFile && !selectedGif)}
-                                                className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-950/20"
-                                            >
-                                                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                                            </button>
-                                        </div>
-
-                                        {/* Emoji Picker Popover */}
-                                        {showEmojiPicker && (
-                                            <div className="absolute bottom-14 left-0 z-50 animate-in fade-in zoom-in-95 duration-200">
-                                                <div className="shadow-2xl rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
-                                                    <EmojiPicker
-                                                        onEmojiClick={onEmojiClick}
-                                                        theme={Theme.DARK}
-                                                        lazyLoadEmojis={true}
-                                                        width={300}
-                                                        height={380}
-                                                    />
+                                            {/* Emoji Picker Popover */}
+                                            {showEmojiPicker && (
+                                                <div className="absolute bottom-14 left-0 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                                    <div className="shadow-2xl rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
+                                                        <EmojiPicker
+                                                            onEmojiClick={onEmojiClick}
+                                                            theme={Theme.DARK}
+                                                            lazyLoadEmojis={true}
+                                                            width={300}
+                                                            height={380}
+                                                        />
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {/* GIF Picker Popover */}
-                                        {showGifPicker && (
-                                            <div className="absolute bottom-14 left-0 right-0 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-2xl max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Trending GIFs</span>
-                                                    <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white"><X className="h-4 w-4" /></button>
+                                            {/* GIF Picker Popover */}
+                                            {showGifPicker && (
+                                                <div className="absolute bottom-14 left-0 right-0 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-2xl max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Trending GIFs</span>
+                                                        <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white"><X className="h-4 w-4" /></button>
+                                                    </div>
+                                                    <GifPicker onSelected={handleGifSelect} />
                                                 </div>
-                                                <GifPicker onSelected={handleGifSelect} />
-                                            </div>
-                                        )}
+                                            )}
 
-                                    </form>
-                                </div>
+                                        </form>
+                                    </div>
+                                )}                     </div>
                             </div>
 
                             {/* Details & Settings Drawer */}
                             {showDetails && (
-                                <div className="w-80 border-l border-zinc-800 bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto animate-in slide-in-from-right duration-300">
+                                <div className="w-80 border-l border-zinc-800 bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto scrollbar-thin-dark animate-in slide-in-from-right duration-300">
                                     
                                     {/* Drawer Header */}
                                     <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
@@ -1126,7 +1196,7 @@ function MessagesContent() {
                                                     
                                                     {/* Member Add Search Results */}
                                                     {addMemberResults.length > 0 && (
-                                                        <div className="absolute left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 max-h-40 overflow-y-auto z-20">
+                                                        <div className="absolute left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 max-h-40 overflow-y-auto scrollbar-thin-dark z-20">
                                                             {addMemberResults.map(u => (
                                                                 <button
                                                                     key={u.id}
@@ -1143,7 +1213,7 @@ function MessagesContent() {
                                             )}
 
                                             {/* Member List */}
-                                            <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+                                            <div className="space-y-2 overflow-y-auto flex-1 pr-1 scrollbar-thin-dark">
                                                 {activeChat.memberships?.map((member) => (
                                                     <div key={member.id} className="flex items-center justify-between group py-1.5">
                                                         <div className="flex items-center gap-2.5 min-w-0">
@@ -1225,6 +1295,14 @@ function MessagesContent() {
                     )}
                 </div>
             </div>
+            <ConfirmModal
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={confirmConfig.onConfirm}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                isDanger={confirmConfig.isDanger}
+            />
         </div>
     );
 }

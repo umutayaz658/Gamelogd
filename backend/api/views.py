@@ -113,11 +113,28 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'real_name']
     lookup_field = 'username'
 
+    def get_queryset(self):
+        queryset = User.objects.all()
+        request = self.request
+        if request and request.user.is_authenticated:
+            if self.action == 'list':
+                from api.models import Block
+                blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+                blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+                queryset = queryset.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
+        return queryset
+
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, username=None):
         target_user = self.get_object()
         if request.user == target_user:
             return Response({"error": "You cannot follow yourself."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check block restrictions
+        from api.models import Block
+        if Block.objects.filter(blocker=request.user, blocked=target_user).exists() or \
+           Block.objects.filter(blocker=target_user, blocked=request.user).exists():
+            return Response({"error": "Cannot follow this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
         
         from api.models import Follow
         follow_instance, created = Follow.objects.get_or_create(follower=request.user, following=target_user)
@@ -131,6 +148,11 @@ class UserViewSet(viewsets.ModelViewSet):
     def followers(self, request, username=None):
         user = self.get_object()
         followers = User.objects.filter(id__in=user.followers.values_list('follower_id', flat=True)).order_by('username')
+        if request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            followers = followers.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
         
         search_query = request.query_params.get('search', '')
         if search_query:
@@ -144,6 +166,11 @@ class UserViewSet(viewsets.ModelViewSet):
     def following_list(self, request, username=None):
         user = self.get_object()
         following = User.objects.filter(id__in=user.following.values_list('following_id', flat=True)).order_by('username')
+        if request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            following = following.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
         
         search_query = request.query_params.get('search', '')
         if search_query:
@@ -462,6 +489,35 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"error": "You are not following this user."}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response({"message": f"You have unfollowed {target_user.username}"}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def block(self, request, username=None):
+        target_user = self.get_object()
+        if request.user == target_user:
+            return Response({"error": "You cannot block yourself."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from api.models import Block
+        block_instance, created = Block.objects.get_or_create(blocker=request.user, blocked=target_user)
+        if not created:
+            return Response({"message": "You have already blocked this user."}, status=status.HTTP_200_OK)
+        return Response({"message": f"Blocked {target_user.username} successfully."}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unblock(self, request, username=None):
+        target_user = self.get_object()
+        from api.models import Block
+        deleted_count, _ = Block.objects.filter(blocker=request.user, blocked=target_user).delete()
+        if deleted_count == 0:
+            return Response({"error": "You have not blocked this user."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Unblocked {target_user.username} successfully."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='blocked-users', permission_classes=[permissions.IsAuthenticated])
+    def blocked_users(self, request):
+        from api.models import Block
+        blocked_relations = Block.objects.filter(blocker=request.user).select_related('blocked')
+        blocked_users_list = [relation.blocked for relation in blocked_relations]
+        serializer = self.get_serializer(blocked_users_list, many=True)
+        return Response(serializer.data)
 
 from api.models import Notification
 from .serializers import NotificationSerializer
@@ -789,6 +845,14 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Review.objects.all().select_related('user', 'game')
         
+        # Exclude reviews from blocked/blocking users
+        request = self.request
+        if request and request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+        
         # Annotate with likes count for ordering by popularity
         from django.db.models import Count
         queryset = queryset.annotate(likes_count=Count('likes', distinct=True))
@@ -826,6 +890,15 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Post.objects.all().select_related('user').order_by('-timestamp')
+        
+        # Exclude posts from blocked/blocking users
+        request = self.request
+        if request and request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
         username = self.request.query_params.get('username', None)
         parent_id = self.request.query_params.get('parent', None)
 
@@ -883,6 +956,27 @@ class PostViewSet(viewsets.ModelViewSet):
                 if not is_authorized:
                     from rest_framework.exceptions import PermissionDenied
                     raise PermissionDenied("You do not have permission to post a devlog for this project.")
+                    
+        # Check block restrictions for interactions (reply, quote repost, comments)
+        repost_parent = serializer.validated_data.get('repost_parent')
+        parent = serializer.validated_data.get('parent')
+        review_parent = serializer.validated_data.get('review_parent')
+        
+        target_author = None
+        if repost_parent:
+            target_author = repost_parent.user
+        elif parent:
+            target_author = parent.user
+        elif review_parent:
+            target_author = review_parent.user
+            
+        if target_author:
+            from api.models import Block
+            if Block.objects.filter(blocker=self.request.user, blocked=target_author).exists() or \
+               Block.objects.filter(blocker=target_author, blocked=self.request.user).exists():
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Cannot interact with this post due to block restrictions.")
+                
         post = serializer.save(user=self.request.user)
         
         # Quote post notification
@@ -956,6 +1050,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         if target_user == request.user:
             return Response({"error": "Cannot chat with yourself"}, status=400)
+
+        # Check block relationships
+        from api.models import Block
+        if Block.objects.filter(blocker=request.user, blocked=target_user).exists() or \
+           Block.objects.filter(blocker=target_user, blocked=request.user).exists():
+            return Response({"error": "Cannot message this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
 
         # Check if conversation exists (complex query for exact participants)
         # We look for a conversation where both users are participants and is not a group
@@ -1201,6 +1301,17 @@ class MessageViewSet(viewsets.ModelViewSet):
         if self.request.user not in conversation.participants.all():
             raise permissions.PermissionDenied("You are not a participant in this conversation.")
         
+        # Check if conversation is a 1-on-1 direct message and has a block relationship
+        if not conversation.is_group:
+            other_participants = conversation.participants.exclude(id=self.request.user.id)
+            from api.models import Block
+            from django.db.models import Q
+            if Block.objects.filter(
+                Q(blocker=self.request.user, blocked__in=other_participants) |
+                Q(blocker__in=other_participants, blocked=self.request.user)
+            ).exists():
+                raise permissions.PermissionDenied("You cannot send messages to this conversation due to block restrictions.")
+        
         message = serializer.save(sender=self.request.user)
         
         # Update conversation timestamp
@@ -1303,6 +1414,25 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         review_id = request.data.get('review')
         news_id = request.data.get('news')
         
+        # Check block restrictions before liking content
+        target_author = None
+        if post_id:
+            from core.models import Post
+            post = Post.objects.filter(id=post_id).first()
+            if post:
+                target_author = post.user
+        elif review_id:
+            from core.models import Review
+            review = Review.objects.filter(id=review_id).first()
+            if review:
+                target_author = review.user
+                
+        if target_author:
+            from api.models import Block
+            if Block.objects.filter(blocker=user, blocked=target_author).exists() or \
+               Block.objects.filter(blocker=target_author, blocked=user).exists():
+                return Response({"error": "Cannot like content from this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
+                
         existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id).first()
         
         if existing:
@@ -1553,23 +1683,42 @@ class FeedViewSet(viewsets.ViewSet):
         user = request.user
         time_limit = timezone.now() - timedelta(days=30)
         
+        exclude_ids = set()
+        if user.is_authenticated:
+            from api.models import Block
+            exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
+            exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+
         posts = Post.objects.filter(
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True,
             timestamp__gte=time_limit
-        ).select_related('user').order_by('-timestamp')[:80]
+        )
+        if exclude_ids:
+            posts = posts.exclude(user_id__in=exclude_ids)
+        posts = posts.select_related('user').order_by('-timestamp')[:80]
         
         if posts.count() < 40:
             posts = Post.objects.filter(
                 parent__isnull=True,
                 review_parent__isnull=True,
                 news_parent__isnull=True
-            ).select_related('user').order_by('-timestamp')[:80]
+            )
+            if exclude_ids:
+                posts = posts.exclude(user_id__in=exclude_ids)
+            posts = posts.select_related('user').order_by('-timestamp')[:80]
             
-        reviews = Review.objects.filter(timestamp__gte=time_limit).select_related('user', 'game').order_by('-timestamp')[:80]
+        reviews = Review.objects.filter(timestamp__gte=time_limit)
+        if exclude_ids:
+            reviews = reviews.exclude(user_id__in=exclude_ids)
+        reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
+
         if reviews.count() < 40:
-            reviews = Review.objects.all().select_related('user', 'game').order_by('-timestamp')[:80]
+            reviews = Review.objects.all()
+            if exclude_ids:
+                reviews = reviews.exclude(user_id__in=exclude_ids)
+            reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
 
         followed_users_ids = set()
         library_game_ids = set()
@@ -1658,7 +1807,13 @@ class FeedViewSet(viewsets.ViewSet):
         if not user.is_authenticated:
             return Response([])
 
+        from api.models import Block
+        exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
+        exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+
         followed_users_ids = user.following.values_list('following_id', flat=True)
+        if exclude_ids:
+            followed_users_ids = [uid for uid in followed_users_ids if uid not in exclude_ids]
         
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
