@@ -332,12 +332,15 @@ class UserViewSet(viewsets.ModelViewSet):
         # Yüzde hesapla ve sırala (playtime ağırlığına göre)
         colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
         result = []
-        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)):
+        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
+            percentage = round((weight / total_weight) * 100)
+            if percentage == 0:
+                continue
             total_hours = round(weight / 60, 1)
             result.append({
                 "genre": genre,
-                "percentage": round((weight / total_weight) * 100),
-                "color": colors[i % len(colors)],
+                "percentage": percentage,
+                "color": colors[len(result) % len(colors)],
                 "total_hours": total_hours,
                 "game_count": genre_game_counts.get(genre, 0)
             })
@@ -903,7 +906,7 @@ class PostViewSet(viewsets.ModelViewSet):
         parent_id = self.request.query_params.get('parent', None)
 
         if username is not None:
-            queryset = queryset.filter(user__username=username)
+            queryset = queryset.filter(user__username=username, project_parent__isnull=True)
         
         if parent_id is not None:
             queryset = queryset.filter(parent_id=parent_id)
