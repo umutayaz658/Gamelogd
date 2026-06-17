@@ -353,6 +353,32 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         }
     };
 
+    const handleClearSlot = async (index: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!isOwnProfile) return;
+
+        const newTopGames = [...topGames];
+        newTopGames[index] = null;
+        setTopGames(newTopGames);
+
+        try {
+            const favoritesPayload = newTopGames.map((g, idx) => {
+                if (!g) return null;
+                return {
+                    slot: idx,
+                    game_id: g.id,
+                    title: g.title,
+                    cover: g.image
+                };
+            }).filter(Boolean);
+
+            await api.patch('/users/me/', { top_favorites: favoritesPayload });
+        } catch (error) {
+            console.error("Failed to clear favorite slot:", error);
+            alert("Failed to clear slot. Please try again.");
+        }
+    };
+
     const handleMessage = async () => {
         if (!currentUser) {
             alert("Please login to send messages.");
@@ -402,9 +428,22 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         setIsEditProfileOpen(false);
     };
 
+    const sanitizeUrl = (urlStr: string): string => {
+        if (!urlStr) return '#';
+        const trimmed = urlStr.trim();
+        if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+            return '#';
+        }
+        if (!/^[a-z0-9+.-]+:\/\//i.test(trimmed)) {
+            return `https://${trimmed}`;
+        }
+        return trimmed;
+    };
+
     // Helper for Social Icons
     const SocialIcon = ({ platform, url }: { platform: string, url: string }) => {
         if (!url) return null;
+        const safeUrl = sanitizeUrl(url);
 
         let Icon = LinkIcon;
         if (platform === 'twitter') Icon = Twitter;
@@ -415,7 +454,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         if (platform === 'instagram') Icon = LinkIcon;
 
         return (
-            <a href={url} target="_blank" rel="noopener noreferrer" className="p-2 bg-zinc-800 rounded-lg hover:bg-zinc-700 hover:text-white transition-colors">
+            <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-zinc-800 rounded-lg hover:bg-zinc-700 hover:text-white transition-colors">
                 <Icon className="h-5 w-5" />
             </a>
         );
@@ -446,10 +485,14 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         handle: `@${profileUser.username.toLowerCase()}`,
         role: profileUser.role || "Gamer",
         avatar: getImageUrl(profileUser.avatar, profileUser.username),
-        cover: profileUser.cover_image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop",
+        cover: profileUser.cover_image ? getImageUrl(profileUser.cover_image) : null,
         bio: profileUser.bio || "No bio yet.",
         location: profileUser.location,
-        joined: profileUser.date_joined ? new Date(profileUser.date_joined).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : "Recently",
+        joined: (() => {
+            if (!profileUser.date_joined) return "Recently";
+            const d = new Date(profileUser.date_joined);
+            return isNaN(d.getTime()) ? "Recently" : d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        })(),
         birth_date: profileUser.birth_date,
         show_birth_date: profileUser.show_birth_date,
         stats: {
@@ -469,12 +512,14 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             {/* Hero Section */}
             <div className="relative mb-20">
                 {/* Cover Image */}
-                <div className="h-60 md:h-80 w-full overflow-hidden">
-                    <img
-                        src={displayUser.cover}
-                        alt="Cover"
-                        className="w-full h-full object-cover"
-                    />
+                <div className="h-60 md:h-80 w-full overflow-hidden bg-zinc-950 relative">
+                    {displayUser.cover && (
+                        <img
+                            src={displayUser.cover}
+                            alt="Cover"
+                            className="w-full h-full object-cover"
+                        />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent" />
                 </div>
 
@@ -673,8 +718,17 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                                     </span>
                                                 </div>
                                                 {isOwnProfile && (
-                                                    <div className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Pencil className="h-3 w-3 text-white" />
+                                                    <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                                        <div className="bg-black/60 p-1.5 rounded-full hover:bg-zinc-800 transition-colors">
+                                                            <Pencil className="h-3.5 w-3.5 text-white" />
+                                                        </div>
+                                                        <div 
+                                                            onClick={(e) => handleClearSlot(index, e)}
+                                                            className="bg-black/60 p-1.5 rounded-full hover:bg-red-500/80 transition-colors"
+                                                            title="Clear Slot"
+                                                        >
+                                                            <X className="h-3.5 w-3.5 text-white" />
+                                                        </div>
                                                     </div>
                                                 )}
                                             </>
@@ -713,12 +767,16 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                                 <span className="truncate">{displayUser.location}</span>
                                             </div>
                                         )}
-                                        {displayUser.show_birth_date && displayUser.birth_date && (
-                                            <div className="flex items-center gap-3">
-                                                <Cake className="h-4 w-4 text-zinc-500" />
-                                                Born {new Date(displayUser.birth_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                                            </div>
-                                        )}
+                                        {displayUser.show_birth_date && displayUser.birth_date && (() => {
+                                            const bDate = new Date(displayUser.birth_date);
+                                            if (isNaN(bDate.getTime())) return null;
+                                            return (
+                                                <div className="flex items-center gap-3">
+                                                    <Cake className="h-4 w-4 text-zinc-500" />
+                                                    Born {bDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                </div>
+                                            );
+                                        })()}
                                         <div className="flex items-center gap-3">
                                             <Calendar className="h-4 w-4 text-zinc-500" />
                                             Joined {displayUser.joined}

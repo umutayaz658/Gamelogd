@@ -202,6 +202,7 @@ export default function RegisterPage() {
     const [currentStep, setCurrentStep] = useState(1);
     const [formData, setFormData] = useState({
         username: '',
+        realName: '',
         email: '',
         password: '',
         confirmPassword: '',
@@ -223,6 +224,9 @@ export default function RegisterPage() {
                 setFormData(prev => ({
                     ...prev,
                     email: parsed.email || '',
+                    realName: parsed.firstName && parsed.lastName 
+                        ? `${parsed.firstName} ${parsed.lastName}` 
+                        : (parsed.firstName || parsed.lastName || '')
                 }));
             } catch (e) {
                 console.error('Failed to parse Google signup data:', e);
@@ -247,6 +251,14 @@ export default function RegisterPage() {
         
         // Validation on Step 1
         if (currentStep === 1) {
+            if (!formData.username.trim()) {
+                setError("Username is required.");
+                return;
+            }
+            if (!formData.realName.trim()) {
+                setError("Display Name is required.");
+                return;
+            }
             if (formData.password !== formData.confirmPassword) {
                 setError("Passwords do not match!");
                 return;
@@ -254,6 +266,48 @@ export default function RegisterPage() {
             if (formData.password.length < 8) {
                 setError("Password must be at least 8 characters long.");
                 return;
+            }
+            setError(null); // Clear errors if valid
+        }
+
+        // Validation on Step 2
+        if (currentStep === 2) {
+            if (formData.birthDate && formData.birthDate.length > 0) {
+                if (formData.birthDate.length !== 10) {
+                    setError("Birth Date must be in DD/MM/YYYY format.");
+                    return;
+                }
+                const parts = formData.birthDate.split('/');
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10);
+                const year = parseInt(parts[2], 10);
+                
+                if (isNaN(day) || isNaN(month) || isNaN(year)) {
+                    setError("Birth Date contains invalid characters.");
+                    return;
+                }
+                if (month < 1 || month > 12) {
+                    setError("Birth Date month must be between 01 and 12.");
+                    return;
+                }
+                if (day < 1 || day > 31) {
+                    setError("Birth Date day must be between 01 and 31.");
+                    return;
+                }
+                
+                // Days in month validation
+                const daysInMonth = new Date(year, month, 0).getDate();
+                if (day > daysInMonth) {
+                    setError(`Invalid day for the selected month (max ${daysInMonth}).`);
+                    return;
+                }
+
+                // Year checks
+                const currentYear = new Date().getFullYear();
+                if (year < 1900 || year > currentYear) {
+                    setError(`Birth Date year must be between 1900 and ${currentYear}.`);
+                    return;
+                }
             }
             setError(null); // Clear errors if valid
         }
@@ -279,9 +333,22 @@ export default function RegisterPage() {
         setIsSubmitting(true);
         setError(null);
 
+        // Convert DD/MM/YYYY to YYYY-MM-DD for backend
+        let formattedBirthDate = null;
+        if (formData.birthDate && formData.birthDate.length === 10) {
+            const parts = formData.birthDate.split('/');
+            if (parts.length === 3) {
+                const day = parts[0];
+                const month = parts[1];
+                const year = parts[2];
+                formattedBirthDate = `${year}-${month}-${day}`;
+            }
+        }
+
         // 1. Map Frontend Data to Backend Keys (Snake Case)
         const payload = {
-            username: formData.username,
+            username: formData.username.trim(),
+            real_name: formData.realName.trim(),
             email: formData.email,
             password: formData.password,
             phone_number: formData.phoneNumber,
@@ -289,7 +356,7 @@ export default function RegisterPage() {
             is_developer: formData.roles.includes('developer'),
             is_investor: formData.roles.includes('investor'),
             gender: formData.gender,
-            birth_date: formData.birthDate || null,
+            birth_date: formattedBirthDate,
             platforms: formData.platforms,
             interests: formData.interests,
             roles: formData.roles
@@ -356,6 +423,25 @@ export default function RegisterPage() {
         }));
     };
 
+    const handleBirthDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/\D/g, ''); // Keep only numbers
+        if (value.length > 8) value = value.slice(0, 8); // Max 8 digits
+
+        // Format as DD/MM/YYYY
+        let formatted = '';
+        if (value.length > 0) {
+            formatted += value.slice(0, 2);
+        }
+        if (value.length > 2) {
+            formatted += '/' + value.slice(2, 4);
+        }
+        if (value.length > 4) {
+            formatted += '/' + value.slice(4, 8);
+        }
+
+        setFormData(prev => ({ ...prev, birthDate: formatted }));
+    };
+
     return (
         <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 selection:bg-emerald-500/30">
             <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl shadow-black/50 overflow-hidden relative">
@@ -398,6 +484,21 @@ export default function RegisterPage() {
                                         className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                         value={formData.username}
                                         onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                                        required
+                                    />
+                                </div>
+
+                                {/* Display Name */}
+                                <div className="relative group">
+                                    <User className="absolute left-3 top-3 h-5 w-5 text-zinc-500 group-focus-within:text-emerald-500 transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Display Name"
+                                        autoComplete="off"
+                                        maxLength={100}
+                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                                        value={formData.realName}
+                                        onChange={(e) => setFormData({ ...formData, realName: e.target.value })}
                                         required
                                     />
                                 </div>
@@ -510,10 +611,12 @@ export default function RegisterPage() {
                                     <div>
                                         <label className="block text-zinc-400 text-sm font-bold mb-2">Birth Date</label>
                                         <input
-                                            type="date"
-                                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                                            type="text"
+                                            placeholder="DD/MM/YYYY"
+                                            maxLength={10}
+                                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                             value={formData.birthDate}
-                                            onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+                                            onChange={handleBirthDateChange}
                                         />
                                     </div>
                                 </div>
