@@ -8,7 +8,7 @@ import Feed from "@/components/Feed";
 import GameSearchModal from "@/components/GameSearchModal";
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
-import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
 import EditProfileModal from "@/components/EditProfileModal";
