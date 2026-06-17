@@ -144,6 +144,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    real_name = serializers.CharField(required=True, max_length=100, min_length=1)
     # Explicitly tell DRF to accept a list of strings, not IDs
     interests = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
     roles = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
@@ -153,9 +154,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = [
             'username', 'email', 'password', 'phone_number', 
             'is_gamer', 'is_developer', 'is_investor',
-            'gender', 'birth_date', 'platforms', 'interests', 'roles'
+            'gender', 'birth_date', 'platforms', 'interests', 'roles', 'real_name'
         ]
         extra_kwargs = {'password': {'write_only': True}}
+
+    def validate_real_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Display name is required.")
+        value = value.strip()
+        if '<' in value or '>' in value:
+            raise serializers.ValidationError("Display name contains invalid characters.")
+        return value
 
     def validate_username(self, value):
         if value.lower() in RESERVED_USERNAMES:

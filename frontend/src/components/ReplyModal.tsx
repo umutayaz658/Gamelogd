@@ -4,7 +4,7 @@ import { useReplyModal } from '@/context/ReplyModalContext';
 import { useFeed } from '@/context/FeedContext';
 import { Post, Review } from '@/types';
 import { X, Loader2, ImagePlay, Smile, BarChart2, Plus, Trash2, FileImage } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from './PostCard';
@@ -22,6 +22,16 @@ export default function ReplyModal() {
     // Core State
     const [content, setContent] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+    }, [content]);
 
     // Media State
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -240,10 +250,11 @@ export default function ReplyModal() {
                                 )}
 
                                 <textarea
+                                    ref={textareaRef}
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
                                     placeholder={mode === 'quote' ? "Add a comment..." : "Post your reply"}
-                                    className="w-full bg-transparent text-lg text-zinc-200 placeholder-zinc-500 border-none focus:outline-none focus:ring-0 resize-none min-h-[100px] p-0 mb-2"
+                                    className="w-full bg-transparent text-lg text-zinc-200 placeholder-zinc-500 border-none focus:outline-none focus:ring-0 resize-none min-h-[100px] p-0 mb-2 overflow-hidden"
                                     autoFocus
                                     maxLength={350}
                                 />
