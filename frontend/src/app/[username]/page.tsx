@@ -97,7 +97,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [isSteamPrivate, setIsSteamPrivate] = useState(false);
     const [isUpdatingPrivacy, setIsUpdatingPrivacy] = useState(false);
 
-    const isOwnProfile = currentUser?.username === username;
+    const isOwnProfile = currentUser?.username?.toLowerCase() === username?.toLowerCase();
 
     // Fetch Profile Data
     useEffect(() => {

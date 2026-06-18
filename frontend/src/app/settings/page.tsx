@@ -311,7 +311,7 @@ const translations = {
         submitBug: "Hata Raporu Gönder",
         successSaveProfile: "Profil başarıyla güncellendi!",
         errorFields: "Kullanıcı adı ve e-posta gereklidir!",
-        successSteamSync: "Steam kütüphanesi senkronizasyonu başlatıldı! Tamamlanması birkaç dakika sürebilir.",
+        successSteamSync: "Eşleme işlemi başlatıldı. Bu işlem biraz zaman alabilir, tamamlandığında size bildirim göndereceğiz.",
         errorSteamSync: "Steam hesabı eşitlenemedi. Lütfen ID'nizi kontrol edin.",
         confirmSteamDisconnect: "Steam bağlantısını kesmek istediğinizden emin misiniz? Bu işlem eşitlenmiş oyunlarınızı kaldıracaktır.",
         successSteamDisconnect: "Steam bağlantısı başarıyla kesildi.",
@@ -926,6 +926,7 @@ function SettingsContent() {
     const [steamIdInput, setSteamIdInput] = useState('');
     const [isSyncing, setIsSyncing] = useState(false);
     const [steamConnected, setSteamConnected] = useState(false);
+    const [steamSyncMessage, setSteamSyncMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
 
     // Confirm Modal State
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -1129,15 +1130,16 @@ function SettingsContent() {
     const handleSteamSync = async () => {
         if (!steamIdInput) return;
         setIsSyncing(true);
+        setSteamSyncMessage(null);
         try {
-            await api.post('/users/sync_steam/', { steam_id: steamIdInput });
+            const res = await api.post('/users/sync_steam/', { steam_id: steamIdInput });
             setSteamConnected(true);
-            alert(t('successSteamSync'));
+            setSteamSyncMessage({ type: 'success', text: res.data.message || t('successSteamSync') });
             const meRes = await api.get('/users/me/');
             updateUser(meRes.data);
         } catch (error) {
             console.error("Steam sync failed:", error);
-            alert(t('errorSteamSync'));
+            setSteamSyncMessage({ type: 'error', text: t('errorSteamSync') });
         } finally {
             setIsSyncing(false);
         }
@@ -1602,6 +1604,11 @@ function SettingsContent() {
                                                                         ? `Connected (User: ${connUsername})`
                                                                         : platform.description}
                                                                 </div>
+                                                                {isSteam && steamSyncMessage && (
+                                                                    <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${steamSyncMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                                                        {steamSyncMessage.text}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <button
@@ -1631,7 +1638,7 @@ function SettingsContent() {
                                                     {isSteam && !platform.connected && (
                                                         <div className="mt-4 pt-4 border-t border-zinc-900 animate-in slide-in-from-top-2">
                                                             <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Steam ID 64</label>
-                                                            <div className="flex gap-2">
+                                                            <div className="flex gap-2 mb-2">
                                                                 <input
                                                                     type="text"
                                                                     value={steamIdInput}

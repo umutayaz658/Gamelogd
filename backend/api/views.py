@@ -215,32 +215,52 @@ class UserViewSet(viewsets.ModelViewSet):
         if not steam_id:
             return Response({"error": "Steam ID is required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        from django.conf import settings
-        if not settings.STEAM_API_KEY:
-            return Response({"error": "Server configuration error: STEAM_API_KEY not set."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Save Steam ID
+        # Always save Steam ID first so it persists
         request.user.steam_id = steam_id
         request.user.save()
-        
-        # Trigger Sync
-        from api.services.steam import fetch_steam_library
-        try:
-            stats = fetch_steam_library(request.user.id, steam_id)
-        except Exception as e:
-            print(f"Sync trigger failed: {e}")
+
+        from django.conf import settings
+        if not settings.STEAM_API_KEY:
             return Response({
-                "status": "Steam ID saved, but sync failed. Check privacy settings or try again later.",
-                "warning": str(e)
+                "status": "Steam ID saved, but library sync is unavailable (STEAM_API_KEY not configured).",
+                "steam_id_saved": True
             }, status=status.HTTP_200_OK)
-        
+
+        # Run sync in background thread so the user doesn't wait
+        import threading
+        user_id = request.user.id
+
+        def run_sync():
+            from api.services.steam import fetch_steam_library
+            from api.models import Notification, User as UserModel
+            try:
+                stats = fetch_steam_library(user_id, steam_id)
+                # Create a notification for the user when sync completes
+                user = UserModel.objects.get(id=user_id)
+                synced = stats.get('synced', 0)
+                total = stats.get('total', 0)
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.'
+                )
+            except Exception as e:
+                print(f"Background Steam sync failed for user {user_id}: {e}")
+                try:
+                    user = UserModel.objects.get(id=user_id)
+                    Notification.objects.create(
+                        recipient=user,
+                        actor=user,
+                        verb='Steam library sync failed. Please check your privacy settings and try again.'
+                    )
+                except Exception:
+                    pass
+
+        threading.Thread(target=run_sync, daemon=True).start()
+
         return Response({
-            "status": "Sync completed",
-            "total_games": stats.get('total', 0),
-            "synced": stats.get('synced', 0),
-            "created": stats.get('created', 0),
-            "covers_fixed": stats.get('cover_fixed', 0),
-            "errors": stats.get('errors', 0),
+            "status": "sync_started",
+            "message": "Steam library sync has been started. You will be notified when it's complete."
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -787,6 +807,42 @@ class GameViewSet(viewsets.ModelViewSet):
             })
         return Response(result)
 
+    @action(detail=False, methods=['get'], url_path='hidden-gems')
+    def hidden_gems(self, request):
+        from django.db.models import Avg, Count
+        # High average rating but low review count or library entries
+        gems = Game.objects.annotate(
+            avg_rating=Avg('reviews__rating'),
+            rev_count=Count('reviews')
+        ).filter(rev_count__gt=0, rev_count__lte=5, avg_rating__gte=7).order_by('-avg_rating', '?')[:10]
+        
+        if not gems.exists():
+            # Fallback if no specific data
+            gems = Game.objects.annotate(
+                rev_count=Count('reviews')
+            ).filter(rev_count__lte=5).order_by('?')[:10]
+            
+        result = []
+        for g in gems:
+            image_url = None
+            if g.cover_image:
+                if str(g.cover_image).startswith('http'):
+                    image_url = str(g.cover_image)
+                elif hasattr(g.cover_image, 'url'):
+                    url = g.cover_image.url
+                    if request and not str(url).startswith('http'):
+                        host = request.get_host()
+                        if 'backend' in host: host = host.replace('backend', '127.0.0.1')
+                        image_url = f"{request.scheme}://{host}{url}"
+            
+            result.append({
+                "id": g.id,
+                "title": g.title,
+                "cover_image": image_url,
+                "avg_rating": getattr(g, 'avg_rating', 0)
+            })
+        return Response(result)
+
     @action(detail=False, methods=['get'], url_path='company-info')
     def company_info(self, request):
         """GET /api/games/company-info/?name=Rockstar+Games"""
@@ -800,6 +856,32 @@ class GameViewSet(viewsets.ModelViewSet):
             return Response({"error": "Company not found"}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(info)
+
+    @action(detail=False, methods=['get'], url_path='global-search')
+    def global_search(self, request):
+        """GET /api/games/global-search/?q=Rockstar"""
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response([])
+
+        # 1. Search Local Games (with some fuzzy matching or icontains)
+        local_games = Game.objects.filter(Q(title__icontains=query))[:5]
+        from api.serializers import GameSerializer
+        games_data = GameSerializer(local_games, many=True, context={'request': request}).data
+        
+        # Tag them
+        for g in games_data:
+            g['result_type'] = 'game'
+
+        # 2. Search IGDB Companies
+        from api.services.igdb_service import search_igdb_companies
+        companies_data = search_igdb_companies(query, limit=5)
+        for c in companies_data:
+            c['result_type'] = 'company'
+
+        # 3. Combine and return
+        combined = list(games_data) + list(companies_data)
+        return Response(combined)
 
     @action(detail=False, methods=['get'], url_path='company-games')
     def company_games(self, request):
@@ -877,8 +959,33 @@ class ReviewViewSet(viewsets.ModelViewSet):
             
         return queryset
 
+    def _sync_library_status(self, review):
+        """Sync LibraryEntry status based on review is_completed flag, and ensure logged games are in the library."""
+        from api.models import LibraryEntry
+        
+        entry, created = LibraryEntry.objects.get_or_create(
+            user=review.user,
+            game=review.game,
+            defaults={
+                'status': 'completed' if review.is_completed else 'playing',
+                'platform': 'Manual'
+            }
+        )
+        
+        if review.is_completed and entry.status != 'completed':
+            entry.status = 'completed'
+            entry.save(update_fields=['status'])
+        elif not review.is_completed and entry.status == 'completed':
+            entry.status = 'playing'
+            entry.save(update_fields=['status'])
+
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        review = serializer.save(user=self.request.user)
+        self._sync_library_status(review)
+
+    def perform_update(self, serializer):
+        review = serializer.save()
+        self._sync_library_status(review)
 
 
 class PostViewSet(viewsets.ModelViewSet):
