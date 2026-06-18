@@ -17,9 +17,10 @@ interface LogGameModalProps {
     onClose: () => void;
     onSuccess?: () => void;
     initialGame?: any;
+    existingReview?: any;
 }
 
-export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }: LogGameModalProps) {
+export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, existingReview }: LogGameModalProps) {
     // State Management
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -51,11 +52,19 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }
             setIsCompleted(false);
             setContainsSpoilers(false);
             setSubmitError(null);
+        } else if (existingReview) {
+            setSelectedGame(initialGame || existingReview.game);
+            setStep(2);
+            setRating(existingReview.rating != null ? parseFloat(existingReview.rating) : 5.0);
+            setContent(existingReview.content || '');
+            setIsLiked(existingReview.is_liked || false);
+            setIsCompleted(existingReview.is_completed || false);
+            setContainsSpoilers(existingReview.contains_spoilers || false);
         } else if (initialGame) {
             setSelectedGame(initialGame);
             setStep(2);
         }
-    }, [isOpen, initialGame]);
+    }, [isOpen, initialGame, existingReview]);
 
     // Search Logic
     useEffect(() => {
@@ -90,14 +99,20 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }
         setSubmitError(null);
 
         try {
-            await api.post('/reviews/', {
+            const payload = {
                 game_id: selectedGame.id,
                 rating: rating,
                 content: content,
                 is_liked: isLiked,
                 is_completed: isCompleted,
                 contains_spoilers: containsSpoilers
-            });
+            };
+
+            if (existingReview) {
+                await api.patch(`/reviews/${existingReview.id}/`, payload);
+            } else {
+                await api.post('/reviews/', payload);
+            }
 
             if (onSuccess) onSuccess();
             onClose();
@@ -254,7 +269,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }
                         <div className="w-full md:w-2/3 flex flex-col bg-zinc-950/50">
                             {/* Header */}
                             <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950">
-                                <h2 className="text-xl font-bold">Write Review</h2>
+                                <h2 className="text-xl font-bold">{existingReview ? 'Edit Review' : 'Write Review'}</h2>
                                 <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
                                     <X className="h-5 w-5" />
                                 </button>
@@ -265,7 +280,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }
                                 <div>
                                     <div className="flex items-center justify-between mb-2">
                                         <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Rating</label>
-                                        <div className={`text-3xl font-black transition-colors ${getRatingTextClass(rating)}`}>{rating.toFixed(1)}</div>
+                                        <div className={`text-3xl font-black transition-colors ${getRatingTextClass(rating)}`}>{Number(rating || 0).toFixed(1)}</div>
                                     </div>
                                     <div className="relative h-6 flex items-center">
                                         <input
@@ -351,7 +366,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame }
                                     className="px-6 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
                                 >
                                     {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
-                                    Log Activity
+                                    {existingReview ? 'Update Log' : 'Log Activity'}
                                 </button>
                             </div>
                         </div>

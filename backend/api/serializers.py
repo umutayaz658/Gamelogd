@@ -228,7 +228,7 @@ class GameSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Game
-        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id', 'genres']
+        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id', 'genres', 'platforms']
         read_only_fields = ['id']
 
     def get_cover_image(self, obj):
@@ -314,6 +314,10 @@ class ReviewSerializer(serializers.ModelSerializer):
             # If game is looked up via game_id, it might be in validated_data as 'game' object
             if Review.objects.filter(user=request.user, game=game).exists():
                 raise serializers.ValidationError("You have already reviewed this game.")
+        # Prevent changing game_id on update
+        if request and request.method in ['PUT', 'PATCH']:
+            if 'game' in data and self.instance and data['game'] != self.instance.game:
+                raise serializers.ValidationError("You cannot change the game of an existing review.")
         return data
 
 
