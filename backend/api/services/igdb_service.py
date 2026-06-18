@@ -297,7 +297,7 @@ def resolve_top_parent_dynamically(company_name: str, token: str) -> tuple[str, 
     }
     
     query = f"""
-        search "{company_name}";
+        where name ~ *"{company_name}"*;
         fields name, parent.name, parent.parent.name, parent.parent.parent.name;
         limit 1;
     """
@@ -600,4 +600,60 @@ def fetch_company_games(company_name: str, limit: int = 150) -> list:
 
     except Exception as e:
         print(f"Error fetching IGDB company games for '{company_name}': {e}")
+        return []
+
+def search_igdb_companies(query: str, limit: int = 5) -> list:
+    """
+    Search IGDB directly for companies matching the query.
+    Returns a list of dicts with id, name, logo.
+    """
+    if not query:
+        return []
+
+    token = get_igdb_token()
+    if not token:
+        return []
+
+    headers = {
+        'Client-ID': IGDB_CLIENT_ID,
+        'Authorization': f'Bearer {token}'
+    }
+
+    safe_query = query.replace('"', '').replace('\\', '')
+    
+    igdb_query = f'''
+        where name ~ *"{safe_query}"*;
+        fields name, logo.url;
+        limit {limit};
+    '''
+
+    try:
+        response = requests.post(
+            'https://api.igdb.com/v4/companies',
+            headers=headers,
+            data=igdb_query,
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        results = []
+        for c in data:
+            logo_url = None
+            if 'logo' in c and 'url' in c['logo']:
+                logo_url = c['logo']['url']
+                if logo_url.startswith('//'):
+                    logo_url = f"https:{logo_url}"
+                logo_url = logo_url.replace('t_thumb', 't_logo_med')
+                
+            results.append({
+                'id': c.get('id'),
+                'name': c.get('name', ''),
+                'logo': logo_url,
+                'type': 'company'
+            })
+            
+        return results
+    except Exception as e:
+        print(f"Failed to search IGDB companies for '{query}': {e}")
         return []

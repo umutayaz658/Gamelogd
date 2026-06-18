@@ -14,6 +14,7 @@ export default function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [recentSearches, setRecentSearches] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -24,6 +25,27 @@ export default function Navbar() {
     const { user, logout, isLoading } = useAuth();
     const { openLogModal } = useLogModal();
     const { t } = useTranslation();
+
+    useEffect(() => {
+        const stored = localStorage.getItem('gamelogd_recent_searches');
+        if (stored) {
+            try {
+                setRecentSearches(JSON.parse(stored));
+            } catch (e) {
+                console.error('Failed to parse recent searches', e);
+            }
+        }
+    }, []);
+
+    const addToRecent = (item: any) => {
+        const itemType = item.result_type || 'game';
+        const updated = [
+            { ...item, result_type: itemType },
+            ...recentSearches.filter((r) => r.id !== item.id || r.result_type !== itemType)
+        ].slice(0, 5);
+        setRecentSearches(updated);
+        localStorage.setItem('gamelogd_recent_searches', JSON.stringify(updated));
+    };
 
     const handleLogout = () => {
         logout();
@@ -38,7 +60,7 @@ export default function Navbar() {
         }
         setIsSearching(true);
         try {
-            const res = await api.get(`/games/?search=${encodeURIComponent(query.trim())}`);
+            const res = await api.get(`/games/global-search/?q=${encodeURIComponent(query.trim())}`);
             const results = res.data.results || res.data;
             setSearchResults(results.slice(0, 6));
         } catch (err) {
@@ -60,11 +82,16 @@ export default function Navbar() {
         }, 300);
     };
 
-    const handleSelectGame = (gameId: number) => {
+    const handleSelectResult = (item: any) => {
+        addToRecent(item);
         setSearchQuery('');
         setSearchResults([]);
         setShowResults(false);
-        router.push(`/games/${gameId}`);
+        if (item.result_type === 'company') {
+            router.push(`/developer/${encodeURIComponent(item.name || item.title)}`);
+        } else {
+            router.push(`/games/${item.id}`);
+        }
     };
 
     const clearSearch = () => {
@@ -130,8 +157,8 @@ export default function Navbar() {
                                 type="text"
                                 value={searchQuery}
                                 onChange={handleSearchChange}
-                                onFocus={() => { if (searchQuery.trim().length >= 2) setShowResults(true); }}
-                                placeholder={t('searchGames')}
+                                onFocus={() => { setShowResults(true); }}
+                                placeholder="Search games and devs..."
                                 className="bg-transparent text-sm text-white placeholder-zinc-500 outline-none border-none ml-2 w-full"
                             />
                             {searchQuery && (
@@ -142,48 +169,99 @@ export default function Navbar() {
                         </div>
 
                         {/* Search Results Dropdown */}
-                        {showResults && searchQuery.trim().length >= 2 && (
+                        {showResults && (
                             <div className="absolute top-full mt-2 left-0 right-0 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-1 duration-150">
                                 {isSearching ? (
                                     <div className="flex items-center justify-center py-6">
                                         <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                                     </div>
-                                ) : searchResults.length > 0 ? (
-                                    <div className="py-1 max-h-80 overflow-y-auto">
-                                        {searchResults.map((game) => {
-                                            const coverUrl = getMediaUrl(game.cover_image);
-                                            return (
-                                                <button
-                                                    key={game.id}
-                                                    onClick={() => handleSelectGame(game.id)}
-                                                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800/80 transition-colors text-left group"
-                                                >
-                                                    <div className="w-10 h-13 rounded-md overflow-hidden bg-zinc-800 flex-shrink-0 border border-zinc-700/50">
-                                                        {coverUrl ? (
-                                                            <img src={coverUrl} alt={game.title} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center">
-                                                                <Search className="w-4 h-4 text-zinc-600" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">
-                                                            {game.title}
-                                                        </p>
-                                                        {game.release_date && (
-                                                            <p className="text-xs text-zinc-500">
-                                                                {new Date(game.release_date).getFullYear()}
+                                ) : searchQuery.trim().length >= 2 ? (
+                                    searchResults.length > 0 ? (
+                                        <div className="py-1 max-h-80 overflow-y-auto">
+                                            {searchResults.map((item) => {
+                                                const coverUrl = getMediaUrl(item.cover_image || item.logo);
+                                                const isCompany = item.result_type === 'company';
+                                                return (
+                                                    <button
+                                                        key={`${item.result_type}-${item.id}`}
+                                                        onClick={() => handleSelectResult(item)}
+                                                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800/80 transition-colors text-left group"
+                                                    >
+                                                        <div className={`w-10 h-13 rounded-md overflow-hidden flex-shrink-0 border border-zinc-700/50 ${isCompany ? 'bg-zinc-100 flex items-center justify-center p-1' : 'bg-zinc-800'}`}>
+                                                            {coverUrl ? (
+                                                                <img src={coverUrl} alt={item.title || item.name} className={isCompany ? "w-full h-auto object-contain max-h-full" : "w-full h-full object-cover"} />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center">
+                                                                    <Search className="w-4 h-4 text-zinc-600" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">
+                                                                {item.title || item.name}
                                                             </p>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
+                                                            {item.release_date && !isCompany && (
+                                                                <p className="text-xs text-zinc-500">
+                                                                    {new Date(item.release_date).getFullYear()}
+                                                                </p>
+                                                            )}
+                                                            {isCompany && (
+                                                                <p className="text-xs text-indigo-400 font-medium uppercase tracking-wider">
+                                                                    Company
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="py-6 text-center">
+                                            <p className="text-sm text-zinc-500">{t('noGamesFound')}</p>
+                                        </div>
+                                    )
+                                ) : recentSearches.length > 0 ? (
+                                    <div className="py-2">
+                                        <div className="px-4 pb-2 pt-1">
+                                            <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Recent Searches</p>
+                                        </div>
+                                        <div className="max-h-80 overflow-y-auto">
+                                            {recentSearches.map((item) => {
+                                                const coverUrl = getMediaUrl(item.cover_image || item.logo);
+                                                const isCompany = item.result_type === 'company';
+                                                return (
+                                                    <button
+                                                        key={`recent-${item.result_type}-${item.id}`}
+                                                        onClick={() => handleSelectResult(item)}
+                                                        className="w-full flex items-center gap-3 px-4 py-2 hover:bg-zinc-800/80 transition-colors text-left group"
+                                                    >
+                                                        <div className={`w-8 h-10 rounded overflow-hidden flex-shrink-0 border border-zinc-700/50 ${isCompany ? 'bg-zinc-100 flex items-center justify-center p-1' : 'bg-zinc-800'}`}>
+                                                            {coverUrl ? (
+                                                                <img src={coverUrl} alt={item.title || item.name} className={isCompany ? "w-full h-auto object-contain max-h-full" : "w-full h-full object-cover"} />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center">
+                                                                    <Search className="w-3 h-3 text-zinc-600" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm text-zinc-300 truncate group-hover:text-white transition-colors">
+                                                                {item.title || item.name}
+                                                            </p>
+                                                            {isCompany && (
+                                                                <p className="text-[10px] text-indigo-400 uppercase tracking-wider">
+                                                                    Company
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="py-6 text-center">
-                                        <p className="text-sm text-zinc-500">{t('noGamesFound')}</p>
+                                        <p className="text-sm text-zinc-500">Search for games or developers...</p>
                                     </div>
                                 )}
                             </div>

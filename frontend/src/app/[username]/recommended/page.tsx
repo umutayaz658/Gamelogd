@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
-import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, ListTodo, Users, TrendingUp, Sparkles, RefreshCw, LinkIcon, Settings } from 'lucide-react';
+import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, ListTodo, Users, TrendingUp, Sparkles, RefreshCw, LinkIcon, Settings, Gem, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 
@@ -25,27 +25,30 @@ interface GenreStat {
 const GameCard = ({ game, subtitle }: { game: GameItem, subtitle?: string }) => (
     <Link
         href={`/games/${game.id}`}
-        className="group bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 hover:-translate-y-1 transition-all cursor-pointer block duration-300"
+        className="group bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 hover:-translate-y-1 transition-all cursor-pointer block duration-300 relative aspect-[3/4]"
     >
-        <div className="relative aspect-[3/4] overflow-hidden bg-zinc-800">
-            {game.cover_image ? (
-                <img
-                    src={game.cover_image}
-                    alt={game.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                />
-            ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                    <Gamepad2 className="w-12 h-12 text-zinc-600" />
-                </div>
-            )}
-        </div>
-        <div className="p-3 bg-zinc-900">
-            <h3 className="text-sm font-bold leading-snug line-clamp-2 group-hover:text-indigo-400 transition-colors">
+        {game.cover_image ? (
+            <img
+                src={game.cover_image}
+                alt={game.title}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            />
+        ) : (
+            <div className="w-full h-full flex items-center justify-center bg-zinc-800">
+                <Gamepad2 className="w-12 h-12 text-zinc-600" />
+            </div>
+        )}
+        
+        {/* Gradient Overlay */}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent pointer-events-none" />
+
+        {/* Text over image at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+            <h3 className="text-sm font-bold text-white leading-snug line-clamp-2 group-hover:text-indigo-400 transition-colors drop-shadow-md">
                 {game.title}
             </h3>
             {subtitle && (
-                <p className="text-xs text-zinc-500 mt-1 line-clamp-1">{subtitle}</p>
+                <p className="text-xs text-zinc-400 mt-1 font-semibold drop-shadow-md">{subtitle}</p>
             )}
         </div>
     </Link>
@@ -63,9 +66,12 @@ export default function RecommendedGamesPage() {
     const [backlog, setBacklog] = useState<GameItem[]>([]);
     const [friendsPlaying, setFriendsPlaying] = useState<GameItem[]>([]);
     const [trending, setTrending] = useState<GameItem[]>([]);
+    const [hiddenGems, setHiddenGems] = useState<GameItem[]>([]);
     const [dnaGenres, setDnaGenres] = useState<GenreStat[]>([]);
 
     const [activeTab, setActiveTab] = useState('all');
+    const [selectedPlatform, setSelectedPlatform] = useState('All');
+    const [selectedYear, setSelectedYear] = useState('All');
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pageIndex, setPageIndex] = useState(0);
@@ -76,9 +82,13 @@ export default function RecommendedGamesPage() {
         const fetchInitialData = async () => {
             if (!username) return;
             try {
-                // Always fetch trending (shown even without platform)
-                const trendingRes = await api.get(`/games/trending/`);
+                // Always fetch trending and hidden gems
+                const [trendingRes, hiddenGemsRes] = await Promise.all([
+                    api.get(`/games/trending/`),
+                    api.get(`/games/hidden-gems/`),
+                ]);
                 setTrending(trendingRes.data);
+                setHiddenGems(hiddenGemsRes.data);
 
                 // Only fetch DNA/backlog/friends if platform is linked
                 if (hasPlatformLinked) {
@@ -170,8 +180,37 @@ export default function RecommendedGamesPage() {
         }
     };
 
-    const totalPages = Math.ceil(games.length / GAMES_PER_PAGE);
-    const visibleGames = games.slice(pageIndex * GAMES_PER_PAGE, (pageIndex + 1) * GAMES_PER_PAGE);
+    const availablePlatforms = Array.from(
+        new Set(games.flatMap((g: any) => g.platforms || []))
+    ).filter(Boolean).sort() as string[];
+
+    const YEAR_RANGES = [
+        { label: 'All Years', value: 'All' },
+        { label: '?-2000', value: '?-2000' },
+        { label: '2000-2010', value: '2000-2010' },
+        { label: '2010-2020', value: '2010-2020' },
+        { label: '2020-?', value: '2020-?' },
+    ];
+
+    const filteredGames = games.filter((game: any) => {
+        if (selectedPlatform !== 'All') {
+            if (!game.platforms || !game.platforms.includes(selectedPlatform)) return false;
+        }
+        if (selectedYear !== 'All') {
+            const yearStr = game.release_date ? game.release_date.split('-')[0] : null;
+            if (!yearStr) return false;
+            const year = parseInt(yearStr, 10);
+            
+            if (selectedYear === '?-2000' && year >= 2000) return false;
+            if (selectedYear === '2000-2010' && (year < 2000 || year >= 2010)) return false;
+            if (selectedYear === '2010-2020' && (year < 2010 || year >= 2020)) return false;
+            if (selectedYear === '2020-?' && year < 2020) return false;
+        }
+        return true;
+    });
+
+    const totalPages = Math.ceil(filteredGames.length / GAMES_PER_PAGE);
+    const visibleGames = filteredGames.slice(pageIndex * GAMES_PER_PAGE, (pageIndex + 1) * GAMES_PER_PAGE);
 
     const nextPage = () => setPageIndex(p => (p + 1) % totalPages);
     const prevPage = () => setPageIndex(p => (p - 1 + totalPages) % totalPages);
@@ -271,14 +310,35 @@ export default function RecommendedGamesPage() {
                                                 </button>
                                             ))}
                                         </div>
-                                        <button
-                                            onClick={handleManualRefresh}
-                                            disabled={loading || isRefreshing}
-                                            className="ml-4 p-2 bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors self-center shrink-0 border border-zinc-800 shadow-sm disabled:opacity-50"
-                                            title="Refresh Recommendations"
-                                        >
-                                            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-                                        </button>
+                                        <div className="flex items-center gap-3 ml-4 shrink-0">
+                                            <select
+                                                value={selectedPlatform}
+                                                onChange={(e) => {setSelectedPlatform(e.target.value); setPageIndex(0);}}
+                                                className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                                            >
+                                                <option value="All">All Platforms</option>
+                                                {availablePlatforms.map(p => (
+                                                    <option key={p} value={p}>{p}</option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                value={selectedYear}
+                                                onChange={(e) => {setSelectedYear(e.target.value); setPageIndex(0);}}
+                                                className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                                            >
+                                                {YEAR_RANGES.map(range => (
+                                                    <option key={range.value} value={range.value}>{range.label}</option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={handleManualRefresh}
+                                                disabled={loading || isRefreshing}
+                                                className="p-2 bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors border border-zinc-800 shadow-sm disabled:opacity-50 flex-shrink-0"
+                                                title="Refresh Recommendations"
+                                            >
+                                                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 
@@ -329,62 +389,16 @@ export default function RecommendedGamesPage() {
                                     )}
                                 </div>
 
-                                {/* Filler Content Sections */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pt-10 border-t border-zinc-800/50 mt-12">
-
-                                    {/* Backlog Reminder */}
-                                    {backlog.length > 0 && (
-                                        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
-                                            <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                                                <ListTodo className="text-rose-400 h-5 w-5" />
-                                                Backlog Reminder
-                                            </h2>
-                                            <div className="space-y-3">
-                                                {backlog.slice(0, 3).map(game => (
-                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
-                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="text-sm font-semibold group-hover:text-rose-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">Want to Play</p>
-                                                        </div>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Friends Are Playing */}
-                                    {friendsPlaying.length > 0 && (
-                                        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
-                                            <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                                                <Users className="text-emerald-400 h-5 w-5" />
-                                                Friends Are Playing
-                                            </h2>
-                                            <div className="space-y-3">
-                                                {friendsPlaying.slice(0, 3).map(game => (
-                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
-                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="text-sm font-semibold group-hover:text-emerald-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">Played by @{game.friend_username}</p>
-                                                        </div>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                {/* Deep Discovery Sections */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-10 border-t border-zinc-800/50 mt-12">
 
                                     {/* Trending on Gamelogd */}
-                                    {trending.length > 0 && (
-                                        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5 md:col-span-2 xl:col-span-1">
-                                            <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                                                <TrendingUp className="text-amber-400 h-5 w-5" />
-                                                Trending on Gamelogd
-                                            </h2>
+                                    <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
+                                            <TrendingUp className="text-amber-400 h-5 w-5" />
+                                            Trending on Gamelogd
+                                        </h2>
+                                        {trending.length > 0 ? (
                                             <div className="space-y-3">
                                                 {trending.slice(0, 3).map(game => (
                                                     <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
@@ -398,8 +412,64 @@ export default function RecommendedGamesPage() {
                                                     </Link>
                                                 ))}
                                             </div>
-                                        </div>
-                                    )}
+                                        ) : (
+                                            <div className="text-sm text-zinc-500 italic py-4">No trending data currently available.</div>
+                                        )}
+                                    </div>
+
+                                    {/* Friends Are Playing */}
+                                    <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
+                                            <Users className="text-emerald-400 h-5 w-5" />
+                                            Logged by your friends
+                                        </h2>
+                                        {friendsPlaying.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {friendsPlaying.slice(0, 3).map(game => (
+                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
+                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
+                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-semibold group-hover:text-emerald-400 line-clamp-1">{game.title}</h4>
+                                                            <p className="text-xs text-zinc-500">Logged by @{game.friend_username}</p>
+                                                        </div>
+                                                    </Link>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
+                                                None of your friends have logged games recently.
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Hidden Gems */}
+                                    <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
+                                            <Gem className="text-purple-400 h-5 w-5" />
+                                            Hidden Gems
+                                        </h2>
+                                        {hiddenGems.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {hiddenGems.slice(0, 3).map(game => (
+                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
+                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
+                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-semibold group-hover:text-purple-400 line-clamp-1">{game.title}</h4>
+                                                            <p className="text-xs text-zinc-500">Avg Rating: {(game as any).avg_rating?.toFixed(1) || 'N/A'}</p>
+                                                        </div>
+                                                    </Link>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
+                                                No hidden gems discovered yet.
+                                            </div>
+                                        )}
+                                    </div>
 
                                 </div>
                             </>

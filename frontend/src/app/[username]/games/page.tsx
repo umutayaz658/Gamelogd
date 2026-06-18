@@ -8,6 +8,7 @@ import { Search, Filter, ArrowUpDown, LayoutGrid, List, Gamepad2, Monitor, Zap, 
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
 import Link from 'next/link';
+import { useAuth } from "@/context/AuthContext";
 
 interface Game {
     id: number;
@@ -28,7 +29,8 @@ interface LibraryEntry {
 
 export default function GameLibraryPage({ params }: { params: Promise<{ username: string }> }) {
     const { username } = use(params);
-
+    const { user: currentUser } = useAuth();
+    const isOwnProfile = currentUser?.username?.toLowerCase() === username?.toLowerCase();
     // State
     const [games, setGames] = useState<LibraryEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -246,9 +248,9 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
 
                                                 {/* Hover Overlay */}
                                                 <div className={`absolute inset-0 bg-black/90 transition-opacity duration-300 flex flex-col items-center justify-center p-4 text-center ${editingId === entry.id ? 'opacity-100 z-20' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                    <h3 className="font-bold text-white mb-2 line-clamp-2">{entry.game.title}</h3>
+                                                    <Link href={`/games/${entry.game.id}`} className="font-bold text-white mb-2 line-clamp-2 hover:text-emerald-400 hover:underline transition-colors">{entry.game.title}</Link>
 
-                                                    {editingId === entry.id ? (
+                                                    {isOwnProfile && editingId === entry.id ? (
                                                         <div className="flex flex-col gap-2 w-full animate-in zoom-in-95 duration-200">
                                                             <div className="text-xs text-zinc-400 mb-1">Select Status</div>
                                                             {statusOptions.map(status => (
@@ -273,12 +275,14 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                     ) : (
                                                         <>
                                                             <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4">{entry.status.replace(/_/g, ' ')}</span>
-                                                            <button
-                                                                onClick={() => setEditingId(entry.id)}
-                                                                className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-bold hover:bg-zinc-200 transition-colors"
-                                                            >
-                                                                Edit Status
-                                                            </button>
+                                                            {isOwnProfile && (
+                                                                <button
+                                                                    onClick={() => setEditingId(entry.id)}
+                                                                    className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-bold hover:bg-zinc-200 transition-colors"
+                                                                >
+                                                                    Edit Status
+                                                                </button>
+                                                            )}
                                                         </>
                                                     )}
                                                 </div>
@@ -297,7 +301,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-white truncate group-hover:text-emerald-400 transition-colors">{entry.game.title}</h3>
+                                                <Link href={`/games/${entry.game.id}`} className="font-bold text-white truncate hover:text-emerald-400 hover:underline transition-colors block">{entry.game.title}</Link>
                                                 <div className="flex items-center gap-2 text-sm text-zinc-400 mt-1">
                                                     <div className="flex items-center gap-1">
                                                         <PlatformIcon platform={entry.platform} />
@@ -312,16 +316,18 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                     <div className="font-bold text-white">{entry.playtime_hours}h</div>
                                                     <div className="text-xs text-zinc-500">played</div>
                                                 </div>
-                                                <button
-                                                    onClick={() => setEditingId(editingId === entry.id ? null : entry.id)}
-                                                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                >
-                                                    <Filter className="h-4 w-4" />
-                                                </button>
+                                                {isOwnProfile && (
+                                                    <button
+                                                        onClick={() => setEditingId(editingId === entry.id ? null : entry.id)}
+                                                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                    >
+                                                        <Filter className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* List View Popover (Simple implementation) */}
-                                            {editingId === entry.id && (
+                                            {isOwnProfile && editingId === entry.id && (
                                                 <div className="absolute right-12 mt-12 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl p-2 flex flex-col gap-1 min-w-[120px] animate-in zoom-in-95">
                                                     {statusOptions.map(status => (
                                                         <button

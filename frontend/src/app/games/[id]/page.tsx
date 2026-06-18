@@ -12,6 +12,7 @@ import SimilarGames from '@/components/SimilarGames';
 import { getMediaUrl } from '@/lib/utils';
 import Image from 'next/image';
 import { useLogModal } from '@/context/LogModalContext';
+import { useAuth } from '@/context/AuthContext';
 
 export default function GameDetailPage() {
     const params = useParams();
@@ -20,8 +21,10 @@ export default function GameDetailPage() {
 
     const [game, setGame] = useState<GameDetail | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
+    const [myReview, setMyReview] = useState<Review | null>(null);
     const [loading, setLoading] = useState(true);
     const [reviewsLoading, setReviewsLoading] = useState(false);
+    const { user } = useAuth();
     
     // Filtering state
     const [order, setOrder] = useState('-likes_count'); // '-likes_count', '-timestamp', '-rating', 'rating'
@@ -63,6 +66,25 @@ export default function GameDetailPage() {
             fetchReviews();
         }
     }, [gameId, order]);
+
+    useEffect(() => {
+        const fetchMyReview = async () => {
+            if (!user || !gameId) return;
+            try {
+                const response = await api.get(`/reviews/?game_id=${gameId}&username=${user.username}`);
+                const data = response.data.results || response.data;
+                if (data && data.length > 0) {
+                    setMyReview(data[0]);
+                } else {
+                    setMyReview(null);
+                }
+            } catch (err) {
+                console.error("Failed to fetch my review:", err);
+            }
+        };
+
+        fetchMyReview();
+    }, [gameId, user]);
 
     const handleScroll = () => {
         if (!carouselRef.current || !game?.screenshots) return;
@@ -244,11 +266,15 @@ export default function GameDetailPage() {
                                     </div>
                                 </div>
                                 <button 
-                                    onClick={() => openLogModal(game)}
-                                    className="px-6 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
+                                    onClick={() => openLogModal(game, myReview)}
+                                    className={`px-6 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm ${myReview ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'}`}
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
-                                    Log Game
+                                    {myReview ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                                    )}
+                                    {myReview ? 'Edit Log' : 'Log Game'}
                                 </button>
                             </div>
                         </div>
