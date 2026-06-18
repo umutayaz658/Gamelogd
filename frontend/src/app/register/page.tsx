@@ -3,16 +3,206 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import PhoneInput from 'react-phone-number-input';
+import PhoneInput, { getCountryCallingCode } from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
-import { User, Mail, Lock, ArrowRight, ArrowLeft, Gamepad2, Code2, Briefcase, Check, Smartphone, Monitor, Gamepad, Loader2 } from 'lucide-react';
+import { User, Mail, Lock, ArrowRight, ArrowLeft, Gamepad2, Code2, Briefcase, Check, Smartphone, Monitor, Gamepad, Loader2, ChevronDown, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { useRef } from 'react';
+
+interface CustomCountrySelectProps {
+    value?: string;
+    onChange: (value?: string) => void;
+    options: { value?: string; label: string }[];
+}
+
+function CustomCountrySelect({ value, onChange, options }: CustomCountrySelectProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [dropdownRef]);
+
+    const filteredOptions = options.filter(opt => {
+        if (!opt.value) return false;
+        const name = opt.label.toLowerCase();
+        const code = opt.value.toLowerCase();
+        const query = search.toLowerCase();
+        return name.includes(query) || code.includes(query);
+    });
+
+    return (
+        <div className="relative shrink-0" ref={dropdownRef}>
+            <button
+                type="button"
+                onClick={() => { setIsOpen(!isOpen); setSearch(''); }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm font-semibold transition-all duration-200 focus:outline-none ${
+                    isOpen
+                        ? 'bg-zinc-800 border-zinc-700 text-white'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                }`}
+            >
+                <span className="text-zinc-200 font-semibold text-xs uppercase">
+                    {value ? `${value} (+${getCountryCallingCode(value as any)})` : 'Select'}
+                </span>
+                <ChevronDown className={`h-3 w-3 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-64 max-h-72 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 flex flex-col">
+                    <style>{`
+                        .custom-scrollbar::-webkit-scrollbar {
+                            width: 5px;
+                        }
+                        .custom-scrollbar::-webkit-scrollbar-track {
+                            background: transparent;
+                        }
+                        .custom-scrollbar::-webkit-scrollbar-thumb {
+                            background: #27272a;
+                            border-radius: 99px;
+                        }
+                        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                            background: #3f3f46;
+                        }
+                    `}</style>
+                    {/* Search Box */}
+                    <div className="p-2 border-b border-zinc-800 flex items-center gap-2 bg-zinc-950/30">
+                        <Search className="h-4 w-4 text-zinc-500 shrink-0" />
+                        <input
+                            type="text"
+                            placeholder="Search country..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full bg-transparent text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none border-none ring-0"
+                            autoFocus
+                        />
+                    </div>
+                    {/* Country List */}
+                    <div className="overflow-y-auto p-1 flex-1 custom-scrollbar">
+                        {filteredOptions.length === 0 ? (
+                            <div className="text-zinc-600 text-xs text-center py-4">No countries found</div>
+                        ) : (
+                            filteredOptions.map((option) => {
+                                const callingCode = option.value ? getCountryCallingCode(option.value as any) : '';
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(option.value);
+                                            setIsOpen(false);
+                                        }}
+                                        className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                            value === option.value
+                                                ? 'bg-emerald-500/10 text-emerald-500 font-semibold'
+                                                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 truncate">
+                                            <span className="truncate text-xs">{option.label}</span>
+                                            <span className="text-zinc-500 text-[10px] font-bold shrink-0">
+                                                (+{callingCode})
+                                            </span>
+                                        </div>
+                                        {value === option.value && <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CustomGenderSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [dropdownRef]);
+
+    const options = [
+        { value: 'Male', label: 'Male' },
+        { value: 'Female', label: 'Female' },
+        { value: 'Non-binary', label: 'Non-binary' },
+        { value: 'Prefer not to say', label: 'Prefer not to say' }
+    ];
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    return (
+        <div className="relative w-full" ref={dropdownRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between bg-zinc-950/50 border rounded-xl py-2.5 px-4 text-sm font-medium transition-all duration-200 focus:outline-none ${
+                    isOpen
+                        ? 'border-emerald-500/50 ring-1 ring-emerald-500/50 text-white'
+                        : 'border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                }`}
+            >
+                <span className={value ? "text-zinc-200 font-semibold" : "text-zinc-600"}>
+                    {selectedOption ? selectedOption.label : 'Select Gender'}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-full bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 p-1">
+                    {options.map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                                onChange(option.value);
+                                setIsOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                                value === option.value
+                                    ? 'bg-emerald-500/10 text-emerald-500 font-bold'
+                                    : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                            }`}
+                        >
+                            {option.label}
+                            {value === option.value && <Check className="h-4 w-4 text-emerald-500" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function RegisterPage() {
     const [currentStep, setCurrentStep] = useState(1);
     const [formData, setFormData] = useState({
         username: '',
+        realName: '',
         email: '',
         password: '',
         confirmPassword: '',
@@ -34,6 +224,9 @@ export default function RegisterPage() {
                 setFormData(prev => ({
                     ...prev,
                     email: parsed.email || '',
+                    realName: parsed.firstName && parsed.lastName 
+                        ? `${parsed.firstName} ${parsed.lastName}` 
+                        : (parsed.firstName || parsed.lastName || '')
                 }));
             } catch (e) {
                 console.error('Failed to parse Google signup data:', e);
@@ -58,6 +251,14 @@ export default function RegisterPage() {
         
         // Validation on Step 1
         if (currentStep === 1) {
+            if (!formData.username.trim()) {
+                setError("Username is required.");
+                return;
+            }
+            if (!formData.realName.trim()) {
+                setError("Display Name is required.");
+                return;
+            }
             if (formData.password !== formData.confirmPassword) {
                 setError("Passwords do not match!");
                 return;
@@ -65,6 +266,48 @@ export default function RegisterPage() {
             if (formData.password.length < 8) {
                 setError("Password must be at least 8 characters long.");
                 return;
+            }
+            setError(null); // Clear errors if valid
+        }
+
+        // Validation on Step 2
+        if (currentStep === 2) {
+            if (formData.birthDate && formData.birthDate.length > 0) {
+                if (formData.birthDate.length !== 10) {
+                    setError("Birth Date must be in DD/MM/YYYY format.");
+                    return;
+                }
+                const parts = formData.birthDate.split('/');
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10);
+                const year = parseInt(parts[2], 10);
+                
+                if (isNaN(day) || isNaN(month) || isNaN(year)) {
+                    setError("Birth Date contains invalid characters.");
+                    return;
+                }
+                if (month < 1 || month > 12) {
+                    setError("Birth Date month must be between 01 and 12.");
+                    return;
+                }
+                if (day < 1 || day > 31) {
+                    setError("Birth Date day must be between 01 and 31.");
+                    return;
+                }
+                
+                // Days in month validation
+                const daysInMonth = new Date(year, month, 0).getDate();
+                if (day > daysInMonth) {
+                    setError(`Invalid day for the selected month (max ${daysInMonth}).`);
+                    return;
+                }
+
+                // Year checks
+                const currentYear = new Date().getFullYear();
+                if (year < 1900 || year > currentYear) {
+                    setError(`Birth Date year must be between 1900 and ${currentYear}.`);
+                    return;
+                }
             }
             setError(null); // Clear errors if valid
         }
@@ -90,9 +333,22 @@ export default function RegisterPage() {
         setIsSubmitting(true);
         setError(null);
 
+        // Convert DD/MM/YYYY to YYYY-MM-DD for backend
+        let formattedBirthDate = null;
+        if (formData.birthDate && formData.birthDate.length === 10) {
+            const parts = formData.birthDate.split('/');
+            if (parts.length === 3) {
+                const day = parts[0];
+                const month = parts[1];
+                const year = parts[2];
+                formattedBirthDate = `${year}-${month}-${day}`;
+            }
+        }
+
         // 1. Map Frontend Data to Backend Keys (Snake Case)
         const payload = {
-            username: formData.username,
+            username: formData.username.trim(),
+            real_name: formData.realName.trim(),
             email: formData.email,
             password: formData.password,
             phone_number: formData.phoneNumber,
@@ -100,7 +356,7 @@ export default function RegisterPage() {
             is_developer: formData.roles.includes('developer'),
             is_investor: formData.roles.includes('investor'),
             gender: formData.gender,
-            birth_date: formData.birthDate || null,
+            birth_date: formattedBirthDate,
             platforms: formData.platforms,
             interests: formData.interests,
             roles: formData.roles
@@ -112,9 +368,9 @@ export default function RegisterPage() {
             // 2. API Call
             await api.post('/register/', payload);
 
-            // 3. Success
-            alert('Registration successful! Please login.');
-            router.push('/login');
+            // 3. Redirect to Email Verification page
+            const emailEncoded = encodeURIComponent(formData.email);
+            router.push(`/verify-email?email=${emailEncoded}`);
 
         } catch (err: any) {
             console.error('Registration Error:', err.response?.data || err.message);
@@ -167,6 +423,25 @@ export default function RegisterPage() {
         }));
     };
 
+    const handleBirthDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/\D/g, ''); // Keep only numbers
+        if (value.length > 8) value = value.slice(0, 8); // Max 8 digits
+
+        // Format as DD/MM/YYYY
+        let formatted = '';
+        if (value.length > 0) {
+            formatted += value.slice(0, 2);
+        }
+        if (value.length > 2) {
+            formatted += '/' + value.slice(2, 4);
+        }
+        if (value.length > 4) {
+            formatted += '/' + value.slice(4, 8);
+        }
+
+        setFormData(prev => ({ ...prev, birthDate: formatted }));
+    };
+
     return (
         <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 selection:bg-emerald-500/30">
             <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl shadow-black/50 overflow-hidden relative">
@@ -213,6 +488,21 @@ export default function RegisterPage() {
                                     />
                                 </div>
 
+                                {/* Display Name */}
+                                <div className="relative group">
+                                    <User className="absolute left-3 top-3 h-5 w-5 text-zinc-500 group-focus-within:text-emerald-500 transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Display Name"
+                                        autoComplete="off"
+                                        maxLength={100}
+                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                                        value={formData.realName}
+                                        onChange={(e) => setFormData({ ...formData, realName: e.target.value })}
+                                        required
+                                    />
+                                </div>
+
                                 {/* Email */}
                                 <div className="relative group">
                                     <Mail className="absolute left-3 top-3 h-5 w-5 text-zinc-500 group-focus-within:text-emerald-500 transition-colors" />
@@ -232,7 +522,11 @@ export default function RegisterPage() {
                                         placeholder="Phone number"
                                         value={formData.phoneNumber}
                                         onChange={(value?: string) => setFormData({ ...formData, phoneNumber: value || '' })}
-                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 placeholder:text-zinc-600 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all"
+                                        countrySelectComponent={CustomCountrySelect}
+                                        numberInputProps={{
+                                            className: "w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-zinc-200 placeholder:text-zinc-600 pl-2 self-stretch"
+                                        }}
+                                        className="flex items-center gap-2 w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2 pl-2.5 pr-4 text-zinc-200 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all"
                                     />
                                 </div>
 
@@ -309,25 +603,20 @@ export default function RegisterPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-zinc-400 text-sm font-bold mb-2">Gender</label>
-                                        <select
-                                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none"
+                                        <CustomGenderSelect
                                             value={formData.gender}
-                                            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                                        >
-                                            <option value="">Select Gender</option>
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Non-binary">Non-binary</option>
-                                            <option value="Prefer not to say">Prefer not to say</option>
-                                        </select>
+                                            onChange={(val) => setFormData({ ...formData, gender: val })}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-zinc-400 text-sm font-bold mb-2">Birth Date</label>
                                         <input
-                                            type="date"
-                                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                                            type="text"
+                                            placeholder="DD/MM/YYYY"
+                                            maxLength={10}
+                                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                                             value={formData.birthDate}
-                                            onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+                                            onChange={handleBirthDateChange}
                                         />
                                     </div>
                                 </div>

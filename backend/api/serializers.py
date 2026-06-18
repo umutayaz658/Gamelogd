@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
+            'followers_count', 'following_count', 'is_following', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
         read_only_fields = ['id', 'date_joined']
@@ -61,6 +61,8 @@ class UserSerializer(serializers.ModelSerializer):
     following_count = serializers.IntegerField(source='following.count', read_only=True)
     reviews_count = serializers.IntegerField(source='reviews.count', read_only=True)
     is_following = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()
+    has_blocked_me = serializers.SerializerMethodField()
 
     def get_is_following(self, obj):
         request = self.context.get('request')
@@ -69,6 +71,22 @@ class UserSerializer(serializers.ModelSerializer):
             # Follow model: follower=request.user, following=obj
             from api.models import Follow
             return Follow.objects.filter(follower=request.user, following=obj).exists()
+        return False
+
+    def get_is_blocked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if request.user has blocked obj
+            from api.models import Block
+            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
+        return False
+
+    def get_has_blocked_me(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if obj has blocked request.user
+            from api.models import Block
+            return Block.objects.filter(blocker=obj, blocked=request.user).exists()
         return False
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -126,6 +144,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    real_name = serializers.CharField(required=True, max_length=100, min_length=1)
     # Explicitly tell DRF to accept a list of strings, not IDs
     interests = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
     roles = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
@@ -135,15 +154,27 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = [
             'username', 'email', 'password', 'phone_number', 
             'is_gamer', 'is_developer', 'is_investor',
-            'gender', 'birth_date', 'platforms', 'interests', 'roles'
+            'gender', 'birth_date', 'platforms', 'interests', 'roles', 'real_name'
         ]
         extra_kwargs = {'password': {'write_only': True}}
+
+    def validate_real_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Display name is required.")
+        value = value.strip()
+        if '<' in value or '>' in value:
+            raise serializers.ValidationError("Display name contains invalid characters.")
+        return value
 
     def validate_username(self, value):
         if value.lower() in RESERVED_USERNAMES:
             raise serializers.ValidationError("This username is reserved.")
         if '/' in value or '?' in value or '&' in value or '%' in value:
              raise serializers.ValidationError("Username contains invalid characters.")
+        
+        user = User.objects.filter(username=value).first()
+        if user and user.is_active:
+            raise serializers.ValidationError("A user with that username already exists.")
         return value
 
     def validate_password(self, value):
@@ -152,12 +183,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        user = User.objects.filter(email=value).first()
+        if user and user.is_active:
             raise serializers.ValidationError("A user with that email already exists.")
         return value
 
     def create(self, validated_data):
         print("DEBUG: Validated Data received:", validated_data)
+        
+        email = validated_data.get('email')
+        username = validated_data.get('username')
+        
+        # Clean up any unverified, inactive users with matching email or username
+        if email:
+            User.objects.filter(email=email, is_active=False).delete()
+        if username:
+            User.objects.filter(username=username, is_active=False).delete()
         
         interests_data = validated_data.pop('interests', [])
         roles_data = validated_data.pop('roles', [])
@@ -169,7 +210,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             if 'Developer' in roles_data: validated_data['is_developer'] = True
             if 'Investor' in roles_data: validated_data['is_investor'] = True
 
-        # Create user securely
+        # Create user securely (will default to is_active=False in view, but here we can create normally)
         user = User.objects.create_user(password=password, **validated_data)
 
         # Handle Interests
@@ -569,21 +610,42 @@ class NewsSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return Bookmark.objects.filter(user=request.user, news=obj).exists()
         return False
+class MessageReactionSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = MessageReaction
+        fields = ['id', 'emoji', 'username', 'user']
+
+class SimpleMessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.username', read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'content', 'sender_username', 'image', 'gif_url']
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     is_me = serializers.SerializerMethodField()
     shared_post_details = SimplePostSerializer(source='shared_post', read_only=True)
     shared_review_details = ReviewSerializer(source='shared_review', read_only=True)
     shared_news_details = NewsSerializer(source='shared_news', read_only=True)
+    reactions = MessageReactionSerializer(many=True, read_only=True)
+    reply_to_details = SimpleMessageSerializer(source='reply_to', read_only=True)
 
     class Meta:
         model = Message
         fields = [
             'id', 'conversation', 'sender', 'content', 'is_read', 'created_at', 'is_me',
             'image', 'gif_url', 'shared_post', 'shared_review', 'shared_news',
-            'shared_post_details', 'shared_review_details', 'shared_news_details'
+            'shared_post_details', 'shared_review_details', 'shared_news_details',
+            'reactions', 'reply_to', 'reply_to_details'
         ]
-        read_only_fields = ['id', 'sender', 'created_at', 'is_me', 'shared_post_details', 'shared_review_details', 'shared_news_details']
+        read_only_fields = [
+            'id', 'sender', 'created_at', 'is_me', 
+            'shared_post_details', 'shared_review_details', 'shared_news_details', 
+            'reactions', 'reply_to_details'
+        ]
 
     def get_is_me(self, obj):
         request = self.context.get('request')

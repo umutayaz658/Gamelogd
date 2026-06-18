@@ -16,14 +16,17 @@ export function LogModalProvider({ children }: { children: ReactNode }) {
     const [initialGame, setInitialGame] = useState<any>(null);
     const [existingReview, setExistingReview] = useState<any>(null);
 
-    const openLogModal = (game?: any, review?: any) => {
-        setInitialGame(game || null);
+
+        const openLogModal = (game?: any, review?: any) => {
+        const isValidGame = game && typeof game.id === 'number' && typeof game.title === 'string';
+        setInitialGame(isValidGame ? game : null);
         setExistingReview(review || null);
         setIsLogModalOpen(true);
     };
     const closeLogModal = () => {
         setIsLogModalOpen(false);
         setExistingReview(null);
+        setInitialGame(null);
     };
 
     return (

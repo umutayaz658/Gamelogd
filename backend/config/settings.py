@@ -26,8 +26,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'cloudinary_storage',
     'django.contrib.staticfiles',
+    'cloudinary_storage',
     'cloudinary',
     'rest_framework',
     'rest_framework.authtoken',
@@ -54,6 +54,8 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://gamelogd-coral.vercel.app",
+    "https://gamelogd.net",
+    "https://www.gamelogd.net",
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -63,6 +65,8 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 CSRF_TRUSTED_ORIGINS = [
     "https://gamelogd-coral.vercel.app",
     "https://gamelogd-production.up.railway.app",
+    "https://gamelogd.net",
+    "https://www.gamelogd.net",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -158,6 +162,15 @@ STORAGES = {
     },
 }
 
+# Legacy storage configurations for compatibility with older third-party packages (like django-cloudinary-storage)
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage" if os.environ.get('CLOUDINARY_URL') else "django.core.files.storage.FileSystemStorage"
+
+# Do not crash the build if some static files referenced in CSS files (e.g. source maps, missing svgs) are missing.
+WHITENOISE_MANIFEST_STRICT = False
+
+
+
 # Cloudinary Setup
 if os.environ.get('CLOUDINARY_URL'):
     CLOUDINARY_STORAGE = {
@@ -188,11 +201,34 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '47915710744-n0ou1hdfknaur
 CRON_SECRET = os.environ.get('CRON_SECRET', 'gamelogd-local-cron-secret-key-12345')
 
 # Email configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.ethereal.email')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ['1', 'true']
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'gxj2bu4m6omtrgis@ethereal.email')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'B5j9SDBawTPhxWZqTt')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+# In development (Docker local): print emails to console (terminal logs)
+# In production: use Resend SMTP to send real emails from noreply@gamelogd.net
+EMAIL_HOST_PASSWORD = (
+    os.environ.get('EMAIL_HOST_PASSWORD') or 
+    os.environ.get('resend_api') or 
+    os.environ.get('RESEND_API_KEY')
+)
+
+if EMAIL_HOST_PASSWORD:
+    # Production: Resend SMTP (or any SMTP provider)
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.resend.com')
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+    EMAIL_USE_TLS = True
+    EMAIL_USE_SSL = False
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'resend')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Gamelogd <noreply@gamelogd.net>')
+    EMAIL_TIMEOUT = 10  # Seconds - prevent SMTP hangs from killing gunicorn workers
+else:
+    # Development: print emails to console (docker logs backend)
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = 'Gamelogd <noreply@gamelogd.net>'
+
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@gamelogd.net')
+
+# Security Headers Settings
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+
 

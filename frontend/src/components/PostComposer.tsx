@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Image as ImageIcon, ImagePlay, FileImage, X, Smile, BarChart2, Plus, Trash2, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getImageUrl } from '@/lib/utils';
@@ -24,6 +24,16 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     // Create Post State
     const [content, setContent] = useState('');
     const [isPosting, setIsPosting] = useState(false);
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+    }, [content]);
 
     // Media State
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -195,10 +205,12 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                         </div>
                     )}
                     <textarea
+                        ref={textareaRef}
                         placeholder={t('whatsHappening')}
-                        className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0 text-lg mb-2 resize-none min-h-[60px]"
+                        className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0 text-lg mb-2 resize-none min-h-[60px] overflow-hidden"
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
+                        maxLength={350}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
@@ -312,23 +324,33 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             </button>
                         </div>
 
-                        <button
-                            onClick={handlePost}
-                            disabled={isPosting || (!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2))}
-                            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
-                        >
-                            {isPosting ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    {t('loading')}
-                                </>
-                            ) : (
-                                <>
-                                    <Send className="h-4 w-4" />
-                                    {t('post')}
-                                </>
+                        <div className="flex items-center gap-3">
+                            {content.length > 0 && (
+                                <span className={`text-xs font-semibold select-none transition-colors ${
+                                    content.length >= 350 ? 'text-red-500 font-bold' :
+                                    content.length >= 320 ? 'text-amber-500' : 'text-zinc-500'
+                                }`}>
+                                    {350 - content.length}
+                                </span>
                             )}
-                        </button>
+                            <button
+                                onClick={handlePost}
+                                disabled={isPosting || (!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350}
+                                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
+                            >
+                                {isPosting ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {t('loading')}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send className="h-4 w-4" />
+                                        {t('post')}
+                                    </>
+                                )}
+                            </button>
+                        </div>
 
                         {/* Emoji Picker Popover */}
                         {showEmojiPicker && (

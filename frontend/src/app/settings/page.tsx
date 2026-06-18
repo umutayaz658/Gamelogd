@@ -5,11 +5,13 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import Switch from "@/components/Switch";
 import api from "@/lib/api";
+import { getImageUrl } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { 
     User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe, 
     FileText, HelpCircle, ChevronRight, ExternalLink, MessageCircle, Bug, Zap, Play, 
-    Loader2, X, Search, Check, AlertTriangle, Info, Send 
+    Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX
 } from 'lucide-react';
 
 const colors = {
@@ -164,6 +166,8 @@ const translations = {
         errorSteamSync: "Failed to sync Steam account. Please check your ID.",
         confirmSteamDisconnect: "Are you sure you want to disconnect Steam? This will remove your synced games.",
         successSteamDisconnect: "Steam disconnected successfully.",
+        confirmUnblockTitle: "Unblock User",
+        confirmUnblockMsg: "Are you sure you want to unblock @{username}?",
         successPlatformUpdate: "account updated successfully!",
         errorPlatformUpdate: "Failed to save connection config.",
         confirmPlatformDisconnect: "Are you sure you want to disconnect",
@@ -311,6 +315,8 @@ const translations = {
         errorSteamSync: "Steam hesabı eşitlenemedi. Lütfen ID'nizi kontrol edin.",
         confirmSteamDisconnect: "Steam bağlantısını kesmek istediğinizden emin misiniz? Bu işlem eşitlenmiş oyunlarınızı kaldıracaktır.",
         successSteamDisconnect: "Steam bağlantısı başarıyla kesildi.",
+        confirmUnblockTitle: "Kullanıcı Engeli Kaldır",
+        confirmUnblockMsg: "@{username} kullanıcısının engelini kaldırmak istediğinizden emin misiniz?",
         successPlatformUpdate: "hesabı başarıyla güncellendi!",
         errorPlatformUpdate: "Bağlantı ayarları kaydedilemedi.",
         confirmPlatformDisconnect: "Bağlantıyı kesmek istediğinizden emin misiniz:",
@@ -458,6 +464,8 @@ const translations = {
         errorSteamSync: "No se pudo sincronizar Steam.",
         confirmSteamDisconnect: "¿Desconectar Steam?",
         successSteamDisconnect: "Steam desconectado.",
+        confirmUnblockTitle: "Desbloquear Usuario",
+        confirmUnblockMsg: "¿Está seguro de que desea desbloquear a @{username}?",
         successPlatformUpdate: "¡Actualizado con éxito!",
         errorPlatformUpdate: "Error de configuración.",
         confirmPlatformDisconnect: "¿Desconectar plataforma?",
@@ -594,6 +602,8 @@ const translations = {
         errorSteamSync: "Échec de la synchronisation Steam.",
         confirmSteamDisconnect: "Déconnecter Steam ?",
         successSteamDisconnect: "Steam déconnecté.",
+        confirmUnblockTitle: "Débloquer l'utilisateur",
+        confirmUnblockMsg: "Êtes-vous sûr de vouloir débloquer @{username} ?",
         successPlatformUpdate: "Compte mis à jour avec succès !",
         errorPlatformUpdate: "Échec de la configuration.",
         confirmPlatformDisconnect: "Déconnecter la plateforme ?",
@@ -730,6 +740,8 @@ const translations = {
         errorSteamSync: "Steam-Synchronisierung fehlgeschlagen.",
         confirmSteamDisconnect: "Steam-Verbindung trennen?",
         successSteamDisconnect: "Steam-Verbindung getrennt.",
+        confirmUnblockTitle: "Benutzer entsperren",
+        confirmUnblockMsg: "Sind Sie sicher, dass Sie @{username} entsperren möchten?",
         successPlatformUpdate: "Konto erfolgreich aktualisiert!",
         errorPlatformUpdate: "Konfigurationsfehler.",
         confirmPlatformDisconnect: "Verbindung trennen für",
@@ -854,6 +866,48 @@ function SettingsContent() {
     });
 
     const { user, updateUser, logout } = useAuth();
+    
+    // Blocked Users State & Handlers
+    const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+    const [isBlockedLoading, setIsBlockedLoading] = useState(false);
+
+    const fetchBlockedUsers = async () => {
+        setIsBlockedLoading(true);
+        try {
+            const res = await api.get('/users/blocked-users/');
+            setBlockedUsers(res.data);
+        } catch (error) {
+            console.error("Failed to fetch blocked users:", error);
+        } finally {
+            setIsBlockedLoading(false);
+        }
+    };
+
+    const handleUnblock = (blockedUser: any) => {
+        setConfirmModalConfig({
+            title: t('confirmUnblockTitle'),
+            message: t('confirmUnblockMsg').replace('{username}', blockedUser.username),
+            confirmText: displaySettings.language === 'Turkish' ? 'Engeli Kaldır' : 'Unblock',
+            isDanger: false,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/users/${blockedUser.username}/unblock/`);
+                    setBlockedUsers(prev => prev.filter(u => u.id !== blockedUser.id));
+                } catch (error) {
+                    console.error("Failed to unblock user:", error);
+                    alert("Failed to unblock user.");
+                }
+            }
+        });
+        setIsConfirmModalOpen(true);
+    };
+
+    useEffect(() => {
+        if (activeTab === 'blocked') {
+            fetchBlockedUsers();
+        }
+    }, [activeTab]);
+
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -873,6 +927,16 @@ function SettingsContent() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [steamConnected, setSteamConnected] = useState(false);
     const [steamSyncMessage, setSteamSyncMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+
+    // Confirm Modal State
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [confirmModalConfig, setConfirmModalConfig] = useState({
+        title: '',
+        message: '',
+        confirmText: 'Confirm',
+        isDanger: false,
+        onConfirm: () => {}
+    });
 
     // Dialog Modal States
     const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -1081,18 +1145,26 @@ function SettingsContent() {
         }
     };
 
-    const handleSteamDisconnect = async () => {
-        if (!confirm(t('confirmSteamDisconnect'))) return;
-        try {
-            await api.post('/users/disconnect_steam/');
-            setSteamConnected(false);
-            setSteamIdInput('');
-            alert(t('successSteamDisconnect'));
-            const meRes = await api.get('/users/me/');
-            updateUser(meRes.data);
-        } catch (error) {
-            console.error("Failed to disconnect Steam:", error);
-        }
+    const handleSteamDisconnect = () => {
+        setConfirmModalConfig({
+            title: displaySettings.language === 'Turkish' ? 'Steam Bağlantısını Kes' : 'Disconnect Steam',
+            message: t('confirmSteamDisconnect'),
+            confirmText: displaySettings.language === 'Turkish' ? 'Bağlantıyı Kes' : 'Disconnect',
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post('/users/disconnect_steam/');
+                    setSteamConnected(false);
+                    setSteamIdInput('');
+                    alert(t('successSteamDisconnect'));
+                    const meRes = await api.get('/users/me/');
+                    updateUser(meRes.data);
+                } catch (error) {
+                    console.error("Failed to disconnect Steam:", error);
+                }
+            }
+        });
+        setIsConfirmModalOpen(true);
     };
 
     const handleConnectPlatform = (platformId: string, platformName: string) => {
@@ -1132,31 +1204,38 @@ function SettingsContent() {
         }
     };
 
-    const handleDisconnectPlatform = async (platformId: string, platformName: string) => {
-        if (!confirm(`${t('confirmPlatformDisconnect')} ${platformName}?`)) return;
-        
-        const updatedConnected = {
-            ...settings.connected_accounts,
-            [platformId]: {
-                connected: false,
-                username: ''
+    const handleDisconnectPlatform = (platformId: string, platformName: string) => {
+        setConfirmModalConfig({
+            title: displaySettings.language === 'Turkish' ? 'Bağlantıyı Kes' : 'Disconnect Platform',
+            message: `${t('confirmPlatformDisconnect')} ${platformName}?`,
+            confirmText: displaySettings.language === 'Turkish' ? 'Bağlantıyı Kes' : 'Disconnect',
+            isDanger: true,
+            onConfirm: async () => {
+                const updatedConnected = {
+                    ...settings.connected_accounts,
+                    [platformId]: {
+                        connected: false,
+                        username: ''
+                    }
+                };
+
+                const updatedSettings = {
+                    ...settings,
+                    connected_accounts: updatedConnected
+                };
+
+                setSettings(updatedSettings as any);
+
+                try {
+                    const res = await api.patch('/users/me/', { settings: updatedSettings });
+                    updateUser(res.data);
+                    alert(`${platformName} ${t('successPlatformDisconnect')}`);
+                } catch (error) {
+                    console.error(`Failed to disconnect ${platformName}:`, error);
+                }
             }
-        };
-
-        const updatedSettings = {
-            ...settings,
-            connected_accounts: updatedConnected
-        };
-
-        setSettings(updatedSettings as any);
-
-        try {
-            const res = await api.patch('/users/me/', { settings: updatedSettings });
-            updateUser(res.data);
-            alert(`${platformName} ${t('successPlatformDisconnect')}`);
-        } catch (error) {
-            console.error(`Failed to disconnect ${platformName}:`, error);
-        }
+        });
+        setIsConfirmModalOpen(true);
     };
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -1279,6 +1358,7 @@ function SettingsContent() {
         { id: 'account', label: t('myAccount'), icon: User },
         { id: 'connected', label: t('connectedAccounts'), icon: Monitor },
         { id: 'privacy', label: t('privacySafety'), icon: Shield },
+        { id: 'blocked', label: 'Blocked Users', icon: UserX },
         { id: 'content', label: t('contentPreferences'), icon: EyeOff },
         { id: 'notifications', label: t('notifications'), icon: Bell },
         { id: 'display', label: t('displayLanguages'), icon: Globe },
@@ -1846,6 +1926,62 @@ function SettingsContent() {
                                 </div>
                             )}
 
+                            {/* Blocked Users */}
+                            {activeTab === 'blocked' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                                    <div>
+                                        <h2 className="text-2xl font-bold mb-2">Blocked Users</h2>
+                                        <p className="text-zinc-400 text-sm">
+                                            Here is the list of users you have blocked. Blocked users cannot follow you, see your profile details, or send you direct messages.
+                                        </p>
+                                    </div>
+
+                                    {isBlockedLoading ? (
+                                        <div className="flex justify-center py-12">
+                                            <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
+                                        </div>
+                                    ) : blockedUsers.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {blockedUsers.map((blockedUser) => (
+                                                <div 
+                                                    key={blockedUser.id}
+                                                    className="flex items-center justify-between p-3.5 bg-zinc-950/40 border border-zinc-800 rounded-xl hover:border-zinc-700/60 transition-all"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-800 border border-zinc-700/50 flex-shrink-0">
+                                                            <img 
+                                                                src={getImageUrl(blockedUser.avatar, blockedUser.username)}
+                                                                alt={blockedUser.username}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-white text-sm">
+                                                                {blockedUser.real_name || blockedUser.username}
+                                                            </div>
+                                                            <div className="text-xs text-zinc-500">
+                                                                @{blockedUser.username}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => handleUnblock(blockedUser)}
+                                                        className="px-3 py-1.5 text-xs font-bold text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 bg-zinc-900 rounded-lg transition-all cursor-pointer"
+                                                    >
+                                                        Unblock
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-850/50 rounded-2xl">
+                                            You haven't blocked any users yet.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                         </div>
                     </div>
                 </div>
@@ -2375,6 +2511,17 @@ function SettingsContent() {
                     </div>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={confirmModalConfig.onConfirm}
+                title={confirmModalConfig.title}
+                message={confirmModalConfig.message}
+                confirmText={confirmModalConfig.confirmText}
+                cancelText={t('cancel') || 'Cancel'}
+                isDanger={confirmModalConfig.isDanger}
+            />
         </div>
     );
 }
