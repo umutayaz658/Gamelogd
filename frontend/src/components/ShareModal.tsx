@@ -30,12 +30,14 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
     const { user: currentUser } = useAuth();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [shareComment, setShareComment] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [sendingStates, setSendingStates] = useState<{ [chatId: number]: 'idle' | 'sending' | 'sent' }>({});
 
     useEffect(() => {
         if (!isOpen) {
             setSearchQuery('');
+            setShareComment('');
             setSendingStates({});
             return;
         }
@@ -60,7 +62,7 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
         try {
             const payload: any = {
                 conversation: chatId,
-                content: `Shared a ${itemType === 'review' ? 'game log' : itemType}:`
+                content: shareComment.trim()
             };
             if (itemType === 'post') payload.shared_post = itemId;
             if (itemType === 'review') payload.shared_review = itemId;
@@ -108,8 +110,8 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
                     </button>
                 </div>
 
-                {/* Search */}
-                <div className="p-3 border-b border-zinc-800">
+                {/* Search & Comment */}
+                <div className="p-3 border-b border-zinc-800 space-y-2.5">
                     <div className="relative">
                         <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-zinc-500" />
                         <input
@@ -118,6 +120,15 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-650"
+                        />
+                    </div>
+                    <div>
+                        <textarea
+                            placeholder="Add a message (optional)..."
+                            value={shareComment}
+                            onChange={(e) => setShareComment(e.target.value)}
+                            rows={2}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-600 resize-none"
                         />
                     </div>
                 </div>

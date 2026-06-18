@@ -47,6 +47,29 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const { t } = useTranslation();
 
     const [isLiked, setIsLiked] = useState(post.is_liked || false);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [shouldShowShowMore, setShouldShowShowMore] = useState(false);
+    const contentRef = useRef<HTMLParagraphElement>(null);
+
+    useEffect(() => {
+        const checkOverflow = () => {
+            if (contentRef.current) {
+                const element = contentRef.current;
+                if (!isExpanded) {
+                    setShouldShowShowMore(element.scrollHeight > element.clientHeight);
+                }
+            }
+        };
+
+        // Run check after layout
+        const timer = setTimeout(checkOverflow, 50);
+
+        window.addEventListener('resize', checkOverflow);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('resize', checkOverflow);
+        };
+    }, [post.content, isExpanded, isDetailView]);
     const [likesCount, setLikesCount] = useState(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
     const [isBookmarked, setIsBookmarked] = useState(post.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(post.bookmarks_count || 0);
@@ -325,9 +348,30 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </div>
                             )}
 
-                            <p className={`text-zinc-300 whitespace-pre-wrap leading-relaxed ${isDetailView ? 'text-lg' : 'line-clamp-6 sm:line-clamp-[10]'}`}>
+                            <p
+                                ref={contentRef}
+                                className={`text-zinc-300 whitespace-pre-wrap leading-relaxed ${
+                                    isDetailView 
+                                        ? 'text-lg' 
+                                        : isExpanded 
+                                            ? '' 
+                                            : 'line-clamp-2'
+                                }`}
+                            >
                                 {renderContentWithLinks(post.content)}
                             </p>
+
+                            {!isDetailView && shouldShowShowMore && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsExpanded(!isExpanded);
+                                    }}
+                                    className="text-emerald-500 hover:text-emerald-400 hover:underline text-sm font-semibold transition-colors mt-1 block w-fit"
+                                >
+                                    {isExpanded ? t('showLess') : `${t('showMore')}...`}
+                                </button>
+                            )}
                         </div>
 
                         {/* Media (Images/Videos/Gifs) */}

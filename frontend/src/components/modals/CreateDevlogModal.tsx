@@ -9,6 +9,7 @@ interface CreateDevlogModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: (newPost: Post) => void;
+    defaultProjectId?: number;
 }
 
 interface MediaItem {
@@ -17,7 +18,7 @@ interface MediaItem {
     type: 'image' | 'video';
 }
 
-export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: CreateDevlogModalProps) {
+export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultProjectId }: CreateDevlogModalProps) {
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<number | ''>('');
     const [title, setTitle] = useState('');
@@ -35,7 +36,11 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
             const fetchProjects = async () => {
                 try {
                     const res = await api.get('/projects/');
-                    setProjects(res.data.results || res.data);
+                    const results = res.data.results || res.data;
+                    setProjects(results);
+                    if (defaultProjectId) {
+                        setSelectedProject(defaultProjectId);
+                    }
                 } catch (err) {
                     console.error("Failed to load projects", err);
                 }
@@ -48,7 +53,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess }: Create
             setSelectedProject('');
             setMediaItems([]);
         }
-    }, [isOpen]);
+    }, [isOpen, defaultProjectId]);
 
     // Cleanup object URLs on unmount or change
     useEffect(() => {

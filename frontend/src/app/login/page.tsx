@@ -43,6 +43,14 @@ export default function LoginPage() {
         } catch (err: any) {
             console.error('Login failed:', err);
             const data = err.response?.data;
+
+            // If user hasn't verified email yet, redirect to verification page
+            if (data?.status === 'verification_required' && data?.email) {
+                const emailEncoded = encodeURIComponent(data.email);
+                router.push(`/verify-email?email=${emailEncoded}`);
+                return;
+            }
+
             const errorMsg = data?.detail || data?.error || (typeof data === 'string' ? data : 'Invalid credentials. Please try again.');
             setError(errorMsg);
             setIsLoading(false);

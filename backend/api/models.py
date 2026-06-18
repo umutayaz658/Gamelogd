@@ -5,6 +5,10 @@ from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings as django_settings
+from django.utils import timezone
+from datetime import timedelta
+import random
+
 
 class Interest(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -232,11 +236,26 @@ class Message(models.Model):
     shared_review = models.ForeignKey('core.Review', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
     shared_news = models.ForeignKey('core.News', on_delete=models.SET_NULL, null=True, blank=True, related_name='shared_messages')
 
+    # Replying
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
+
     class Meta:
         ordering = ['created_at']
 
     def __str__(self):
         return f"Message from {self.sender} in {self.conversation}"
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(Message, related_name='reactions', on_delete=models.CASCADE)
+    user = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    emoji = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('message', 'user', 'emoji')
+
+    def __str__(self):
+        return f"{self.user.username} reacted {self.emoji} to message {self.message.id}"
 
 class SupportTicket(models.Model):
     TICKET_TYPE_CHOICES = [
@@ -255,3 +274,51 @@ class SupportTicket(models.Model):
 
     def __str__(self):
         return f"{self.ticket_type.upper()} - {self.subject} by {self.user.username}"
+
+
+class PendingRegistration(models.Model):
+    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150, unique=True)
+    code = models.CharField(max_length=6)
+    registration_data = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=5)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def generate_code(cls):
+        import secrets
+        return "".join(secrets.choice("0123456789") for _ in range(6))
+
+    def __str__(self):
+        return f"Pending registration for {self.email} (Code: {self.code})"
+
+
+class Block(models.Model):
+    blocker = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='blocking_users', on_delete=models.CASCADE)
+    blocked = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='blocked_users', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+    def save(self, *args, **kwargs):
+        # Automatically clean up any mutual follows when blocking
+        from api.models import Follow
+        Follow.objects.filter(
+            models.Q(follower=self.blocker, following=self.blocked) |
+            models.Q(follower=self.blocked, following=self.blocker)
+        ).delete()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.blocker} blocked {self.blocked}"
+
+

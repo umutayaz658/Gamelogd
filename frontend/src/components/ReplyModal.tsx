@@ -4,7 +4,7 @@ import { useReplyModal } from '@/context/ReplyModalContext';
 import { useFeed } from '@/context/FeedContext';
 import { Post, Review } from '@/types';
 import { X, Loader2, ImagePlay, Smile, BarChart2, Plus, Trash2, FileImage } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from './PostCard';
@@ -22,6 +22,16 @@ export default function ReplyModal() {
     // Core State
     const [content, setContent] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+    }, [content]);
 
     // Media State
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -240,11 +250,13 @@ export default function ReplyModal() {
                                 )}
 
                                 <textarea
+                                    ref={textareaRef}
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
                                     placeholder={mode === 'quote' ? "Add a comment..." : "Post your reply"}
-                                    className="w-full bg-transparent text-lg text-zinc-200 placeholder-zinc-500 border-none focus:outline-none focus:ring-0 resize-none min-h-[100px] p-0 mb-2"
+                                    className="w-full bg-transparent text-lg text-zinc-200 placeholder-zinc-500 border-none focus:outline-none focus:ring-0 resize-none min-h-[100px] p-0 mb-2 overflow-hidden"
                                     autoFocus
+                                    maxLength={350}
                                 />
 
                                 {/* Embedded Quoted Post (ONLY if mode === 'quote') */}
@@ -395,14 +407,24 @@ export default function ReplyModal() {
                                         </button>
                                     </div>
 
-                                    <button
-                                        onClick={handleSubmit}
-                                        disabled={!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2) || isSubmitting}
-                                        className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
-                                    >
-                                        {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                                        {mode === 'quote' ? 'Post' : 'Reply'}
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                        {content.length > 0 && (
+                                            <span className={`text-xs font-semibold select-none transition-colors ${
+                                                content.length >= 350 ? 'text-red-500 font-bold' :
+                                                content.length >= 320 ? 'text-amber-500' : 'text-zinc-500'
+                                            }`}>
+                                                {350 - content.length}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={handleSubmit}
+                                            disabled={(!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350 || isSubmitting}
+                                            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
+                                        >
+                                            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                                            {mode === 'quote' ? 'Post' : 'Reply'}
+                                        </button>
+                                    </div>
                                 </div>
                                 {/* Emoji Picker Popover */}
                                 {showEmojiPicker && (
