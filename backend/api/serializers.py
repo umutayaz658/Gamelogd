@@ -256,7 +256,8 @@ class GameDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'cover_image', 'release_date', 'igdb_id', 'steam_appid', 'genres',
             'summary', 'description', 'developer', 'publisher', 'screenshots', 'platforms', 'igdb_url',
-            'average_rating', 'review_count', 'log_count'
+            'average_rating', 'review_count', 'log_count',
+            'metacritic_score', 'hltb_main', 'hltb_main_extra', 'hltb_completionist'
         ]
         read_only_fields = ['id']
 
@@ -291,7 +292,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 
             'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
-            'is_liked_by_user', 'likes_count'
+            'is_liked_by_user', 'likes_count', 'playthrough_number'
         ]
         read_only_fields = ['id', 'user', 'timestamp']
 
@@ -311,9 +312,9 @@ class ReviewSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.method == 'POST':
             game = data.get('game')
-            # If game is looked up via game_id, it might be in validated_data as 'game' object
-            if Review.objects.filter(user=request.user, game=game).exists():
-                raise serializers.ValidationError("You have already reviewed this game.")
+            playthrough = data.get('playthrough_number', 1)
+            if Review.objects.filter(user=request.user, game=game, playthrough_number=playthrough).exists():
+                raise serializers.ValidationError("You have already logged this playthrough.")
         # Prevent changing game_id on update
         if request and request.method in ['PUT', 'PATCH']:
             if 'game' in data and self.instance and data['game'] != self.instance.game:
