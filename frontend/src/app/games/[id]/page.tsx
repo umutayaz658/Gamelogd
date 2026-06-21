@@ -32,13 +32,18 @@ export default function GameDetailPage() {
     const carouselRef = useRef<HTMLDivElement>(null);
     const [activeIndex, setActiveIndex] = useState(0);
 
+    const [notFound, setNotFound] = useState(false);
+
     useEffect(() => {
         const fetchGame = async () => {
             try {
                 const response = await api.get(`/games/${gameId}/details/`);
                 setGame(response.data);
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Failed to fetch game details:", err);
+                if (err.response?.status === 404) {
+                    setNotFound(true);
+                }
             } finally {
                 setLoading(false);
             }
@@ -135,15 +140,19 @@ export default function GameDetailPage() {
         );
     }
 
-    if (!game) {
+    if (notFound || !game) {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
                 <Navbar />
                 <main className="container mx-auto px-4 pt-6">
                     <div className="grid grid-cols-12 gap-6">
                         <div className="hidden lg:block col-span-3"><LeftSidebar /></div>
-                        <div className="col-span-12 lg:col-span-9 text-center text-zinc-400 mt-20">
-                            Game not found.
+                        <div className="col-span-12 lg:col-span-9 flex flex-col justify-center items-center h-64 text-center">
+                            <h2 className="text-4xl font-bold text-zinc-500 mb-4">404</h2>
+                            <p className="text-zinc-400 text-lg">This game was removed from the database during cleanup or doesn't exist.</p>
+                            <Link href="/" className="mt-6 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-full font-medium transition-colors">
+                                Go back Home
+                            </Link>
                         </div>
                     </div>
                 </main>
@@ -265,17 +274,28 @@ export default function GameDetailPage() {
                                         <span><strong className="text-white">{game.log_count || 0}</strong> Logs</span>
                                     </div>
                                 </div>
-                                <button 
-                                    onClick={() => openLogModal(game, myReview)}
-                                    className={`px-6 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm ${myReview ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'}`}
-                                >
-                                    {myReview ? (
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                                    ) : (
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                                <div className="flex items-center gap-3">
+                                    <button 
+                                        onClick={() => openLogModal(game, myReview)}
+                                        className={`px-6 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm ${myReview ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'}`}
+                                    >
+                                        {myReview ? (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                                        )}
+                                        {myReview ? 'Edit Log' : 'Log Game'}
+                                    </button>
+                                    {myReview && (
+                                        <button 
+                                            onClick={() => openLogModal(game, myReview, true)}
+                                            className="px-5 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm bg-purple-600 hover:bg-purple-500 shadow-purple-900/20"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                                            Log Replay
+                                        </button>
                                     )}
-                                    {myReview ? 'Edit Log' : 'Log Game'}
-                                </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -339,6 +359,75 @@ export default function GameDetailPage() {
                                     );
                                 })}
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Game Stats Section (Metacritic & HLTB) */}
+                {(game.metacritic_score || game.hltb_main) && (
+                    <div className="px-4 mb-16">
+                        <div className="flex items-center gap-2 mb-6">
+                            <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                            <h2 className="text-2xl font-bold text-white">Game Stats</h2>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            {/* Metacritic Card */}
+                            {game.metacritic_score && (
+                                <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col items-center justify-center text-center shadow-lg hover:border-zinc-700 transition-all">
+                                    <h3 className="text-zinc-400 font-semibold mb-3 text-sm tracking-wider uppercase">Critic Score</h3>
+                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl font-black border-4 shadow-lg ${
+                                        game.metacritic_score >= 75 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-emerald-500/20' :
+                                        game.metacritic_score >= 50 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/50 shadow-yellow-500/20' :
+                                        'bg-red-500/10 text-red-400 border-red-500/50 shadow-red-500/20'
+                                    }`}>
+                                        {game.metacritic_score}
+                                    </div>
+                                    <div className="mt-3 text-xs text-zinc-500">Based on IGDB / Critics</div>
+                                </div>
+                            )}
+
+                            {/* HowLongToBeat Cards */}
+                            {(game.hltb_main || game.hltb_main_extra || game.hltb_completionist) && (
+                                <div className={`grid gap-4 ${game.metacritic_score ? 'md:col-span-3 grid-cols-1 sm:grid-cols-3' : 'md:col-span-4 grid-cols-1 sm:grid-cols-3'}`}>
+                                    {game.hltb_main && (
+                                        <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-center shadow-lg hover:border-indigo-500/30 transition-all relative overflow-hidden group">
+                                            <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <svg className="w-24 h-24 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
+                                            </div>
+                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">Main Story</h3>
+                                            <div className="flex items-baseline gap-1">
+                                                <span className="text-3xl font-bold text-indigo-400">{game.hltb_main}</span>
+                                                <span className="text-zinc-500 font-medium">Hours</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {game.hltb_main_extra && (
+                                        <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-center shadow-lg hover:border-purple-500/30 transition-all relative overflow-hidden group">
+                                            <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <svg className="w-24 h-24 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
+                                            </div>
+                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">Main + Extras</h3>
+                                            <div className="flex items-baseline gap-1">
+                                                <span className="text-3xl font-bold text-purple-400">{game.hltb_main_extra}</span>
+                                                <span className="text-zinc-500 font-medium">Hours</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {game.hltb_completionist && (
+                                        <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-center shadow-lg hover:border-pink-500/30 transition-all relative overflow-hidden group">
+                                            <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <svg className="w-24 h-24 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
+                                            </div>
+                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">Completionist</h3>
+                                            <div className="flex items-baseline gap-1">
+                                                <span className="text-3xl font-bold text-pink-400">{game.hltb_completionist}</span>
+                                                <span className="text-zinc-500 font-medium">Hours</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

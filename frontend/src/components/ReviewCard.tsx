@@ -269,6 +269,12 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
 
                                 {/* Badges */}
                                 <div className="flex flex-wrap gap-2 mb-2">
+                                    {review.playthrough_number && review.playthrough_number > 1 && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                                            {review.playthrough_number === 2 ? '2nd' : review.playthrough_number === 3 ? '3rd' : `${review.playthrough_number}th`} Playthrough
+                                        </span>
+                                    )}
                                     {review.is_liked && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20">
                                             <Heart className="h-3 w-3 fill-current" /> Liked

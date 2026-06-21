@@ -20,6 +20,12 @@ class Game(models.Model):
     platforms = models.JSONField(default=list, blank=True)
     igdb_url = models.URLField(blank=True, default='', max_length=500)
     details_fetched = models.BooleanField(default=False)
+    
+    # Game Stats (Metacritic & HowLongToBeat)
+    metacritic_score = models.IntegerField(null=True, blank=True)
+    hltb_main = models.FloatField(null=True, blank=True)
+    hltb_main_extra = models.FloatField(null=True, blank=True)
+    hltb_completionist = models.FloatField(null=True, blank=True)
 
     def __str__(self):
         return self.title
@@ -35,10 +41,13 @@ class Review(models.Model):
     is_completed = models.BooleanField(default=False)
     contains_spoilers = models.BooleanField(default=False)
     
+    # Replay tracking
+    playthrough_number = models.PositiveIntegerField(default=1)
+    
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'game')
+        unique_together = ('user', 'game', 'playthrough_number')
         ordering = ['-timestamp']
 
     def __str__(self):
