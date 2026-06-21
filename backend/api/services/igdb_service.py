@@ -5,6 +5,7 @@ from core.models import Game
 from django.conf import settings
 from django.core.cache import cache
 from core.utils import is_unwanted_game
+from api.services.hltb_service import fetch_hltb_times
 
 # In a real app, these should come from settings or env properly. 
 # Using the fallback ones from the import script for now.
@@ -103,9 +104,9 @@ def fetch_game_details(game: Game) -> Game:
         except Exception as e:
             print(f"Failed to resolve IGDB ID for {game.title}: {e}")
             return game
-    # The query asks for summary, storyline, companies, platforms, screenshots, url
+    # The query asks for summary, storyline, companies, platforms, screenshots, url, and aggregated_rating
     query = f"""
-        fields summary, storyline, url, cover.url, first_release_date,
+        fields summary, storyline, url, cover.url, first_release_date, aggregated_rating,
                involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
                platforms.name, screenshots.url, genres.name;
         where id = {target_igdb_id};
@@ -177,6 +178,16 @@ def fetch_game_details(game: Game) -> Game:
                     screenshot_urls.append(url)
             
             game.screenshots = screenshot_urls
+
+            # Metacritic Score (aggregated_rating)
+            if 'aggregated_rating' in igdb_data:
+                game.metacritic_score = int(round(igdb_data['aggregated_rating']))
+
+            # HowLongToBeat
+            hltb_data = fetch_hltb_times(game.title)
+            game.hltb_main = hltb_data.get('hltb_main')
+            game.hltb_main_extra = hltb_data.get('hltb_main_extra')
+            game.hltb_completionist = hltb_data.get('hltb_completionist')
 
             # Update genres just in case they were missing
             genres = igdb_data.get('genres', [])

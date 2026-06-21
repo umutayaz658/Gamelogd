@@ -45,6 +45,10 @@ export interface GameDetail extends Game {
     average_rating?: number;
     review_count?: number;
     log_count?: number;
+    metacritic_score?: number | null;
+    hltb_main?: number | null;
+    hltb_main_extra?: number | null;
+    hltb_completionist?: number | null;
 }
 
 export interface Review {
@@ -60,6 +64,7 @@ export interface Review {
     bookmarks_count?: number;
     is_completed: boolean;
     contains_spoilers: boolean;
+    playthrough_number?: number;
     timestamp: string;
     type?: 'review';
 }
