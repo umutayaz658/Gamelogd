@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, Loader2, ChevronLeft, Calendar, Check, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 interface Game {
     id: number;
@@ -18,10 +19,12 @@ interface LogGameModalProps {
     onSuccess?: () => void;
     initialGame?: any;
     existingReview?: any;
+    isReplay?: boolean;
 }
 
-export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, existingReview }: LogGameModalProps) {
+export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, existingReview, isReplay }: LogGameModalProps) {
     // State Management
+    const { user } = useAuth();
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
@@ -38,6 +41,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
     const [containsSpoilers, setContainsSpoilers] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
+    const [nextPlaythrough, setNextPlaythrough] = useState(2);
 
     // Reset state on open/close
     useEffect(() => {
@@ -52,6 +56,22 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsCompleted(false);
             setContainsSpoilers(false);
             setSubmitError(null);
+        } else if (isReplay && initialGame) {
+            // Replay mode: fresh form but with game pre-selected
+            setSelectedGame(initialGame);
+            setStep(2);
+            setRating(5.0);
+            setContent('');
+            setIsLiked(false);
+            setIsCompleted(false);
+            setContainsSpoilers(false);
+            // Fetch how many playthroughs exist to determine next number
+            const username = user?.username || '';
+            api.get(`/reviews/?game_id=${initialGame.id}&username=${username}`).then(res => {
+                const data = res.data.results || res.data;
+                const maxPt = data.reduce((max: number, r: any) => Math.max(max, r.playthrough_number || 1), 0);
+                setNextPlaythrough(maxPt + 1);
+            }).catch(() => setNextPlaythrough(2));
         } else if (existingReview) {
             setSelectedGame(initialGame || existingReview.game);
             setStep(2);
@@ -99,7 +119,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
         setSubmitError(null);
 
         try {
-            const payload = {
+            const payload: any = {
                 game_id: selectedGame.id,
                 rating: rating,
                 content: content,
@@ -108,7 +128,10 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                 contains_spoilers: containsSpoilers
             };
 
-            if (existingReview) {
+            if (isReplay) {
+                payload.playthrough_number = nextPlaythrough;
+                await api.post('/reviews/', payload);
+            } else if (existingReview) {
                 await api.patch(`/reviews/${existingReview.id}/`, payload);
             } else {
                 await api.post('/reviews/', payload);
@@ -269,7 +292,14 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                         <div className="w-full md:w-2/3 flex flex-col bg-zinc-950/50">
                             {/* Header */}
                             <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950">
-                                <h2 className="text-xl font-bold">{existingReview ? 'Edit Review' : 'Write Review'}</h2>
+                                <h2 className="text-xl font-bold flex items-center gap-3">
+                                    {isReplay ? 'Log Replay' : existingReview ? 'Edit Review' : 'Write Review'}
+                                    {isReplay && (
+                                        <span className="text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full">
+                                            {nextPlaythrough === 2 ? '2nd' : nextPlaythrough === 3 ? '3rd' : `${nextPlaythrough}th`} Playthrough
+                                        </span>
+                                    )}
+                                </h2>
                                 <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
                                     <X className="h-5 w-5" />
                                 </button>
@@ -366,7 +396,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                     className="px-6 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
                                 >
                                     {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
-                                    {existingReview ? 'Update Log' : 'Log Activity'}
+                                    {isReplay ? 'Log Replay' : existingReview ? 'Update Log' : 'Log Activity'}
                                 </button>
                             </div>
                         </div>
