@@ -10,7 +10,7 @@ UNWANTED_PATTERNS = [
     r'\bdlc\b', r'\+ bonus\b', r'\+ extra\b', r'\bpack\b',
     r'\bcollection\b', r'\bcompilation\b', r'\btrilogy\b', r'\bquadrilogy\b', 
     r'\banthology\b', r'\bdouble pack\b', r'\btriple pack\b', r'\bfranchise pack\b',
-    r' \+ '
+    r' \+ ', r'- nintendo switch .* edition\b', r'\benhanced edition\b'
 ]
 
 UNWANTED_REGEXES = [re.compile(p, re.IGNORECASE) for p in UNWANTED_PATTERNS]
