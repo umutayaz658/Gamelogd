@@ -78,6 +78,8 @@ interface Conversation {
         username: string;
         avatar: string | null;
         real_name: string;
+        is_blocked?: boolean;
+        has_blocked_me?: boolean;
     } | null;
     last_message: {
         content: string;
@@ -529,6 +531,35 @@ function MessagesContent() {
         }
     };
 
+    const handleToggleBlock = async () => {
+        if (!selectedChatId || !activeChat || !activeChat.other_user) return;
+        const otherUser = activeChat.other_user;
+        const isBlocked = otherUser.is_blocked;
+
+        setConfirmConfig({
+            title: isBlocked ? 'Unblock User' : 'Block User',
+            message: isBlocked 
+                ? `Are you sure you want to unblock @${otherUser.username}?`
+                : `Are you sure you want to block @${otherUser.username}?`,
+            isDanger: !isBlocked,
+            onConfirm: async () => {
+                try {
+                    if (isBlocked) {
+                        await api.post(`/users/${otherUser.username}/unblock/`);
+                    } else {
+                        await api.post(`/users/${otherUser.username}/block/`);
+                    }
+                    // Refresh conversations to update blocked state
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to toggle block:", error);
+                    alert("Failed to update block status.");
+                }
+            }
+        });
+        setIsConfirmOpen(true);
+    };
+
     // Group Admin Settings Actions
     const handleAddMember = async (username: string) => {
         if (!selectedChatId) return;
@@ -784,24 +815,46 @@ function MessagesContent() {
                                         >
                                             ←
                                         </button>
-                                        <div className="relative">
-                                            <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
-                                                <img
-                                                    src={getChatAvatar(activeChat)}
-                                                    alt={getChatName(activeChat)}
-                                                    className="w-full h-full object-cover"
-                                                />
+                                        {activeChat.is_group ? (
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                <div className="relative">
+                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                                        <img
+                                                            src={getChatAvatar(activeChat)}
+                                                            alt={getChatName(activeChat)}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h2 className="font-bold text-sm truncate">{getChatName(activeChat)}</h2>
+                                                    <p className="text-xs text-zinc-500 truncate">
+                                                        {activeChat.participants.length} members
+                                                    </p>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h2 className="font-bold text-sm truncate">{getChatName(activeChat)}</h2>
-                                            <p className="text-xs text-zinc-500 truncate">
-                                                {activeChat.is_group 
-                                                    ? `${activeChat.participants.length} members` 
-                                                    : `@${activeChat.other_user?.username}`
-                                                }
-                                            </p>
-                                        </div>
+                                        ) : (
+                                            <Link 
+                                                href={`/${activeChat.other_user?.username || ''}`}
+                                                className="flex items-center gap-4 min-w-0 hover:opacity-85 transition-opacity"
+                                            >
+                                                <div className="relative">
+                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                                        <img
+                                                            src={getChatAvatar(activeChat)}
+                                                            alt={getChatName(activeChat)}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h2 className="font-bold text-sm truncate hover:underline">{getChatName(activeChat)}</h2>
+                                                    <p className="text-xs text-zinc-500 truncate">
+                                                        @{activeChat.other_user?.username}
+                                                    </p>
+                                                </div>
+                                            </Link>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2 text-zinc-400">
                                         <button 
@@ -920,7 +973,8 @@ function MessagesContent() {
                                         ))
                                     )}
                                     <div ref={messagesEndRef} />
-                                                  {/* Input Composer Area */}
+                                </div>
+                                {/* Input Composer Area */}
                                 {!activeChat.is_group && activeChat.other_user?.is_blocked ? (
                                     <div className="flex flex-col items-center justify-center gap-2.5 p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-400 text-sm animate-in fade-in duration-200">
                                         <p className="font-semibold text-zinc-400">You have blocked @{activeChat.other_user.username}</p>
@@ -1079,7 +1133,7 @@ function MessagesContent() {
 
                                         </form>
                                     </div>
-                                )}                     </div>
+                                )}
                             </div>
 
                             {/* Details & Settings Drawer */}
@@ -1115,6 +1169,23 @@ function MessagesContent() {
                                             </div>
                                         </button>
                                     </div>
+
+                                    {/* Block User Setting (Only for direct messages) */}
+                                    {!activeChat.is_group && activeChat.other_user && (
+                                        <div className="border-t border-zinc-850 pt-4">
+                                            <button
+                                                onClick={handleToggleBlock}
+                                                className={`w-full flex items-center justify-center gap-2.5 p-3.5 rounded-2xl font-semibold text-sm transition-all ${
+                                                    activeChat.other_user.is_blocked 
+                                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-md' 
+                                                        : 'bg-red-950/20 hover:bg-red-950/45 border border-red-900/30 hover:border-red-900/50 text-red-500 cursor-pointer'
+                                                }`}
+                                            >
+                                                <Shield className="h-5 w-5" />
+                                                {activeChat.other_user.is_blocked ? 'Unblock User' : 'Block User'}
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {/* Group customization (For Groups only) */}
                                     {activeChat.is_group && (

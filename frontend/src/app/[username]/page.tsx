@@ -8,7 +8,7 @@ import Feed from "@/components/Feed";
 import GameSearchModal from "@/components/GameSearchModal";
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
-import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X, Clock, Lock, UserX } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
 import EditProfileModal from "@/components/EditProfileModal";
@@ -79,8 +79,10 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
     // Follow State
     const [isFollowing, setIsFollowing] = useState(false);
+    const [isRequested, setIsRequested] = useState(false);
     const [followersCount, setFollowersCount] = useState(0);
     const [isBlocked, setIsBlocked] = useState(false);
+    const [hasRequestedMe, setHasRequestedMe] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     // Confirm Modal State
@@ -107,8 +109,10 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 const res = await api.get(`/users/${username}/`);
                 setProfileUser(res.data);
                 setIsFollowing(res.data.is_following || false);
+                setIsRequested(res.data.is_requested || false);
                 setFollowersCount(res.data.followers_count || 0);
                 setIsBlocked(res.data.is_blocked || false);
+                setHasRequestedMe(res.data.has_requested_me || false);
             } catch (error) {
                 console.error("Failed to fetch profile:", error);
                 setProfileUser(null);
@@ -127,8 +131,10 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             const res = await api.get(`/users/${username}/`);
             setProfileUser(res.data);
             setIsFollowing(res.data.is_following || false);
+            setIsRequested(res.data.is_requested || false);
             setFollowersCount(res.data.followers_count || 0);
             setIsBlocked(res.data.is_blocked || false);
+            setHasRequestedMe(res.data.has_requested_me || false);
         } catch (error) {
             console.error("Failed to refresh profile counts:", error);
         }
@@ -181,6 +187,14 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     useEffect(() => {
         const fetchSteamStatus = async () => {
             if (!profileUser?.steam_id) {
+                setSteamStatus(null);
+                return;
+            }
+            // Don't fetch steam status for private accounts we can't view
+            const isPrivateProfile = profileUser?.settings?.privateProfile || false;
+            const isOwner = currentUser?.username?.toLowerCase() === profileUser?.username?.toLowerCase();
+            const canFetch = !isPrivateProfile || isOwner || profileUser?.is_following;
+            if (!canFetch) {
                 setSteamStatus(null);
                 return;
             }
@@ -258,47 +272,65 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         }
     }, [profileUser]);
 
-    // Fetch User Feed (Posts + Reviews)
+    // Fetch User Feed (Posts + Reviews) - only when we can view the content
     useEffect(() => {
-        if (username) {
-            const fetchUserFeed = async () => {
-                setIsPostsLoading(true);
-                try {
-                    const [postsRes, reviewsRes] = await Promise.all([
-                        api.get(`/posts/?username=${username}`),
-                        api.get(`/reviews/?username=${username}`)
-                    ]);
+        if (!username || !profileUser) return;
 
-                    const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
-                    const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
-                    // Ensure backend results don't mix, but for feedItems from context we need to filter in render
+        const isPrivateProfile = profileUser?.settings?.privateProfile || false;
+        const isOwner = currentUser?.username?.toLowerCase() === username?.toLowerCase();
+        const canFetch = !isPrivateProfile || isOwner || profileUser?.is_following;
 
-                    const combined = [...posts, ...reviews].sort((a: any, b: any) =>
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-
-                    setUserPosts(combined);
-                } catch (err) {
-                    console.error("Failed to fetch user feed:", err);
-                } finally {
-                    setIsPostsLoading(false);
-                }
-            };
-            fetchUserFeed();
+        if (!canFetch) {
+            setUserPosts([]);
+            setIsPostsLoading(false);
+            return;
         }
-    }, [username]);
 
-    // Fetch Game DNA
+        const fetchUserFeed = async () => {
+            setIsPostsLoading(true);
+            try {
+                const [postsRes, reviewsRes] = await Promise.all([
+                    api.get(`/posts/?username=${username}`),
+                    api.get(`/reviews/?username=${username}`)
+                ]);
+
+                const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
+                const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
+
+                const combined = [...posts, ...reviews].sort((a: any, b: any) =>
+                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+
+                setUserPosts(combined);
+            } catch (err) {
+                console.error("Failed to fetch user feed:", err);
+            } finally {
+                setIsPostsLoading(false);
+            }
+        };
+        fetchUserFeed();
+    }, [username, profileUser]);
+
+    // Fetch Game DNA - only when authorized to view content
     const fetchGameDNA = useCallback(() => {
-        if (username) {
-            api.get(`/users/${username}/game-dna/`)
-                .then(res => setGameDNA(res.data))
-                .catch(err => {
-                    console.error("Failed to fetch Game DNA:", err);
-                    setGameDNA([]);
-                });
+        if (!username || !profileUser) return;
+
+        const isPrivateProfile = profileUser?.settings?.privateProfile || false;
+        const isOwner = currentUser?.username?.toLowerCase() === username?.toLowerCase();
+        const canFetch = !isPrivateProfile || isOwner || profileUser?.is_following;
+
+        if (!canFetch) {
+            setGameDNA([]);
+            return;
         }
-    }, [username]);
+
+        api.get(`/users/${username}/game-dna/`)
+            .then(res => setGameDNA(res.data))
+            .catch(err => {
+                console.error("Failed to fetch Game DNA:", err);
+                setGameDNA([]);
+            });
+    }, [username, profileUser]);
 
     useEffect(() => {
         fetchGameDNA();
@@ -400,25 +432,84 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             return;
         }
 
-        // Optimistic UI Update
+        const isPrivateProfile = profileUser?.settings?.privateProfile || false;
+
+        // Save previous states
         const previousIsFollowing = isFollowing;
+        const previousIsRequested = isRequested;
         const previousCount = followersCount;
 
-        setIsFollowing(!isFollowing);
-        setFollowersCount(prev => isFollowing ? prev - 1 : prev + 1);
+        // Perform Precise UI State Update
+        if (isFollowing) {
+            // Unfollow
+            setIsFollowing(false);
+            setIsRequested(false);
+            setFollowersCount(prev => prev > 0 ? prev - 1 : 0);
+        } else if (isRequested) {
+            // Cancel request
+            setIsRequested(false);
+            setIsFollowing(false);
+        } else {
+            // Follow
+            if (isPrivateProfile) {
+                setIsRequested(true);
+                setIsFollowing(false);
+            } else {
+                setIsFollowing(true);
+                setIsRequested(false);
+                setFollowersCount(prev => prev + 1);
+            }
+        }
 
         try {
-            if (previousIsFollowing) {
-                await api.post(`/users/${username}/unfollow/`);
+            if (previousIsFollowing || previousIsRequested) {
+                const res = await api.post(`/users/${username}/unfollow/`);
+                setIsFollowing(res.data.is_following || false);
+                setIsRequested(res.data.is_requested || false);
+                if (res.data.is_following) {
+                    setFollowersCount(previousCount + 1);
+                } else {
+                    setFollowersCount(previousCount);
+                }
             } else {
-                await api.post(`/users/${username}/follow/`);
+                const res = await api.post(`/users/${username}/follow/`);
+                setIsFollowing(res.data.is_following || false);
+                setIsRequested(res.data.is_requested || false);
+                if (res.data.is_following) {
+                    setFollowersCount(previousCount + 1);
+                } else {
+                    setFollowersCount(previousCount);
+                }
             }
         } catch (error) {
             console.error("Follow action failed:", error);
             // Revert on failure
             setIsFollowing(previousIsFollowing);
+            setIsRequested(previousIsRequested);
             setFollowersCount(previousCount);
             alert("Failed to update follow status.");
+        }
+    };
+
+    const handleAcceptIncomingRequest = async () => {
+        try {
+            await api.post(`/users/${username}/approve-request/`);
+            setHasRequestedMe(false);
+            refreshProfileCounts();
+        } catch (error) {
+            console.error("Failed to approve follow request:", error);
+            alert("Failed to approve follow request.");
+        }
+    };
+
+    const handleDeclineIncomingRequest = async () => {
+        try {
+            await api.post(`/users/${username}/reject-request/`);
+            setHasRequestedMe(false);
+            refreshProfileCounts();
+        } catch (error) {
+            console.error("Failed to reject follow request:", error);
+            alert("Failed to reject follow request.");
         }
     };
 
@@ -503,7 +594,8 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         social_links: profileUser.social_links || {}
     };
 
-
+    const isPrivateProfile = profileUser?.settings?.privateProfile || false;
+    const canViewContent = !isPrivateProfile || isOwnProfile || isFollowing;
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -576,15 +668,20 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                                     <>
                                                         <button
                                                             onClick={handleFollowToggle}
-                                                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all text-sm font-bold shadow-lg ${isFollowing
+                                                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all text-sm font-bold shadow-lg ${isFollowing || isRequested
                                                                 ? 'bg-transparent border border-zinc-600 text-zinc-300 hover:border-zinc-400 hover:text-white'
                                                                 : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20'
                                                                 }`}
                                                         >
                                                             {isFollowing ? (
                                                                 <>
-                                                                    <UserPlus className="h-4 w-4" />
+                                                                    <UserX className="h-4 w-4" />
                                                                     <span>Unfollow</span>
+                                                                </>
+                                                            ) : isRequested ? (
+                                                                <>
+                                                                    <Clock className="h-4 w-4 text-zinc-400" />
+                                                                    <span>Requested</span>
                                                                 </>
                                                             ) : (
                                                                 <>
@@ -642,20 +739,22 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                     <div className="flex items-center gap-6 md:gap-8 bg-zinc-900/50 px-6 py-3 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
                                         <button
                                             onClick={() => {
+                                                if (!canViewContent) return;
                                                 setFollowModalTab('followers');
                                                 setIsFollowModalOpen(true);
                                             }}
-                                            className="text-center hover:opacity-80 focus:outline-none group transition-all"
+                                            className={`text-center focus:outline-none group transition-all ${canViewContent ? 'hover:opacity-80' : 'cursor-default'}`}
                                         >
                                             <div className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">{followersCount}</div>
                                             <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Followers</div>
                                         </button>
                                         <button
                                             onClick={() => {
+                                                if (!canViewContent) return;
                                                 setFollowModalTab('following');
                                                 setIsFollowModalOpen(true);
                                             }}
-                                            className="text-center hover:opacity-80 focus:outline-none group transition-all"
+                                            className={`text-center focus:outline-none group transition-all ${canViewContent ? 'hover:opacity-80' : 'cursor-default'}`}
                                         >
                                             <div className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">{profileUser.following_count || 0}</div>
                                             <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Following</div>
@@ -673,6 +772,33 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             </div>
 
             <main className="container mx-auto px-4 pb-12">
+                {hasRequestedMe && !profileUser.has_blocked_me && !isBlocked && (
+                    <div className="mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 animate-in fade-in duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400">
+                                <UserPlus className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-white">Follow Request</p>
+                                <p className="text-xs text-zinc-400">@{profileUser.username} has requested to follow you.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                                onClick={handleAcceptIncomingRequest}
+                                className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-emerald-950/20"
+                            >
+                                Accept
+                            </button>
+                            <button
+                                onClick={handleDeclineIncomingRequest}
+                                className="flex-1 sm:flex-none px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold rounded-xl border border-zinc-700 transition-all cursor-pointer"
+                            >
+                                Decline
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {profileUser.has_blocked_me ? (
                     <div className="bg-zinc-900/50 border border-zinc-850 rounded-3xl p-12 text-center max-w-xl mx-auto my-12 backdrop-blur-sm animate-in fade-in duration-300">
                         <h2 className="text-2xl font-bold text-white mb-2">@{profileUser.username} blocked you</h2>
@@ -692,62 +818,64 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 ) : (
                     <>
                         {/* Top 4 Showcase */}
-                        <div className="mb-8">
-                            <div className="flex items-center gap-2 mb-4 text-zinc-400 text-sm font-bold uppercase tracking-wider">
-                                <Trophy className="h-4 w-4 text-amber-500" />
-                                <span>All-Time Favorites</span>
-                            </div>
-                            <div className="grid grid-cols-4 gap-4">
-                                {topGames.map((game, index) => (
-                                    <button
-                                        key={index}
-                                        onClick={() => handleSlotClick(index)}
-                                        disabled={!isOwnProfile}
-                                        className={`relative group w-full aspect-[3/4] rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 transition-all duration-500 ${isOwnProfile ? 'hover:border-zinc-600 hover:shadow-2xl hover:shadow-emerald-900/20 cursor-pointer' : 'cursor-default'} flex items-center justify-center ${!game ? 'border-dashed border-zinc-700' : ''}`}
-                                    >
-                                        {game ? (
-                                            <>
-                                                <img
-                                                    src={game.image}
-                                                    alt={game.title}
-                                                    className="w-full h-full object-cover rounded-md transition-transform duration-700 group-hover:scale-110"
-                                                />
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                                                    <span className="text-white font-bold text-sm md:text-lg leading-tight transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                                                        {game.title}
-                                                    </span>
-                                                </div>
-                                                {isOwnProfile && (
-                                                    <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                                        <div className="bg-black/60 p-1.5 rounded-full hover:bg-zinc-800 transition-colors">
-                                                            <Pencil className="h-3.5 w-3.5 text-white" />
-                                                        </div>
-                                                        <div 
-                                                            onClick={(e) => handleClearSlot(index, e)}
-                                                            className="bg-black/60 p-1.5 rounded-full hover:bg-red-500/80 transition-colors"
-                                                            title="Clear Slot"
-                                                        >
-                                                            <X className="h-3.5 w-3.5 text-white" />
-                                                        </div>
+                        {canViewContent && (
+                            <div className="mb-8">
+                                <div className="flex items-center gap-2 mb-4 text-zinc-400 text-sm font-bold uppercase tracking-wider">
+                                    <Trophy className="h-4 w-4 text-amber-500" />
+                                    <span>All-Time Favorites</span>
+                                </div>
+                                <div className="grid grid-cols-4 gap-4">
+                                    {topGames.map((game, index) => (
+                                        <button
+                                            key={index}
+                                            onClick={() => handleSlotClick(index)}
+                                            disabled={!isOwnProfile}
+                                            className={`relative group w-full aspect-[3/4] rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 transition-all duration-500 ${isOwnProfile ? 'hover:border-zinc-600 hover:shadow-2xl hover:shadow-emerald-900/20 cursor-pointer' : 'cursor-default'} flex items-center justify-center ${!game ? 'border-dashed border-zinc-700' : ''}`}
+                                        >
+                                            {game ? (
+                                                <>
+                                                    <img
+                                                        src={game.image}
+                                                        alt={game.title}
+                                                        className="w-full h-full object-cover rounded-md transition-transform duration-700 group-hover:scale-110"
+                                                    />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                                                        <span className="text-white font-bold text-sm md:text-lg leading-tight transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                                                            {game.title}
+                                                        </span>
                                                     </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <div className="flex flex-col items-center gap-2 text-zinc-600 group-hover:text-emerald-500 transition-colors">
-                                                {isOwnProfile ? (
-                                                    <>
-                                                        <Plus className="h-8 w-8" />
-                                                        <span className="text-xs font-bold uppercase">Add Game</span>
-                                                    </>
-                                                ) : (
-                                                    <span className="text-xs font-bold uppercase text-zinc-700">Empty Slot</span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </button>
-                                ))}
+                                                    {isOwnProfile && (
+                                                        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                                            <div className="bg-black/60 p-1.5 rounded-full hover:bg-zinc-800 transition-colors">
+                                                                <Pencil className="h-3.5 w-3.5 text-white" />
+                                                            </div>
+                                                            <div 
+                                                                onClick={(e) => handleClearSlot(index, e)}
+                                                                className="bg-black/60 p-1.5 rounded-full hover:bg-red-500/80 transition-colors"
+                                                                title="Clear Slot"
+                                                            >
+                                                                <X className="h-3.5 w-3.5 text-white" />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-2 text-zinc-600 group-hover:text-emerald-500 transition-colors">
+                                                    {isOwnProfile ? (
+                                                        <>
+                                                            <Plus className="h-8 w-8" />
+                                                            <span className="text-xs font-bold uppercase">Add Game</span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-xs font-bold uppercase text-zinc-700">Empty Slot</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         <div className="grid grid-cols-12 gap-8">
                             {/* Left Column (Sticky) */}
@@ -794,188 +922,244 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                 </div>
 
                                 {/* Currently Playing */}
-                                <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-2 text-zinc-100 font-bold">
-                                            <Gamepad2 className="h-5 w-5 text-emerald-500" />
-                                            <span>Currently Playing</span>
-                                        </div>
-                                        {isOwnProfile && profileUser?.steam_id && (
-                                            <button
-                                                onClick={toggleSteamPrivacy}
-                                                disabled={isUpdatingPrivacy}
-                                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white hover:border-zinc-700 transition-all text-xs font-semibold cursor-pointer"
-                                                title={isSteamPrivate ? "Only you can see this status" : "Anyone can see this status"}
-                                            >
-                                                {isSteamPrivate ? (
-                                                    <>
-                                                        <EyeOff className="h-3.5 w-3.5 text-zinc-500" />
-                                                        <span>Private</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                                        <span>Public</span>
-                                                    </>
-                                                )}
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {isSteamStatusLoading ? (
-                                        <div className="aspect-video rounded-xl bg-zinc-950 border border-zinc-800/50 flex items-center justify-center">
-                                            <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
-                                        </div>
-                                    ) : steamStatus && steamStatus.is_playing ? (
-                                        <div className="relative aspect-video rounded-xl overflow-hidden group">
-                                            <img
-                                                src={steamStatus.cover_image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"}
-                                                alt={steamStatus.game_title || "Game"}
-                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                            />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent flex flex-col justify-between p-3.5">
-                                                <div className="flex justify-end">
-                                                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 uppercase tracking-wider animate-pulse">
-                                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                                                        In-Game
-                                                    </span>
+                                {canViewContent && (
+                                    <>
+                                        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center gap-2 text-zinc-100 font-bold">
+                                                    <Gamepad2 className="h-5 w-5 text-emerald-500" />
+                                                    <span>Currently Playing</span>
                                                 </div>
-                                                <span className="font-bold text-white text-sm md:text-base leading-snug drop-shadow-md">
-                                                    {steamStatus.game_title}
-                                                </span>
+                                                {isOwnProfile && profileUser?.steam_id && (
+                                                    <button
+                                                        onClick={toggleSteamPrivacy}
+                                                        disabled={isUpdatingPrivacy}
+                                                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white hover:border-zinc-700 transition-all text-xs font-semibold cursor-pointer"
+                                                        title={isSteamPrivate ? "Only you can see this status" : "Anyone can see this status"}
+                                                    >
+                                                        {isSteamPrivate ? (
+                                                            <>
+                                                                <EyeOff className="h-3.5 w-3.5 text-zinc-500" />
+                                                                <span>Private</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                                                <span>Public</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                )}
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div className="aspect-video rounded-xl bg-zinc-950 border border-dashed border-zinc-800 flex flex-col items-center justify-center text-zinc-500 gap-2">
-                                            <Gamepad2 className="h-8 w-8 opacity-40 text-zinc-500" />
-                                            <span className="text-xs font-bold uppercase tracking-wider">Not Playing</span>
-                                            {isOwnProfile && !profileUser?.steam_id && (
-                                                <Link href="/settings?tab=connected" className="text-[11px] text-emerald-500 hover:underline font-semibold mt-1">
-                                                    Connect Steam Account
-                                                </Link>
+
+                                            {isSteamStatusLoading ? (
+                                                <div className="aspect-video rounded-xl bg-zinc-950 border border-zinc-800/50 flex items-center justify-center">
+                                                    <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
+                                                </div>
+                                            ) : steamStatus && steamStatus.is_playing ? (
+                                                <div className="relative aspect-video rounded-xl overflow-hidden group">
+                                                    <img
+                                                        src={steamStatus.cover_image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"}
+                                                        alt={steamStatus.game_title || "Game"}
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                    />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent flex flex-col justify-between p-3.5">
+                                                        <div className="flex justify-end">
+                                                            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 uppercase tracking-wider animate-pulse">
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                                                In-Game
+                                                            </span>
+                                                        </div>
+                                                        <span className="font-bold text-white text-sm md:text-base leading-snug drop-shadow-md">
+                                                            {steamStatus.game_title}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="aspect-video rounded-xl bg-zinc-950 border border-dashed border-zinc-800 flex flex-col items-center justify-center text-zinc-500 gap-2">
+                                                    <Gamepad2 className="h-8 w-8 opacity-40 text-zinc-500" />
+                                                    <span className="text-xs font-bold uppercase tracking-wider">Not Playing</span>
+                                                    {isOwnProfile && !profileUser?.steam_id && (
+                                                        <Link href="/settings?tab=connected" className="text-[11px] text-emerald-500 hover:underline font-semibold mt-1">
+                                                            Connect Steam Account
+                                                        </Link>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
-                                    )}
-                                </div>
 
-                                {/* Game DNA */}
-                                <GameDNA stats={gameDNA} username={username} />
+                                        {/* Game DNA */}
+                                        <GameDNA stats={gameDNA} username={username} />
+                                    </>
+                                )}
 
                             </div>
 
                             {/* Right Column (Content) */}
                             <div className="col-span-12 lg:col-span-8">
 
-                                <div className="flex gap-6 border-b border-zinc-800 mb-6 overflow-x-auto">
-                                    {['Activity', 'Reviews', 'Replies', 'Opinions', 'Portfolio'].map((tab) => (
-                                        <button
-                                            key={tab}
-                                            onClick={() => setActiveTab(tab.toLowerCase())}
-                                            className={`pb-4 text-lg font-bold transition-all relative whitespace-nowrap ${activeTab === tab.toLowerCase()
-                                                ? 'text-white'
-                                                : 'text-zinc-500 hover:text-zinc-300'
-                                                }`}
-                                        >
-                                            {tab}
-                                            {activeTab === tab.toLowerCase() && (
-                                                <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {/* Tab Content */}
-                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    {activeTab === 'activity' && (
-                                        isPostsLoading ? (
-                                            <div className="flex justify-center py-12">
-                                                <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
-                                            </div>
-                                        ) : (
-                                            (() => {
-                                                // Strict Activity Filter: NO parents allowed (no replies)
-                                                const activityItems = userPosts.filter((p: any) =>
-                                                    !p.parent && !p.review_parent
-                                                );
-                                                return activityItems.length > 0 ? (
-                                                    <Feed initialItems={activityItems} />
-                                                ) : (
-                                                    <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
-                                                        No activity yet.
-                                                    </div>
-                                                );
-                                            })()
-                                        )
-                                    )}
-
-                                    {activeTab === 'reviews' && (
-                                        isPostsLoading ? (
-                                            <div className="flex justify-center py-12">
-                                                <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
-                                            </div>
-                                        ) : (
-                                            (() => {
-                                                const reviews = userPosts.filter((p: any) => p.type === 'review' && !p.parent && !p.review_parent);
-                                                return reviews.length > 0 ? (
-                                                    <Feed initialItems={reviews} />
-                                                ) : (
-                                                    <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
-                                                        No reviews yet.
-                                                    </div>
-                                                );
-                                            })()
-                                        )
-                                    )}
-
-                                    {activeTab === 'replies' && (
-                                        (() => {
-                                            // Local Context Replies (for immediate feedback)
-                                            const contextReplies = feedItems.filter(item => {
-                                                if (!('user' in item)) return false;
-                                                return item.user.username === username && ((item as any).parent || (item as any).review_parent || item.type === 'reply');
-                                            });
-
-                                            // In a real app, we might also want to filter `userPosts` for replies if the API returns them
-                                            // But since `userPosts` usually fetches root posts, let's assume we rely on context
-                                            // OR if we start fetching replies in userPosts, we merge:
-                                            const fetchedReplies = userPosts.filter((p: any) => p.parent || p.review_parent);
-
-                                            // Merege unique by ID
-                                            const allRepliesMap = new Map();
-                                            [...fetchedReplies, ...contextReplies].forEach(item => allRepliesMap.set(item.id, item));
-                                            const allReplies = Array.from(allRepliesMap.values()).sort((a: any, b: any) =>
-                                                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                                            );
-
-                                            return allReplies.length > 0 ? (
-                                                <Feed initialItems={allReplies} />
-                                            ) : (
-                                                <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
-                                                    No replies yet.
-                                                </div>
-                                            );
-                                        })()
-                                    )}
-
-                                    {activeTab === 'opinions' && (
-                                        (() => {
-                                            const opinions = userPosts.filter((p: any) => p.news_parent || p.news_details);
-                                            return opinions.length > 0 ? (
-                                                <Feed initialItems={opinions} />
-                                            ) : (
-                                                <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
-                                                    No opinions (news comments) yet.
-                                                </div>
-                                            );
-                                        })()
-                                    )}
-
-                                    {activeTab !== 'activity' && activeTab !== 'reviews' && activeTab !== 'replies' && activeTab !== 'opinions' && (
-                                        <div className="py-12 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
-                                            <span className="capitalize">{activeTab}</span> content coming soon...
+                                {canViewContent ? (
+                                    <>
+                                        <div className="flex gap-6 border-b border-zinc-800 mb-6 overflow-x-auto">
+                                            {['Activity', 'Reviews', 'Replies', 'Opinions', 'Portfolio'].map((tab) => (
+                                                <button
+                                                    key={tab}
+                                                    onClick={() => setActiveTab(tab.toLowerCase())}
+                                                    className={`pb-4 text-lg font-bold transition-all relative whitespace-nowrap ${activeTab === tab.toLowerCase()
+                                                        ? 'text-white'
+                                                        : 'text-zinc-500 hover:text-zinc-300'
+                                                        }`}
+                                                >
+                                                    {tab}
+                                                    {activeTab === tab.toLowerCase() && (
+                                                        <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
+                                                    )}
+                                                </button>
+                                            ))}
                                         </div>
-                                    )}
-                                </div>
+
+                                        {/* Tab Content */}
+                                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                            {activeTab === 'activity' && (
+                                                isPostsLoading ? (
+                                                    <div className="flex justify-center py-12">
+                                                        <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+                                                    </div>
+                                                ) : (
+                                                    (() => {
+                                                        // Strict Activity Filter: NO parents allowed (no replies)
+                                                        const activityItems = userPosts.filter((p: any) =>
+                                                            !p.parent && !p.review_parent
+                                                        );
+                                                        return activityItems.length > 0 ? (
+                                                            <Feed initialItems={activityItems} />
+                                                        ) : (
+                                                            <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                                No activity yet.
+                                                            </div>
+                                                        );
+                                                    })()
+                                                )
+                                            )}
+
+                                            {activeTab === 'reviews' && (
+                                                isPostsLoading ? (
+                                                    <div className="flex justify-center py-12">
+                                                        <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+                                                    </div>
+                                                ) : (
+                                                    (() => {
+                                                        const reviews = userPosts.filter((p: any) => p.type === 'review' && !p.parent && !p.review_parent);
+                                                        return reviews.length > 0 ? (
+                                                            <Feed initialItems={reviews} />
+                                                        ) : (
+                                                            <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                                No reviews yet.
+                                                            </div>
+                                                        );
+                                                    })()
+                                                )
+                                            )}
+
+                                            {activeTab === 'replies' && (
+                                                (() => {
+                                                    // Local Context Replies (for immediate feedback)
+                                                    const contextReplies = feedItems.filter(item => {
+                                                        if (!('user' in item)) return false;
+                                                        return item.user.username === username && ((item as any).parent || (item as any).review_parent || item.type === 'reply');
+                                                    });
+
+                                                    // In a real app, we might also want to filter `userPosts` for replies if the API returns them
+                                                    // But since `userPosts` usually fetches root posts, let's assume we rely on context
+                                                    // OR if we start fetching replies in userPosts, we merge:
+                                                    const fetchedReplies = userPosts.filter((p: any) => p.parent || p.review_parent);
+
+                                                    // Merege unique by ID
+                                                    const allRepliesMap = new Map();
+                                                    [...fetchedReplies, ...contextReplies].forEach(item => allRepliesMap.set(item.id, item));
+                                                    const allReplies = Array.from(allRepliesMap.values()).sort((a: any, b: any) =>
+                                                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                                                    );
+
+                                                    return allReplies.length > 0 ? (
+                                                        <Feed initialItems={allReplies} />
+                                                    ) : (
+                                                        <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                            No replies yet.
+                                                        </div>
+                                                    );
+                                                })()
+                                            )}
+
+                                            {activeTab === 'opinions' && (
+                                                (() => {
+                                                    const opinions = userPosts.filter((p: any) => p.news_parent || p.news_details);
+                                                    return opinions.length > 0 ? (
+                                                        <Feed initialItems={opinions} />
+                                                    ) : (
+                                                        <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                            No opinions (news comments) yet.
+                                                        </div>
+                                                    );
+                                                })()
+                                            )}
+
+                                            {activeTab !== 'activity' && activeTab !== 'reviews' && activeTab !== 'replies' && activeTab !== 'opinions' && (
+                                                <div className="py-12 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                                                    <span className="capitalize">{activeTab}</span> content coming soon...
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="animate-in fade-in duration-300">
+                                        {/* Integrated Private Profile Banner */}
+                                        <div className="flex flex-col items-center py-16 px-8 border border-zinc-800/60 rounded-2xl bg-zinc-900/20 text-center gap-5">
+                                            {/* Lock Badge */}
+                                            <div className="relative">
+                                                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-zinc-700/70 bg-zinc-800">
+                                                    <img
+                                                        src={displayUser.avatar}
+                                                        alt={profileUser.username}
+                                                        className="w-full h-full object-cover opacity-60"
+                                                    />
+                                                </div>
+                                                <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-zinc-900 border border-zinc-700 rounded-full flex items-center justify-center">
+                                                    <Lock className="h-3.5 w-3.5 text-zinc-400" />
+                                                </div>
+                                            </div>
+
+                                            {/* Message */}
+                                            <div>
+                                                <h2 className="text-lg font-bold text-white mb-1.5">This account is private</h2>
+                                                <p className="text-sm text-zinc-500 max-w-xs mx-auto">
+                                                    {isRequested
+                                                        ? `Your follow request to @${profileUser.username} is pending approval.`
+                                                        : `Follow @${profileUser.username} to see their reviews, posts, and gaming activity.`
+                                                    }
+                                                </p>
+                                            </div>
+
+                                            {/* Follow / Requested Button */}
+                                            {!isOwnProfile && currentUser && (
+                                                <button
+                                                    onClick={handleFollowToggle}
+                                                    className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all ${
+                                                        isRequested
+                                                            ? 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300'
+                                                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/30'
+                                                    }`}
+                                                >
+                                                    {isRequested ? (
+                                                        <><Clock className="h-4 w-4" /> Requested</>
+                                                    ) : (
+                                                        <><UserPlus className="h-4 w-4" /> Follow</>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                             </div>
                         </div>

@@ -129,6 +129,17 @@ class Follow(models.Model):
     def __str__(self):
         return f"{self.follower} follows {self.following}"
 
+class FollowRequest(models.Model):
+    sender = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='sent_follow_requests', on_delete=models.CASCADE)
+    receiver = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='received_follow_requests', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('sender', 'receiver')
+
+    def __str__(self):
+        return f"{self.sender} wants to follow {self.receiver}"
+
 class Notification(models.Model):
     recipient = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
     actor = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='triggered_notifications', on_delete=models.CASCADE)
@@ -311,10 +322,15 @@ class Block(models.Model):
 
     def save(self, *args, **kwargs):
         # Automatically clean up any mutual follows when blocking
-        from api.models import Follow
+        from api.models import Follow, FollowRequest
         Follow.objects.filter(
             models.Q(follower=self.blocker, following=self.blocked) |
             models.Q(follower=self.blocked, following=self.blocker)
+        ).delete()
+        # Automatically clean up any pending follow requests when blocking
+        FollowRequest.objects.filter(
+            models.Q(sender=self.blocker, receiver=self.blocked) |
+            models.Q(sender=self.blocked, receiver=self.blocker)
         ).delete()
         super().save(*args, **kwargs)
 
