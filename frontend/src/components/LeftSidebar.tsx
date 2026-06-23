@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash, PlusCircle } from 'lucide-react';
+import { Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
@@ -32,6 +32,7 @@ export default function LeftSidebar() {
     const [isNotifMode, setIsNotifMode] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [processingRequest, setProcessingRequest] = useState<string | null>(null);
 
     // Fetch notifications when drawer opens
     useEffect(() => {
@@ -60,6 +61,38 @@ export default function LeftSidebar() {
         if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
         if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
         return `${Math.floor(diffInSeconds / 86400)}d`;
+    };
+
+    const handleApproveRequest = async (e: React.MouseEvent, actorUsername: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setProcessingRequest(actorUsername);
+        try {
+            await api.post(`/users/${actorUsername}/approve-request/`);
+            setNotifications(prev =>
+                prev.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === actorUsername))
+            );
+        } catch (error) {
+            console.error('Failed to approve follow request:', error);
+        } finally {
+            setProcessingRequest(null);
+        }
+    };
+
+    const handleRejectRequest = async (e: React.MouseEvent, actorUsername: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setProcessingRequest(actorUsername);
+        try {
+            await api.post(`/users/${actorUsername}/reject-request/`);
+            setNotifications(prev =>
+                prev.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === actorUsername))
+            );
+        } catch (error) {
+            console.error('Failed to reject follow request:', error);
+        } finally {
+            setProcessingRequest(null);
+        }
     };
 
     const menuItems = [
@@ -111,31 +144,90 @@ export default function LeftSidebar() {
                             </button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
                         {isLoading ? (
                             <div className="text-center py-8 text-zinc-500">{t('loading')}</div>
                         ) : notifications.length > 0 ? (
-                            notifications.map((notif) => (
-                                <Link
-                                    href={notif.target_url || `/${notif.actor.username}`}
-                                    key={notif.id}
-                                    className={`flex items-start gap-3 p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer ${!notif.is_read ? 'bg-zinc-800/30' : ''}`}
-                                >
-                                    <div className="h-8 w-8 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
-                                        <img
-                                            src={getImageUrl(notif.actor.avatar, notif.actor.username)}
-                                            alt={notif.actor.username}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-zinc-200 leading-snug">
-                                            <span className="font-bold">{notif.actor.username}</span> {notif.verb}
-                                        </p>
-                                        <span className="text-xs text-zinc-500">{formatTime(notif.created_at)}</span>
-                                    </div>
-                                </Link>
-                            ))
+                            notifications.map((notif) => {
+                                const isFollowRequest = notif.verb.includes('requested to follow');
+                                const isProcessing = processingRequest === notif.actor.username;
+
+                                if (isFollowRequest) {
+                                    // Follow request: card fully clickable → profile, except Accept/Decline buttons
+                                    return (
+                                        <div
+                                            key={notif.id}
+                                            role="link"
+                                            tabIndex={0}
+                                            onClick={() => {
+                                                setIsNotifMode(false);
+                                                window.location.href = `/${notif.actor.username}`;
+                                            }}
+                                            onKeyDown={(e) => e.key === 'Enter' && (setIsNotifMode(false), window.location.href = `/${notif.actor.username}`)}
+                                            className={`flex flex-col gap-2.5 p-3 rounded-xl cursor-pointer hover:bg-zinc-800/50 transition-colors ${!notif.is_read ? 'bg-zinc-800/30' : 'bg-zinc-800/10'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-8 w-8 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
+                                                    <img
+                                                        src={getImageUrl(notif.actor.avatar, notif.actor.username)}
+                                                        alt={notif.actor.username}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm text-zinc-200 leading-snug">
+                                                        <span className="font-bold">{notif.actor.username}</span>
+                                                        {' '}
+                                                        <span className="text-zinc-400">requested to follow you</span>
+                                                    </p>
+                                                    <span className="text-xs text-zinc-500">{formatTime(notif.created_at)}</span>
+                                                </div>
+                                            </div>
+                                            {/* Stop propagation on button row so clicks don't navigate */}
+                                            <div className="flex items-center gap-2 pl-11" onClick={(e) => e.stopPropagation()}>
+                                                <button
+                                                    onClick={(e) => handleApproveRequest(e, notif.actor.username)}
+                                                    disabled={isProcessing}
+                                                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs py-1.5 transition-all cursor-pointer"
+                                                >
+                                                    {isProcessing ? '...' : 'Accept'}
+                                                </button>
+                                                <button
+                                                    onClick={(e) => handleRejectRequest(e, notif.actor.username)}
+                                                    disabled={isProcessing}
+                                                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 font-bold rounded-lg text-xs py-1.5 border border-zinc-700 transition-all cursor-pointer"
+                                                >
+                                                    {isProcessing ? '...' : 'Decline'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // Standard notification: clickable link
+                                return (
+                                    <Link
+                                        href={notif.target_url || `/${notif.actor.username}`}
+                                        key={notif.id}
+                                        onClick={() => setIsNotifMode(false)}
+                                        className={`flex items-start gap-3 p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer ${!notif.is_read ? 'bg-zinc-800/30' : ''}`}
+                                    >
+                                        <div className="h-8 w-8 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
+                                            <img
+                                                src={getImageUrl(notif.actor.avatar, notif.actor.username)}
+                                                alt={notif.actor.username}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm text-zinc-200 leading-snug">
+                                                <span className="font-bold">{notif.actor.username}</span> {notif.verb}
+                                            </p>
+                                            <span className="text-xs text-zinc-500">{formatTime(notif.created_at)}</span>
+                                        </div>
+                                    </Link>
+                                );
+                            })
                         ) : (
                             <div className="text-center py-8 text-zinc-500">{t('noNotifications')}</div>
                         )}
