@@ -35,11 +35,12 @@ export default function SidebarSearch() {
     // Debounce Search
     useEffect(() => {
         const delayDebounceFn = setTimeout(async () => {
-            if (query.length > 2) {
+            const cleanQuery = query.startsWith('@') ? query.slice(1) : query;
+            if (cleanQuery.length > 2) {
                 setIsLoading(true);
                 setShowResults(true);
                 try {
-                    const res = await api.get(`/users/?search=${query}`);
+                    const res = await api.get(`/users/?search=${cleanQuery}`);
                     setResults(res.data);
                 } catch (error) {
                     console.error("Search failed:", error);
