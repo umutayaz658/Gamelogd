@@ -5,6 +5,7 @@ import { X, Search, Loader2, ChevronLeft, Calendar, Check, RefreshCw } from 'luc
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface Game {
     id: number;
@@ -25,6 +26,7 @@ interface LogGameModalProps {
 export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, existingReview, isReplay }: LogGameModalProps) {
     // State Management
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
@@ -195,7 +197,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                     // UI Step 1: Search (Compact)
                     <div className="flex flex-col h-full">
                         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-white">Log a Game</h2>
+                            <h2 className="text-lg font-bold text-white">{t('logAGame')}</h2>
                             <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors">
                                 <X className="h-5 w-5" />
                             </button>
@@ -206,7 +208,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                 <Search className="absolute left-4 top-4 h-6 w-6 text-zinc-500" />
                                 <input
                                     type="text"
-                                    placeholder="Search for a game..."
+                                    placeholder={t('searchForGame')}
                                     autoFocus
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -237,11 +239,11 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                     ))}
                                 </div>
                             ) : searchTerm.length > 1 ? (
-                                <div className="text-center py-12 text-zinc-500">No games found.</div>
+                                <div className="text-center py-12 text-zinc-500">{t('noGamesFound')}</div>
                             ) : (
                                 <div className="text-center py-16 text-zinc-600 flex flex-col items-center gap-4">
                                     <Search className="h-12 w-12 opacity-20" />
-                                    <p className="text-base">Type to search for a game to log.</p>
+                                    <p className="text-base">{t('typeToSearchLog')}</p>
                                 </div>
                             )}
                         </div>
@@ -268,7 +270,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         {/* Hover Overlay: Change Game */}
                                         <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
                                             <RefreshCw className="h-10 w-10 text-emerald-500 mb-2" />
-                                            <span className="font-bold text-white text-lg shadow-black drop-shadow-lg">Change Game</span>
+                                            <span className="font-bold text-white text-lg shadow-black drop-shadow-lg">{t('changeGame')}</span>
                                         </div>
                                     </>
                                 ) : (
@@ -293,10 +295,10 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                             {/* Header */}
                             <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950">
                                 <h2 className="text-xl font-bold flex items-center gap-3">
-                                    {isReplay ? 'Log Replay' : existingReview ? 'Edit Review' : 'Write Review'}
+                                    {isReplay ? t('logReplay') : existingReview ? t('editReview') : t('writeReview')}
                                     {isReplay && (
                                         <span className="text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full">
-                                            {nextPlaythrough === 2 ? '2nd' : nextPlaythrough === 3 ? '3rd' : `${nextPlaythrough}th`} Playthrough
+                                            {nextPlaythrough === 2 ? '2nd' : nextPlaythrough === 3 ? '3rd' : `${nextPlaythrough}th`} {t('playthrough')}
                                         </span>
                                     )}
                                 </h2>
@@ -309,7 +311,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                 {/* Rating Slider */}
                                 <div>
                                     <div className="flex items-center justify-between mb-2">
-                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Rating</label>
+                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('rating')}</label>
                                         <div className={`text-3xl font-black transition-colors ${getRatingTextClass(rating)}`}>{Number(rating || 0).toFixed(1)}</div>
                                     </div>
                                     <div className="relative h-6 flex items-center">
@@ -335,11 +337,11 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
 
                                 {/* Review Text */}
                                 <div className="flex-1 flex flex-col min-h-0">
-                                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Review (Optional)</label>
+                                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('reviewOptional')}</label>
                                     <textarea
                                         value={content}
                                         onChange={(e) => setContent(e.target.value)}
-                                        placeholder="What did you think about this game?"
+                                        placeholder={t('whatDidYouThink')}
                                         className="flex-1 w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-200 focus:outline-none focus:border-emerald-500/50 transition-all resize-none placeholder:text-zinc-600 text-base leading-relaxed"
                                     />
                                 </div>
@@ -353,7 +355,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         <div className={`p-1.5 rounded-full ${isLiked ? 'bg-pink-500 text-white' : 'bg-zinc-800'}`}>
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={isLiked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>
                                         </div>
-                                        <span className="font-bold text-xs">Liked</span>
+                                        <span className="font-bold text-xs">{t('liked')}</span>
                                     </button>
 
                                     <button
@@ -363,7 +365,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         <div className={`p-1.5 rounded-full ${isCompleted ? 'bg-emerald-500 text-white' : 'bg-zinc-800'}`}>
                                             <Check className="h-4 w-4" />
                                         </div>
-                                        <span className="font-bold text-xs">Completed</span>
+                                        <span className="font-bold text-xs">{t('completed')}</span>
                                     </button>
 
                                     <button
@@ -373,7 +375,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         <div className={`p-1.5 rounded-full ${containsSpoilers ? 'bg-amber-500 text-white' : 'bg-zinc-800'}`}>
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /><path d="M2 2l20 20" /></svg>
                                         </div>
-                                        <span className="font-bold text-xs">Spoilers</span>
+                                        <span className="font-bold text-xs">{t('spoilers')}</span>
                                     </button>
                                 </div>
                             </div>
@@ -388,7 +390,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                             {/* Footer Actions */}
                             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end gap-3 shrink-0">
                                 <button onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm">
-                                    Cancel
+                                    {t('cancel')}
                                 </button>
                                 <button
                                     onClick={handleSubmit}
@@ -396,7 +398,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                     className="px-6 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
                                 >
                                     {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
-                                    {isReplay ? 'Log Replay' : existingReview ? 'Update Log' : 'Log Activity'}
+                                    {isReplay ? t('logReplay') : existingReview ? t('updateLog') : t('logActivity')}
                                 </button>
                             </div>
                         </div>
