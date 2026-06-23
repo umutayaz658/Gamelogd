@@ -113,6 +113,15 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'real_name']
     lookup_field = 'username'
 
+    def filter_queryset(self, queryset):
+        # Strip leading '@' from search term if present to allow searching like @username
+        search_query = self.request.query_params.get('search', '')
+        if search_query.startswith('@'):
+            q_params = self.request._request.GET.copy()
+            q_params['search'] = search_query[1:]
+            self.request._request.GET = q_params
+        return super().filter_queryset(queryset)
+
     def get_queryset(self):
         queryset = User.objects.all()
         request = self.request
@@ -123,6 +132,16 @@ class UserViewSet(viewsets.ModelViewSet):
                 blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
                 queryset = queryset.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
         return queryset
+
+    def _check_private_access(self, target_user, request):
+        is_private = target_user.settings.get('privateProfile', False)
+        is_owner = request.user.is_authenticated and request.user.id == target_user.id
+        from api.models import Follow
+        is_following = request.user.is_authenticated and Follow.objects.filter(follower=request.user, following=target_user).exists()
+        
+        if is_private and not is_owner and not is_following:
+            return False
+        return True
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, username=None):
@@ -136,17 +155,37 @@ class UserViewSet(viewsets.ModelViewSet):
            Block.objects.filter(blocker=target_user, blocked=request.user).exists():
             return Response({"error": "Cannot follow this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
         
-        from api.models import Follow
+        from api.models import Follow, FollowRequest, Notification
+        # If target user has a private profile
+        if target_user.settings.get('privateProfile', False):
+            if Follow.objects.filter(follower=request.user, following=target_user).exists():
+                return Response({"message": "You are already following this user.", "status": "following", "is_following": True, "is_requested": False}, status=status.HTTP_200_OK)
+            
+            follow_req, req_created = FollowRequest.objects.get_or_create(sender=request.user, receiver=target_user)
+            if not req_created:
+                return Response({"message": "Follow request already pending.", "status": "pending", "is_following": False, "is_requested": True}, status=status.HTTP_200_OK)
+            
+            # Send Notification for follow request
+            Notification.objects.create(
+                recipient=target_user,
+                actor=request.user,
+                verb='requested to follow you'
+            )
+            return Response({"message": "Follow request sent.", "status": "pending", "is_following": False, "is_requested": True}, status=status.HTTP_201_CREATED)
+        
         follow_instance, created = Follow.objects.get_or_create(follower=request.user, following=target_user)
         
         if not created:
-            return Response({"message": "You are already following this user."}, status=status.HTTP_200_OK)
+            return Response({"message": "You are already following this user.", "status": "following", "is_following": True, "is_requested": False}, status=status.HTTP_200_OK)
             
-        return Response({"message": f"You are now following {target_user.username}"}, status=status.HTTP_201_CREATED)
+        return Response({"message": f"You are now following {target_user.username}", "status": "following", "is_following": True, "is_requested": False}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def followers(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
+        
         followers = User.objects.filter(id__in=user.followers.values_list('follower_id', flat=True)).order_by('username')
         if request.user.is_authenticated:
             from api.models import Block
@@ -165,6 +204,9 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='following-list', permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def following_list(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
+        
         following = User.objects.filter(id__in=user.following.values_list('following_id', flat=True)).order_by('username')
         if request.user.is_authenticated:
             from api.models import Block
@@ -302,6 +344,13 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='steam-status')
     def steam_status(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({
+                "is_playing": False,
+                "game_title": None,
+                "steam_appid": None,
+                "cover_image": None
+            }, status=status.HTTP_200_OK)
         
         # Check settings for privacy
         is_private = user.settings.get('steamStatusPrivate', False)
@@ -322,6 +371,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='game-dna')
     def game_dna(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         
         # Playtime > 0 olan tüm oyunları dahil et (dropped dahil)
@@ -370,6 +421,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='recommended-games')
     def recommended_games(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         from core.models import Game
         
@@ -455,6 +508,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def backlog(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         
         entries = LibraryEntry.objects.filter(
@@ -474,6 +529,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='friends-playing')
     def friends_playing(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import Follow, LibraryEntry
         
         following_users = Follow.objects.filter(follower=user).values_list('following_id', flat=True)
@@ -505,13 +562,67 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def unfollow(self, request, username=None):
         target_user = self.get_object()
-        from api.models import Follow
+        from api.models import Follow, FollowRequest, Notification
         deleted_count, _ = Follow.objects.filter(follower=request.user, following=target_user).delete()
         
         if deleted_count == 0:
+            # Check for a pending follow request
+            req_deleted_count, _ = FollowRequest.objects.filter(sender=request.user, receiver=target_user).delete()
+            if req_deleted_count > 0:
+                # Remove follow request notification
+                Notification.objects.filter(recipient=target_user, actor=request.user, verb='requested to follow you').delete()
+                return Response({"message": "Follow request cancelled.", "status": "none", "is_following": False, "is_requested": False}, status=status.HTTP_200_OK)
             return Response({"error": "You are not following this user."}, status=status.HTTP_400_BAD_REQUEST)
             
-        return Response({"message": f"You have unfollowed {target_user.username}"}, status=status.HTTP_200_OK)
+        return Response({"message": f"You have unfollowed {target_user.username}", "status": "none", "is_following": False, "is_requested": False}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='approve-request', permission_classes=[permissions.IsAuthenticated])
+    def approve_request(self, request, username=None):
+        sender = self.get_object()
+        from api.models import FollowRequest, Follow, Notification
+        try:
+            follow_req = FollowRequest.objects.get(sender=sender, receiver=request.user)
+        except FollowRequest.DoesNotExist:
+            return Response({"error": "Follow request not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        Follow.objects.get_or_create(follower=sender, following=request.user)
+        follow_req.delete()
+        
+        # Delete notification
+        Notification.objects.filter(recipient=request.user, actor=sender, verb='requested to follow you').delete()
+        
+        # Notify the sender that their request was approved
+        Notification.objects.create(
+            recipient=sender,
+            actor=request.user,
+            verb='accepted your follow request'
+        )
+        
+        return Response({"message": f"Approved follow request from {sender.username}."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reject-request', permission_classes=[permissions.IsAuthenticated])
+    def reject_request(self, request, username=None):
+        sender = self.get_object()
+        from api.models import FollowRequest, Notification
+        try:
+            follow_req = FollowRequest.objects.get(sender=sender, receiver=request.user)
+        except FollowRequest.DoesNotExist:
+            return Response({"error": "Follow request not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        follow_req.delete()
+        
+        # Delete notification
+        Notification.objects.filter(recipient=request.user, actor=sender, verb='requested to follow you').delete()
+        
+        return Response({"message": f"Rejected follow request from {sender.username}."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='follow-requests', permission_classes=[permissions.IsAuthenticated])
+    def follow_requests(self, request):
+        from api.models import FollowRequest
+        requests_qs = FollowRequest.objects.filter(receiver=request.user).select_related('sender')
+        senders = [req.sender for req in requests_qs]
+        serializer = self.get_serializer(senders, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def block(self, request, username=None):
@@ -519,10 +630,20 @@ class UserViewSet(viewsets.ModelViewSet):
         if request.user == target_user:
             return Response({"error": "You cannot block yourself."}, status=status.HTTP_400_BAD_REQUEST)
         
-        from api.models import Block
+        from api.models import Block, Follow, FollowRequest, Notification
         block_instance, created = Block.objects.get_or_create(blocker=request.user, blocked=target_user)
         if not created:
             return Response({"message": "You have already blocked this user."}, status=status.HTTP_200_OK)
+            
+        # Clean up follows, follow requests, and follow request notifications when blocking
+        Follow.objects.filter(follower=request.user, following=target_user).delete()
+        Follow.objects.filter(follower=target_user, following=request.user).delete()
+        FollowRequest.objects.filter(sender=request.user, receiver=target_user).delete()
+        FollowRequest.objects.filter(sender=target_user, receiver=request.user).delete()
+        
+        Notification.objects.filter(recipient=target_user, actor=request.user, verb='requested to follow you').delete()
+        Notification.objects.filter(recipient=request.user, actor=target_user, verb='requested to follow you').delete()
+        
         return Response({"message": f"Blocked {target_user.username} successfully."}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -930,13 +1051,25 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Review.objects.all().select_related('user', 'game')
         
-        # Exclude reviews from blocked/blocking users
+        # Exclude reviews from blocked/blocking users and private profiles (unless authorized)
         request = self.request
+        from django.db.models import Q
         if request and request.user.is_authenticated:
             from api.models import Block
             blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
             blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
             queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
+            following_ids = list(request.user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
         
         # Annotate with likes count for ordering by popularity
         from django.db.models import Count
@@ -1001,13 +1134,25 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Post.objects.all().select_related('user').order_by('-timestamp')
         
-        # Exclude posts from blocked/blocking users
+        # Exclude posts from blocked/blocking users and private profiles (unless authorized)
         request = self.request
+        from django.db.models import Q
         if request and request.user.is_authenticated:
             from api.models import Block
             blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
             blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
             queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
+            following_ids = list(request.user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
             
         username = self.request.query_params.get('username', None)
         parent_id = self.request.query_params.get('parent', None)
@@ -1465,6 +1610,29 @@ class LibraryViewSet(viewsets.ModelViewSet):
     ordering_fields = ['playtime_forever', 'game__title']
     ordering = ['-playtime_forever']
 
+    def get_queryset(self):
+        queryset = LibraryEntry.objects.all().select_related('game', 'user')
+        # Exclude library entries from blocked/blocking users and private profiles (unless authorized)
+        request = self.request
+        from django.db.models import Q
+        if request and request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
+            following_ids = list(request.user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        return queryset
+
 from core.models import News
 from .serializers import NewsSerializer
 
@@ -1798,6 +1966,18 @@ class FeedViewSet(viewsets.ViewSet):
             from api.models import Block
             exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
             exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+            
+            # Exclude private profiles the user does not follow, unless it's their own profile
+            following_ids = list(user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=user.id).values_list('id', flat=True)
+            exclude_ids.update(private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            exclude_ids.update(private_ids)
 
         posts = Post.objects.filter(
             parent__isnull=True,

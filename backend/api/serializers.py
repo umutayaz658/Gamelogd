@@ -22,13 +22,13 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
+            'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
         read_only_fields = ['id', 'date_joined']
 
     def to_representation(self, instance):
-        """Override to safely handle mixed Cloudinary and local media paths."""
+        """Override to safely handle mixed Cloudinary and local media paths and enforce privacy settings."""
         representation = super().to_representation(instance)
         request = self.context.get('request')
 
@@ -48,6 +48,32 @@ class UserSerializer(serializers.ModelSerializer):
                         representation[field] = request.build_absolute_uri(val)
                     except Exception:
                         pass
+
+        # Privacy Enforcement: strip private details if the requesting user is not authorized
+        is_private = instance.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance).exists()
+
+        if is_private and not is_owner and not is_following:
+            sensitive_fields = [
+                'email', 'phone_number', 'location', 'birth_date', 'gender', 
+                'steam_id', 'social_links', 'top_favorites', 'platforms', 
+                'interests', 'show_birth_date'
+            ]
+            for f in sensitive_fields:
+                if f in representation:
+                    if f in ['social_links', 'top_favorites', 'platforms', 'interests']:
+                        representation[f] = []
+                    elif f == 'settings':
+                        representation[f] = {'privateProfile': True}
+                    else:
+                        representation[f] = None
+            if 'settings' in representation:
+                representation['settings'] = {'privateProfile': True}
+
         return representation
 
     def validate_username(self, value):
@@ -61,6 +87,8 @@ class UserSerializer(serializers.ModelSerializer):
     following_count = serializers.IntegerField(source='following.count', read_only=True)
     reviews_count = serializers.IntegerField(source='reviews.count', read_only=True)
     is_following = serializers.SerializerMethodField()
+    is_requested = serializers.SerializerMethodField()
+    has_requested_me = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
     has_blocked_me = serializers.SerializerMethodField()
 
@@ -71,6 +99,20 @@ class UserSerializer(serializers.ModelSerializer):
             # Follow model: follower=request.user, following=obj
             from api.models import Follow
             return Follow.objects.filter(follower=request.user, following=obj).exists()
+        return False
+
+    def get_is_requested(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            from api.models import FollowRequest
+            return FollowRequest.objects.filter(sender=request.user, receiver=obj).exists()
+        return False
+
+    def get_has_requested_me(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            from api.models import FollowRequest
+            return FollowRequest.objects.filter(sender=obj, receiver=request.user).exists()
         return False
 
     def get_is_blocked(self, obj):
@@ -100,6 +142,9 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     def get_target_url(self, obj):
         try:
+            if 'requested to follow' in obj.verb:
+                return None  # No redirect - handled by inline accept/reject buttons
+            
             if 'following' in obj.verb:
                 return f"/{obj.actor.username}"
             
@@ -321,6 +366,34 @@ class ReviewSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("You cannot change the game of an existing review.")
         return data
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the review's author
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['content'] = "This review is from a private account."
+            representation['rating'] = None
+            representation['is_completed'] = False
+            representation['contains_spoilers'] = False
+            representation['is_private_restricted'] = True
+            
+            # Clear interactive fields
+            representation['is_liked'] = False
+            representation['is_bookmarked'] = False
+            representation['bookmarks_count'] = 0
+            representation['is_liked_by_user'] = False
+            representation['likes_count'] = 0
+            
+        return representation
+
 
 class SimplePostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -350,6 +423,30 @@ class SimplePostSerializer(serializers.ModelSerializer):
                 'source_icon': obj.news_parent.source.icon
             }
         return None
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the post's author
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['content'] = "This post is from a private account."
+            representation['title'] = None
+            representation['image'] = None
+            representation['media_file'] = None
+            representation['media_type'] = None
+            representation['gif_url'] = None
+            representation['poll_options'] = []
+            representation['is_private_restricted'] = True
+            
+        return representation
 
 
 # from core.models import Game, Review, Post, Project, JobPosting, PostMedia (Imported at top)
@@ -503,6 +600,46 @@ class PostSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Poll options must be non-empty strings.")
         return value
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the post's author
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['content'] = "This post is from a private account."
+            representation['title'] = None
+            representation['image'] = None
+            representation['media_file'] = None
+            representation['media_type'] = None
+            representation['gif_url'] = None
+            representation['poll_options'] = []
+            representation['media'] = []
+            representation['is_private_restricted'] = True
+            
+            # Hide nested comments/parent details
+            representation['replies'] = []
+            representation['likes'] = []
+            representation['replies_count'] = 0
+            representation['likes_count'] = 0
+            representation['is_liked'] = False
+            representation['is_bookmarked'] = False
+            representation['bookmarks_count'] = 0
+            representation['reposts_count'] = 0
+            representation['is_reposted'] = False
+            representation['repost_parent'] = None
+            representation['repost_details'] = None
+            representation['repost_parent_review'] = None
+            representation['repost_review_details'] = None
+            
+        return representation
+
 
 class ConversationMemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -571,6 +708,27 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
         if obj.playtime_forever:
             return round(obj.playtime_forever / 60, 1)
         return 0.0
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the library entry's owner
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['playtime_forever'] = 0
+            representation['playtime_hours'] = 0.0
+            representation['platform'] = None
+            representation['status'] = None
+            representation['is_private_restricted'] = True
+            
+        return representation
 
 
 

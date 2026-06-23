@@ -1059,6 +1059,46 @@ function SettingsContent() {
         }
     }, [displaySettings.fontSize]);
 
+    const [followRequests, setFollowRequests] = useState<any[]>([]);
+    const [isRequestsLoading, setIsRequestsLoading] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'privacy') {
+            const fetchFollowRequests = async () => {
+                setIsRequestsLoading(true);
+                try {
+                    const res = await api.get('/users/follow-requests/');
+                    setFollowRequests(res.data);
+                } catch (error) {
+                    console.error("Failed to fetch follow requests:", error);
+                } finally {
+                    setIsRequestsLoading(false);
+                }
+            };
+            fetchFollowRequests();
+        }
+    }, [activeTab]);
+
+    const handleApproveRequest = async (requestUsername: string) => {
+        try {
+            await api.post(`/users/${requestUsername}/approve-request/`);
+            setFollowRequests(prev => prev.filter(r => r.username !== requestUsername));
+        } catch (error) {
+            console.error("Failed to approve request:", error);
+            alert("Failed to approve follow request.");
+        }
+    };
+
+    const handleRejectRequest = async (requestUsername: string) => {
+        try {
+            await api.post(`/users/${requestUsername}/reject-request/`);
+            setFollowRequests(prev => prev.filter(r => r.username !== requestUsername));
+        } catch (error) {
+            console.error("Failed to reject request:", error);
+            alert("Failed to reject follow request.");
+        }
+    };
+
     const activeColor = colors[displaySettings.accentColor as keyof typeof colors] || colors.Emerald;
 
     const handleSaveProfile = async () => {
@@ -1717,6 +1757,7 @@ function SettingsContent() {
                                     </div>
                                 </div>
                             )}
+
 
                             {/* Content Preferences */}
                             {activeTab === 'content' && (
