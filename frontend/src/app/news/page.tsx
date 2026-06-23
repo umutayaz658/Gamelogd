@@ -182,6 +182,41 @@ export default function NewsPage() {
         return Math.ceil(totalGridItems / 20);
     }, [filteredAndSortedNews]);
 
+    const pageNumbers = useMemo(() => {
+        const pages: (number | string)[] = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) {
+                pages.push(i);
+            }
+        } else {
+            pages.push(1);
+            
+            let start = Math.max(2, currentPage - 1);
+            let end = Math.min(totalPages - 1, currentPage + 1);
+            
+            if (currentPage <= 3) {
+                end = 4;
+            } else if (currentPage >= totalPages - 2) {
+                start = totalPages - 3;
+            }
+            
+            if (start > 2) {
+                pages.push('...');
+            }
+            
+            for (let i = start; i <= end; i++) {
+                pages.push(i);
+            }
+            
+            if (end < totalPages - 1) {
+                pages.push('...');
+            }
+            
+            pages.push(totalPages);
+        }
+        return pages;
+    }, [currentPage, totalPages]);
+
     const handleCardClick = (id: number) => {
         router.push(`/news/${id}`);
     };
@@ -407,19 +442,32 @@ export default function NewsPage() {
                                             Previous
                                         </button>
                                         
-                                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                            <button
-                                                key={page}
-                                                onClick={() => handlePageChange(page)}
-                                                className={`w-10 h-10 rounded-lg text-sm font-medium transition-all ${
-                                                    currentPage === page
-                                                        ? 'bg-emerald-500 text-black font-bold'
-                                                        : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                                                }`}
-                                            >
-                                                {page}
-                                            </button>
-                                        ))}
+                                        {pageNumbers.map((page, idx) => {
+                                            if (typeof page === 'number') {
+                                                return (
+                                                    <button
+                                                        key={`page-${page}`}
+                                                        onClick={() => handlePageChange(page)}
+                                                        className={`w-10 h-10 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                                                            currentPage === page
+                                                                ? 'bg-emerald-500 text-black font-bold'
+                                                                : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                );
+                                            } else {
+                                                return (
+                                                    <span
+                                                        key={`ellipsis-${idx}`}
+                                                        className="w-10 h-10 flex items-center justify-center text-zinc-500 select-none text-sm"
+                                                    >
+                                                        {page}
+                                                    </span>
+                                                );
+                                            }
+                                        })}
 
                                         <button
                                             onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
