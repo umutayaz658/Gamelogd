@@ -8,7 +8,7 @@ import { useNotifications } from '@/context/NotificationContext';
 import { useLogModal } from '@/context/LogModalContext';
 import SidebarSearch from './SidebarSearch';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getRelativeTime } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
 
 interface Notification {
@@ -27,7 +27,26 @@ export default function LeftSidebar() {
     const { user } = useAuth();
     const { unreadMessages, unreadNotifications, markMessagesRead, markNotificationsRead } = useNotifications();
     const { openLogModal } = useLogModal();
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
+
+    const getTranslatedVerb = (verb: string) => {
+        const lower = verb.toLowerCase();
+        if (lower.includes('liked your post')) return t('verbLikedYourPost');
+        if (lower.includes('liked your review')) return t('verbLikedYourReview');
+        if (lower.includes('liked your comment')) return t('verbLikedYourComment');
+        if (lower.includes('mentioned you in a post')) return t('verbMentionedYouPost');
+        if (lower.includes('mentioned you in a comment')) return t('verbMentionedYouComment');
+        if (lower.includes('replied to your post')) return t('verbRepliedYourPost');
+        if (lower.includes('replied to your review')) return t('verbRepliedYourReview');
+        if (lower.includes('replied to your comment')) return t('verbRepliedYourComment');
+        if (lower.includes('reposted your post')) return t('verbRepostedYourPost');
+        if (lower.includes('quoted your post')) return t('verbQuotedYourPost');
+        if (lower.includes('followed you')) return t('verbFollowedYou');
+        if (lower.includes('requested to follow you')) return t('verbRequestedFollowYou');
+        if (lower.includes('accepted your follow request')) return t('verbAcceptedFollowRequest');
+        if (lower.includes('invited you to join')) return t('verbInvitedYouToJoin');
+        return verb;
+    };
 
     const [isNotifMode, setIsNotifMode] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -54,13 +73,7 @@ export default function LeftSidebar() {
     }, [isNotifMode]);
 
     const formatTime = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-        if (diffInSeconds < 60) return 'Just now';
-        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
-        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
-        return `${Math.floor(diffInSeconds / 86400)}d`;
+        return getRelativeTime(dateString, language);
     };
 
     const handleApproveRequest = async (e: React.MouseEvent, actorUsername: string) => {
@@ -178,7 +191,7 @@ export default function LeftSidebar() {
                                                     <p className="text-sm text-zinc-200 leading-snug">
                                                         <span className="font-bold">{notif.actor.username}</span>
                                                         {' '}
-                                                        <span className="text-zinc-400">requested to follow you</span>
+                                                        <span className="text-zinc-400">{t('requestedToFollowYou')}</span>
                                                     </p>
                                                     <span className="text-xs text-zinc-500">{formatTime(notif.created_at)}</span>
                                                 </div>
@@ -190,14 +203,14 @@ export default function LeftSidebar() {
                                                     disabled={isProcessing}
                                                     className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs py-1.5 transition-all cursor-pointer"
                                                 >
-                                                    {isProcessing ? '...' : 'Accept'}
+                                                    {isProcessing ? '...' : t('accept')}
                                                 </button>
                                                 <button
                                                     onClick={(e) => handleRejectRequest(e, notif.actor.username)}
                                                     disabled={isProcessing}
                                                     className="flex-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 font-bold rounded-lg text-xs py-1.5 border border-zinc-700 transition-all cursor-pointer"
                                                 >
-                                                    {isProcessing ? '...' : 'Decline'}
+                                                    {isProcessing ? '...' : t('decline')}
                                                 </button>
                                             </div>
                                         </div>
@@ -221,7 +234,7 @@ export default function LeftSidebar() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm text-zinc-200 leading-snug">
-                                                <span className="font-bold">{notif.actor.username}</span> {notif.verb}
+                                                <span className="font-bold">{notif.actor.username}</span> {getTranslatedVerb(notif.verb)}
                                             </p>
                                             <span className="text-xs text-zinc-500">{formatTime(notif.created_at)}</span>
                                         </div>
