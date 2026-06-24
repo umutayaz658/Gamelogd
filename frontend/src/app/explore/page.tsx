@@ -10,9 +10,19 @@ import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
+import { useTranslation } from '@/lib/useTranslation';
+import { FeedItem } from '@/types';
 
 export default function ExplorePage() {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState('For You');
+
+    const getTabLabel = (tab: string) => {
+        if (tab === 'For You') return t('forYou');
+        if (tab === 'Trending') return t('trending');
+        if (tab === 'News') return t('news');
+        return tab;
+    };
     const { user } = useAuth();
 
     // Default tabs
@@ -28,7 +38,7 @@ export default function ExplorePage() {
         tabs = [...tabs, "Esports", "Indie", "RPG"];
     }
 
-    const [posts, setPosts] = useState<any[]>([]);
+    const [posts, setPosts] = useState<FeedItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // Fetch feed on mount
@@ -49,15 +59,14 @@ export default function ExplorePage() {
     }, []);
 
     // Filter items based on active tab (Client-side filtering for now)
-    const getFilteredItems = () => {
+    const getFilteredItems = (): FeedItem[] => {
         if (activeTab === 'For You') return posts;
 
-        // Simple keyword matching for demo purposes
         const term = activeTab.toLowerCase();
-        return posts.filter((item: any) => {
-            const content = item.content || '';
-            const username = item.user?.username || '';
-            const gameTitle = item.game?.title || ''; // Handle Review game title
+        return posts.filter((item) => {
+            const content = 'content' in item ? item.content || '' : '';
+            const username = 'user' in item ? item.user?.username || '' : '';
+            const gameTitle = 'game' in item ? item.game?.title || '' : '';
 
             return (
                 content.toLowerCase().includes(term) ||
@@ -94,7 +103,7 @@ export default function ExplorePage() {
                                                 : 'text-zinc-500 hover:text-zinc-300'
                                                 }`}
                                         >
-                                            {tab}
+                                            {getTabLabel(tab)}
                                             {activeTab === tab && (
                                                 <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
                                             )}

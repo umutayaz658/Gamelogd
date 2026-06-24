@@ -44,7 +44,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
 
     const [isLiked, setIsLiked] = useState(post.is_liked || false);
     const [isExpanded, setIsExpanded] = useState(false);
@@ -286,7 +286,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             </Link>
                             <span className="text-zinc-700 text-sm">•</span>
                             <span className="text-zinc-500 text-sm hover:underline" title={new Date(post.timestamp).toLocaleString()}>
-                                {new Date(post.timestamp).toLocaleDateString()} • {getRelativeTime(post.timestamp)}
+                                {new Date(post.timestamp).toLocaleDateString()} • {getRelativeTime(post.timestamp, language)}
                             </span>
                             {post.news_details && !hideNewsQuote && (
                                 <span className="ml-2 text-zinc-500 text-sm font-normal">

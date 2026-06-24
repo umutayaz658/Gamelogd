@@ -10,6 +10,7 @@ import { useState, useId, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface ReviewCardProps {
     review: Review;
@@ -20,6 +21,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
+    const { t, language } = useTranslation();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
     const baseId = useId().replace(/:/g, '-');
 
@@ -165,7 +167,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                             </Link>
                             <span className="text-zinc-700 text-sm">•</span>
                             <span className="text-zinc-500 text-sm hover:underline" title={new Date(review.timestamp).toLocaleString()}>
-                                {new Date(review.timestamp).toLocaleDateString()} • {getRelativeTime(review.timestamp)}
+                                {new Date(review.timestamp).toLocaleDateString()} • {getRelativeTime(review.timestamp, language)}
                             </span>
                         </div>
                         <div className="relative" ref={menuRef}>

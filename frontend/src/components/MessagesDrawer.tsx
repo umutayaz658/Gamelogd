@@ -11,6 +11,7 @@ import { usePathname } from 'next/navigation';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 // API Data Types
 interface Message {
@@ -52,6 +53,7 @@ export default function MessagesDrawer() {
     const pathname = usePathname();
     const { user } = useAuth();
     const { unreadMessages } = useNotifications();
+    const { t } = useTranslation();
 
     if (pathname?.startsWith('/messages')) return null;
     const [isOpen, setIsOpen] = useState(false);
@@ -198,7 +200,7 @@ export default function MessagesDrawer() {
                                 </div>
                                 <span className="font-bold text-sm truncate max-w-[120px]">
                                     {activeChat.other_user?.is_blocked
-                                        ? `${activeChat.other_user?.real_name || activeChat.other_user?.username} (Blocked)`
+                                        ? `${activeChat.other_user?.real_name || activeChat.other_user?.username} (${t('blocked')})`
                                         : activeChat.other_user?.has_blocked_me
                                         ? "Gamer"
                                         : activeChat.other_user?.real_name || activeChat.other_user?.username}
@@ -208,7 +210,7 @@ export default function MessagesDrawer() {
                     ) : (
                         <div className="flex items-center gap-2 font-bold text-white">
                             <MessageSquare className="h-5 w-5 text-emerald-500" />
-                            <span>Messages</span>
+                            <span>{t('messages')}</span>
                             {unreadMessages > 0 && (
                                 <span className="bg-emerald-600 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-1">
                                     {unreadMessages}
@@ -250,37 +252,39 @@ export default function MessagesDrawer() {
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
-                                {activeChat.other_user?.is_blocked ? (
-                                    <div className="p-3 border-t border-zinc-800 bg-zinc-900 text-center text-xs text-zinc-400">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <span className="font-semibold">You have blocked @{activeChat.other_user.username}</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setConfirmConfig({
-                                                        title: 'Unblock User',
-                                                        message: `Are you sure you want to unblock @${activeChat.other_user!.username}?`,
-                                                        onConfirm: async () => {
-                                                            try {
-                                                                await api.post(`/users/${activeChat.other_user!.username}/unblock/`);
-                                                                fetchConversations();
-                                                            } catch (err) {
-                                                                console.error("Failed to unblock:", err);
-                                                            }
-                                                        }
-                                                    });
-                                                    setIsConfirmOpen(true);
-                                                }}
-                                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] transition-colors cursor-pointer shadow-md shadow-emerald-950/20"
-                                            >
-                                                Unblock
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : activeChat.other_user?.has_blocked_me ? (
-                                    <div className="p-4 border-t border-zinc-800 bg-zinc-900 text-center text-xs text-zinc-550 italic font-semibold">
-                                        You cannot message this user.
-                                    </div>
+                                 {activeChat?.other_user?.is_blocked ? (
+                                     <div className="p-3 border-t border-zinc-800 bg-zinc-900 text-center text-xs text-zinc-400">
+                                         <div className="flex flex-col items-center gap-2">
+                                             <span className="font-semibold">{t('youBlockedUserAlert').replace('{username}', activeChat?.other_user?.username || '')}</span>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => {
+                                                     if (activeChat?.other_user) {
+                                                         setConfirmConfig({
+                                                             title: t('unblockUser'),
+                                                             message: t('areYouSureUnblock').replace('{username}', activeChat.other_user.username),
+                                                             onConfirm: async () => {
+                                                                 try {
+                                                                      await api.post(`/users/${activeChat.other_user.username}/unblock/`);
+                                                                      fetchConversations();
+                                                                 } catch (err) {
+                                                                      console.error("Failed to unblock:", err);
+                                                                 }
+                                                             }
+                                                         });
+                                                         setIsConfirmOpen(true);
+                                                     }
+                                                 }}
+                                                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] transition-colors cursor-pointer shadow-md shadow-emerald-950/20"
+                                             >
+                                                 {t('unblock')}
+                                             </button>
+                                         </div>
+                                     </div>
+                                 ) : activeChat?.other_user?.has_blocked_me ? (
+                                     <div className="p-4 border-t border-zinc-800 bg-zinc-900 text-center text-xs text-zinc-550 italic font-semibold">
+                                         {t('youCannotMessage')}
+                                     </div>
                                 ) : (
                                     <form onSubmit={handleSendMessage} className="p-2 border-t border-zinc-800 bg-zinc-900">
                                         <div className="flex items-center gap-2">
@@ -293,10 +297,10 @@ export default function MessagesDrawer() {
                                             <input
                                                 value={inputText}
                                                 onChange={(e) => setInputText(e.target.value)}
-                                                placeholder="Type a message..."
+                                                placeholder={t('typeAMessage')}
                                                 className="flex-1 bg-zinc-800 text-white text-sm rounded-full px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                                             />
-                                            <button type="submit" disabled={!inputText.trim() && !selectedGif} className="text-emerald-500 hover:text-emerald-400 disabled:opacity-50">
+                                            <button type="submit" disabled={!inputText.trim() && !selectedGif} className="text-emerald-500 hover:emerald-400 disabled:opacity-50">
                                                 <Send className="h-5 w-5" />
                                             </button>
                                         </div>
@@ -324,45 +328,45 @@ export default function MessagesDrawer() {
                         ) : (
                             // User List View
                             <div className="flex-1 overflow-y-auto scrollbar-thin-dark">
-                                {conversations.length === 0 ? (
-                                    <div className="p-4 text-center text-zinc-500 text-sm">
-                                        No conversations.
-                                        <br />
-                                        <Link href="/messages" className="text-emerald-500 hover:underline mt-2 inline-block">
-                                            Go to Messages Page
-                                        </Link>
-                                    </div>
-                                ) : (
-                                    conversations.map((chat) => (
-                                        <button
-                                            key={chat.id}
-                                            onClick={() => handleChatClick(chat.id)}
-                                            className="w-full p-3 flex items-center gap-3 hover:bg-zinc-900 transition-colors border-b border-zinc-900"
-                                        >
-                                            <div className="relative h-10 w-10">
-                                                <img
-                                                    src={chat.other_user?.is_blocked || chat.other_user?.has_blocked_me
-                                                        ? "https://ui-avatars.com/api/?name=%3F&background=3f3f46&color=a1a1aa"
-                                                        : getImageUrl(chat.other_user?.avatar, chat.other_user?.username)}
-                                                    alt={chat.other_user?.username}
-                                                    className="w-full h-full rounded-full object-cover"
-                                                />
-                                            </div>
-                                            <div className="text-left flex-1 min-w-0">
-                                                <div className="font-bold text-sm text-white truncate">
-                                                    {chat.other_user?.is_blocked
-                                                        ? `${chat.other_user?.real_name || chat.other_user?.username} (Blocked)`
-                                                        : chat.other_user?.has_blocked_me
-                                                        ? "Gamer"
-                                                        : chat.other_user?.real_name || chat.other_user?.username}
-                                                </div>
-                                                <div className="text-xs text-zinc-500 truncate">
-                                                    {chat.last_message ? chat.last_message.content : 'No messages'}
-                                                </div>
-                                            </div>
-                                            {chat.unread_count > 0 && (
-                                                <div className="h-2 w-2 bg-emerald-500 rounded-full" />
-                                            )}
+                                 {conversations.length === 0 ? (
+                                     <div className="p-4 text-center text-zinc-500 text-sm">
+                                         {t('noConversations')}
+                                         <br />
+                                         <Link href="/messages" className="text-emerald-500 hover:underline mt-2 inline-block">
+                                             {t('goToMessagesPage')}
+                                         </Link>
+                                     </div>
+                                 ) : (
+                                     conversations.map((chat) => (
+                                         <button
+                                             key={chat.id}
+                                             onClick={() => handleChatClick(chat.id)}
+                                             className="w-full p-3 flex items-center gap-3 hover:bg-zinc-900 transition-colors border-b border-zinc-900"
+                                         >
+                                             <div className="relative h-10 w-10">
+                                                 <img
+                                                     src={chat.other_user?.is_blocked || chat.other_user?.has_blocked_me
+                                                         ? "https://ui-avatars.com/api/?name=%3F&background=3f3f46&color=a1a1aa"
+                                                         : getImageUrl(chat.other_user?.avatar, chat.other_user?.username)}
+                                                     alt={chat.other_user?.username}
+                                                     className="w-full h-full rounded-full object-cover"
+                                                 />
+                                             </div>
+                                             <div className="text-left flex-1 min-w-0">
+                                                 <div className="font-bold text-sm text-white truncate">
+                                                     {chat.other_user?.is_blocked
+                                                         ? `${chat.other_user?.real_name || chat.other_user?.username} (${t('blocked')})`
+                                                         : chat.other_user?.has_blocked_me
+                                                         ? "Gamer"
+                                                         : chat.other_user?.real_name || chat.other_user?.username}
+                                                 </div>
+                                                 <div className="text-xs text-zinc-500 truncate">
+                                                     {chat.last_message ? chat.last_message.content : t('noMessages')}
+                                                 </div>
+                                             </div>
+                                             {chat.unread_count > 0 && (
+                                                 <div className="h-2 w-2 bg-emerald-500 rounded-full" />
+                                             )}
                                         </button>
                                     ))
                                 )}

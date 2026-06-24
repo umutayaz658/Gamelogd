@@ -159,7 +159,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
                                 value={formData.title}
                                 onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                placeholder="e.g. Super Space Odyssey"
+                                placeholder={t('projectTitlePlaceholder')}
                             />
                         </div>
  
@@ -172,7 +172,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all resize-none leading-relaxed"
                                 value={formData.description}
                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="What's this project about? What makes it special?"
+                                placeholder={t('projectDescriptionPlaceholder')}
                             />
                         </div>
  
