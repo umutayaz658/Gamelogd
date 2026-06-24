@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import RecommendedGames from '@/components/RecommendedGames';
 import { useTranslation } from '@/lib/useTranslation';
+import { getRelativeTime } from '@/lib/utils';
 
 interface NewsItem {
     id: number;
@@ -16,7 +17,7 @@ interface NewsItem {
 export default function RightSidebar() {
     const router = useRouter();
     const { user } = useAuth();
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
     const [trendingNews, setTrendingNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
     const sidebarRef = useRef<HTMLDivElement>(null);
@@ -83,13 +84,7 @@ export default function RightSidebar() {
     }, []);
 
     const timeAgo = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-        return `${Math.floor(seconds / 86400)}d ago`;
+        return getRelativeTime(dateString, language);
     };
 
     if (loading) {

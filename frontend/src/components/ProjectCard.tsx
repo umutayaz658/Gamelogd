@@ -13,7 +13,7 @@ interface ProjectCardProps {
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
     const [isFollowing, setIsFollowing] = useState(project.is_following || false);
     const [followersCount, setFollowersCount] = useState(project.followers_count || 0);
     const [isLoading, setIsLoading] = useState(false);
@@ -42,7 +42,14 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+        let locale = 'en-US';
+        const l = language.toLowerCase();
+        if (l === 'turkish' || l === 'tr') locale = 'tr-TR';
+        else if (l === 'spanish' || l === 'es') locale = 'es-ES';
+        else if (l === 'french' || l === 'fr') locale = 'fr-FR';
+        else if (l === 'german' || l === 'de') locale = 'de-DE';
+        
+        return date.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
     return (

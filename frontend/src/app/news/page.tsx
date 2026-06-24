@@ -3,8 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
-import api from '@/lib/api';
-import { ExternalLink, Calendar, Newspaper } from 'lucide-react';
+import { ExternalLink, Calendar, Newspaper, Search } from 'lucide-react';
 
 interface NewsItem {
     id: number;
@@ -19,18 +18,31 @@ interface NewsItem {
 }
 
 const CATEGORIES = [
-    { id: 'all', label: 'All News' },
-    { id: 'invest', label: 'Industry & Invest' },
-    { id: 'devs', label: 'Development' },
-    { id: 'hardware', label: 'Hardware' },
-    { id: 'general', label: 'General' },
+    { id: 'all', key: 'catAllNews' as const },
+    { id: 'invest', key: 'catIndustryInvest' as const },
+    { id: 'devs', key: 'catDevelopment' as const },
+    { id: 'hardware', key: 'catHardware' as const },
+    { id: 'general', key: 'catGeneral' as const },
 ];
 
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/lib/useTranslation';
+import api from '@/lib/api';
 
 export default function NewsPage() {
     const router = useRouter();
+    const { t } = useTranslation();
+
+    const getTranslatedCategory = (cat: string) => {
+        const lower = cat.toLowerCase();
+        if (lower === 'invest') return t('catIndustryInvest');
+        if (lower === 'devs') return t('catDevelopment');
+        if (lower === 'hardware') return t('catHardware');
+        if (lower === 'general') return t('catGeneral');
+        return cat;
+    };
     const [news, setNews] = useState<NewsItem[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
     const [ordering, setOrdering] = useState<'newest' | 'oldest'>('newest');
@@ -151,7 +163,7 @@ export default function NewsPage() {
         handlePageChange(1);
     };
 
-    const filteredAndSortedNews = useMemo(() => {
+    const categoryFilteredNews = useMemo(() => {
         let result = [...news];
 
         if (!selectedCategories.includes('all')) {
@@ -168,19 +180,34 @@ export default function NewsPage() {
     }, [news, selectedCategories, ordering]);
 
     const heroNews = useMemo(() => {
-        return filteredAndSortedNews.slice(0, 3);
-    }, [filteredAndSortedNews]);
+        return categoryFilteredNews.slice(0, 3);
+    }, [categoryFilteredNews]);
+
+    const searchFilteredNews = useMemo(() => {
+        if (searchQuery.trim() === '') {
+            return categoryFilteredNews;
+        }
+        const query = searchQuery.toLowerCase();
+        return categoryFilteredNews.filter(item =>
+            item.title.toLowerCase().includes(query) ||
+            (item.description && item.description.toLowerCase().includes(query))
+        );
+    }, [categoryFilteredNews, searchQuery]);
 
     const gridNews = useMemo(() => {
-        const start = 3 + (currentPage - 1) * 20;
+        const isSearchActive = searchQuery.trim() !== '';
+        const start = isSearchActive ? (currentPage - 1) * 20 : 3 + (currentPage - 1) * 20;
         const end = start + 20;
-        return filteredAndSortedNews.slice(start, end);
-    }, [filteredAndSortedNews, currentPage]);
+        return searchFilteredNews.slice(start, end);
+    }, [searchFilteredNews, searchQuery, currentPage]);
 
     const totalPages = useMemo(() => {
-        const totalGridItems = Math.max(0, filteredAndSortedNews.length - 3);
+        const isSearchActive = searchQuery.trim() !== '';
+        const totalGridItems = isSearchActive 
+            ? searchFilteredNews.length 
+            : Math.max(0, categoryFilteredNews.length - 3);
         return Math.ceil(totalGridItems / 20);
-    }, [filteredAndSortedNews]);
+    }, [categoryFilteredNews, searchFilteredNews, searchQuery]);
 
     const pageNumbers = useMemo(() => {
         const pages: (number | string)[] = [];
@@ -243,11 +270,8 @@ export default function NewsPage() {
                         <div className="flex items-center justify-between">
                             <h1 className="text-3xl font-bold flex items-center gap-2">
                                 <Newspaper className="text-emerald-500 h-8 w-8" />
-                                Game News
+                                {t('gameNews')}
                             </h1>
-                            <div className="text-sm text-zinc-500">
-                                Powered by Gamelogd RSS
-                            </div>
                         </div>
 
                         {/* Hero Section */}
@@ -263,7 +287,7 @@ export default function NewsPage() {
                                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent p-6 flex flex-col justify-end">
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                                                {heroNews[0].category}
+                                                {getTranslatedCategory(heroNews[0].category)}
                                             </span>
                                             <span className="text-zinc-300 text-xs flex items-center gap-1">
                                                 <Calendar className="h-3 w-3" />
@@ -292,7 +316,7 @@ export default function NewsPage() {
                                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent p-4 flex flex-col justify-end">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="bg-zinc-800 text-zinc-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase border border-zinc-700">
-                                                        {item.category}
+                                                        {getTranslatedCategory(item.category)}
                                                     </span>
                                                 </div>
                                                 <h3 className="text-lg font-bold leading-tight mb-1 line-clamp-2 hover:text-emerald-400 transition-colors">
@@ -309,7 +333,85 @@ export default function NewsPage() {
                         )}
 
                         {/* Filters & Sorting */}
-                        <div ref={filterRef} className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+                        <div ref={filterRef} className="flex flex-col gap-4 border-b border-zinc-800 pb-4">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                {/* Search Bar */}
+                                <div className="relative flex-1 max-w-md">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                        <Search className="h-4 w-4 text-zinc-500" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => {
+                                            setSearchQuery(e.target.value);
+                                            handlePageChange(1);
+                                        }}
+                                        placeholder={t('searchNewsPlaceholder')}
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-medium"
+                                    />
+                                    {searchQuery && (
+                                        <button
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                handlePageChange(1);
+                                            }}
+                                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-500 hover:text-zinc-300"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Date Ordering Custom Selector */}
+                                <div className="flex items-center gap-3 relative" id="sort-dropdown">
+                                    <span className="text-sm text-zinc-500">{t('sortBy')}</span>
+                                    <button
+                                        onClick={() => setIsSortOpen(!isSortOpen)}
+                                        className="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm text-white hover:border-zinc-700 hover:text-emerald-400 transition-all focus:outline-none focus:border-emerald-500 min-w-[140px]"
+                                    >
+                                        <span>{ordering === 'newest' ? t('newestFirst') : t('oldestFirst')}</span>
+                                        <svg
+                                            className={`w-4 h-4 text-zinc-400 transition-transform ${isSortOpen ? 'rotate-180 text-emerald-500' : ''}`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+
+                                    {isSortOpen && (
+                                        <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <button
+                                                onClick={() => {
+                                                    setOrdering('newest');
+                                                    handlePageChange(1);
+                                                    setIsSortOpen(false);
+                                                }}
+                                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
+                                                    ordering === 'newest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
+                                                }`}
+                                            >
+                                                {t('newestFirst')}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setOrdering('oldest');
+                                                    handlePageChange(1);
+                                                    setIsSortOpen(false);
+                                                }}
+                                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
+                                                    ordering === 'oldest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
+                                                }`}
+                                            >
+                                                {t('oldestFirst')}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Category Tabs (Multi-Select) */}
                             <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
                                 {CATEGORIES.map(cat => {
@@ -327,65 +429,17 @@ export default function NewsPage() {
                                                     : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'}
                                             `}
                                         >
-                                            {cat.label}
+                                            {t(cat.key)}
                                         </button>
                                     );
                                 })}
-                            </div>
-
-                            {/* Date Ordering Custom Selector */}
-                            <div className="flex items-center gap-3 relative" id="sort-dropdown">
-                                <span className="text-sm text-zinc-500">Sort by:</span>
-                                <button
-                                    onClick={() => setIsSortOpen(!isSortOpen)}
-                                    className="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm text-white hover:border-zinc-700 hover:text-emerald-400 transition-all focus:outline-none focus:border-emerald-500 min-w-[140px]"
-                                >
-                                    <span>{ordering === 'newest' ? 'Newest First' : 'Oldest First'}</span>
-                                    <svg
-                                        className={`w-4 h-4 text-zinc-400 transition-transform ${isSortOpen ? 'rotate-180 text-emerald-500' : ''}`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-
-                                {isSortOpen && (
-                                    <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                                        <button
-                                            onClick={() => {
-                                                setOrdering('newest');
-                                                handlePageChange(1);
-                                                setIsSortOpen(false);
-                                            }}
-                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
-                                                ordering === 'newest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
-                                            }`}
-                                        >
-                                            Newest First
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setOrdering('oldest');
-                                                handlePageChange(1);
-                                                setIsSortOpen(false);
-                                            }}
-                                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
-                                                ordering === 'oldest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
-                                            }`}
-                                        >
-                                            Oldest First
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         </div>
 
                         {/* News Grid */}
                         {loading ? (
                             <div className="flex items-center justify-center py-20">
-                                <span className="loading-spinner text-emerald-500">Loading news...</span>
+                                <span className="loading-spinner text-emerald-500">{t('loadingNews')}</span>
                             </div>
                         ) : (
                             <>
@@ -400,7 +454,7 @@ export default function NewsPage() {
                                                 />
                                                 <div className="absolute top-3 left-3">
                                                     <span className="bg-black/60 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium border border-white/10">
-                                                        {item.category}
+                                                        {getTranslatedCategory(item.category)}
                                                     </span>
                                                 </div>
                                             </div>
@@ -424,7 +478,7 @@ export default function NewsPage() {
                                                     onClick={handleExternalLink}
                                                     className="inline-flex items-center gap-2 text-sm text-emerald-500 font-medium hover:text-emerald-400 mt-auto w-fit"
                                                 >
-                                                    Read Article <ExternalLink className="h-4 w-4" />
+                                                    {t('readFullArticle')} <ExternalLink className="h-4 w-4" />
                                                 </a>
                                             </div>
                                         </div>
@@ -439,7 +493,7 @@ export default function NewsPage() {
                                             disabled={currentPage === 1}
                                             className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
                                         >
-                                            Previous
+                                            {t('previous')}
                                         </button>
                                         
                                         {pageNumbers.map((page, idx) => {
@@ -474,17 +528,17 @@ export default function NewsPage() {
                                             disabled={currentPage === totalPages}
                                             className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-medium hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:hover:bg-zinc-900 transition-colors"
                                         >
-                                            Next
+                                            {t('next')}
                                         </button>
                                     </div>
                                 )}
                             </>
                         )}
-                        {!loading && filteredAndSortedNews.length === 0 && (
+                        {!loading && searchFilteredNews.length === 0 && (
                             <div className="text-center py-20 text-zinc-500">
-                                No news found for this category selection.
+                                {t('noNewsFound')}
                             </div>
-                        )}
+                        ) }
                     </div>
                 </div>
             </main>

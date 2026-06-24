@@ -4,6 +4,7 @@ import { X, Image as ImageIcon, Video, Check, Upload, Layout, Plus, Trash2 } fro
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { Project, Post } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface CreateDevlogModalProps {
     isOpen: boolean;
@@ -19,6 +20,7 @@ interface MediaItem {
 }
 
 export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultProjectId }: CreateDevlogModalProps) {
+    const { t, language } = useTranslation();
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<number | ''>('');
     const [title, setTitle] = useState('');
@@ -153,7 +155,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                     className="aspect-square rounded-xl border-2 border-dashed border-zinc-800 hover:border-blue-500/50 hover:bg-zinc-900 transition-all flex flex-col items-center justify-center gap-2 text-zinc-500 hover:text-blue-500"
                                 >
                                     <Plus className="h-8 w-8" />
-                                    <span className="text-xs font-bold uppercase">Add Media</span>
+                                    <span className="text-xs font-bold uppercase">{t('addMedia')}</span>
                                 </button>
                             </div>
                         </div>
@@ -178,9 +180,9 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                     <Upload className="h-10 w-10 text-zinc-400 group-hover:text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-white mb-1 drop-shadow-md">Add Visuals</h3>
+                                    <h3 className="text-xl font-bold text-white mb-1 drop-shadow-md">{t('addVisuals')}</h3>
                                     <p className="text-sm text-zinc-400 max-w-[200px]">
-                                        Upload multiple images or videos to showcase your progress.
+                                        {t('addVisualsDesc')}
                                     </p>
                                 </div>
                             </div>
@@ -200,13 +202,13 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                     {/* Bottom Project Info Overlay (Only if no media, or sleek bar if media exists?) */}
                     {currentProject && mediaItems.length === 0 && (
                         <div className="absolute bottom-0 left-0 right-0 p-6 text-left pointer-events-none">
-                            <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Posting to</p>
+                            <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1 shadow-black drop-shadow-md">{t('postingTo')}</p>
                             <h3 className="text-2xl font-black text-white leading-none shadow-black drop-shadow-lg">{currentProject.title}</h3>
                         </div>
                     )}
                     {currentProject && mediaItems.length > 0 && (
                         <div className="p-4 border-t border-zinc-800 bg-zinc-950/90 backdrop-blur-sm z-10 flex items-center justify-between">
-                            <span className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Project</span>
+                            <span className="text-zinc-400 text-xs font-bold uppercase tracking-wider">{t('projects')}</span>
                             <span className="text-white font-bold text-sm truncate max-w-[150px]">{currentProject.title}</span>
                         </div>
                     )}
@@ -217,8 +219,8 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b border-zinc-800">
                         <div>
-                            <h2 className="text-xl font-bold text-white">Post New Devlog</h2>
-                            <p className="text-xs text-zinc-500 mt-1">Keep your community in the loop.</p>
+                            <h2 className="text-xl font-bold text-white">{t('postNewDevlog')}</h2>
+                            <p className="text-xs text-zinc-500 mt-1">{t('keepCommunityInLoop')}</p>
                         </div>
                         <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors">
                             <X className="h-5 w-5" />
@@ -230,7 +232,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
 
                         {/* Project Selector - Prominent */}
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Select Project</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('selectProject')}</label>
                             <div className="relative">
                                 <select
                                     required
@@ -238,7 +240,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                     value={selectedProject}
                                     onChange={e => setSelectedProject(Number(e.target.value))}
                                 >
-                                    <option value="">-- Choose a project --</option>
+                                    <option value="">{t('chooseProjectPlaceholder')}</option>
                                     {projects.map(p => (
                                         <option key={p.id} value={p.id}>{p.title}</option>
                                     ))}
@@ -251,26 +253,26 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
 
                         {/* Title Input */}
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Headline</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('headline')}</label>
                             <input
                                 type="text"
                                 required
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold placeholder:text-zinc-700 focus:border-blue-500/50 outline-none transition-all"
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
-                                placeholder="e.g. Update #4: New Combat System"
+                                placeholder={t('devlogHeadlinePlaceholder')}
                             />
                         </div>
 
                         {/* Content Input */}
                         <div className="space-y-2 flex-1 flex flex-col">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Details</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('details')}</label>
                             <textarea
                                 required
                                 className="flex-1 w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 outline-none transition-all resize-none leading-relaxed min-h-[150px]"
                                 value={content}
                                 onChange={e => setContent(e.target.value)}
-                                placeholder="What have you been working on? Share the details..."
+                                placeholder={t('devlogDetailsPlaceholder')}
                             />
                         </div>
                     </div>
@@ -282,7 +284,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                             onClick={onClose}
                             className="px-6 py-2.5 rounded-xl font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
                         >
-                            Cancel
+                            {t('cancel')}
                         </button>
                         <button
                             type="submit"
@@ -290,10 +292,10 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                             disabled={loading || !selectedProject || !title}
                             className="px-8 py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2 text-sm"
                         >
-                            {loading ? 'Posting...' : (
+                            {loading ? t('posting') : (
                                 <>
                                     <Check className="h-4 w-4" />
-                                    <span>Post Devlog</span>
+                                    <span>{t('postDevlog')}</span>
                                 </>
                             )}
                         </button>
