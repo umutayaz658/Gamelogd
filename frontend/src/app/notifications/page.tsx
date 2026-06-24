@@ -9,8 +9,9 @@ import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 
 import api from "@/lib/api";
-import { getImageUrl } from "@/lib/utils";
+import { getImageUrl, getRelativeTime } from "@/lib/utils";
 import { useNotifications } from "@/context/NotificationContext";
+import { useTranslation } from "@/lib/useTranslation";
 
 interface Notification {
     id: number;
@@ -36,12 +37,32 @@ interface FollowRequestUser {
 
 export default function NotificationsPage() {
     const router = useRouter();
+    const { t, language } = useTranslation();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [followRequests, setFollowRequests] = useState<FollowRequestUser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRequestsLoading, setIsRequestsLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'mentions' | 'verified' | 'follow_requests'>('all');
     const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+
+    const getTranslatedVerb = (verb: string) => {
+        const lower = verb.toLowerCase();
+        if (lower.includes('liked your post')) return t('verbLikedYourPost');
+        if (lower.includes('liked your review')) return t('verbLikedYourReview');
+        if (lower.includes('liked your comment')) return t('verbLikedYourComment');
+        if (lower.includes('mentioned you in a post')) return t('verbMentionedYouPost');
+        if (lower.includes('mentioned you in a comment')) return t('verbMentionedYouComment');
+        if (lower.includes('replied to your post')) return t('verbRepliedYourPost');
+        if (lower.includes('replied to your review')) return t('verbRepliedYourReview');
+        if (lower.includes('replied to your comment')) return t('verbRepliedYourComment');
+        if (lower.includes('reposted your post')) return t('verbRepostedYourPost');
+        if (lower.includes('quoted your post')) return t('verbQuotedYourPost');
+        if (lower.includes('followed you')) return t('verbFollowedYou');
+        if (lower.includes('requested to follow you')) return t('verbRequestedFollowYou');
+        if (lower.includes('accepted your follow request')) return t('verbAcceptedFollowRequest');
+        if (lower.includes('invited you to join')) return t('verbInvitedYouToJoin');
+        return verb;
+    };
 
     const { markNotificationsRead } = useNotifications();
 
@@ -168,14 +189,7 @@ export default function NotificationsPage() {
     });
 
     const formatTime = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-        if (diffInSeconds < 60) return 'Just now';
-        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
-        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
-        return `${Math.floor(diffInSeconds / 86400)}d`;
+        return getRelativeTime(dateString, language);
     };
 
     const pendingRequestCount = followRequests.length;
@@ -197,15 +211,15 @@ export default function NotificationsPage() {
 
                             {/* Header */}
                             <div className="p-4 border-b border-zinc-800 sticky top-0 bg-zinc-900/95 backdrop-blur-sm z-10 rounded-t-2xl">
-                                <h1 className="text-xl font-bold mb-4">Notifications</h1>
+                                <h1 className="text-xl font-bold mb-4">{t('notifications')}</h1>
 
                                 {/* Filters */}
                                 <div className="flex gap-2 flex-wrap">
                                     {[
-                                        { key: 'all', label: 'All' },
-                                        { key: 'follow_requests', label: 'Follow Requests' },
-                                        { key: 'mentions', label: 'Mentions' },
-                                        { key: 'verified', label: 'Verified' },
+                                        { key: 'all', label: t('all') },
+                                        { key: 'follow_requests', label: t('followRequests') },
+                                        { key: 'mentions', label: t('mentions') },
+                                        { key: 'verified', label: t('verified') },
                                     ].map((f) => (
                                         <button
                                             key={f.key}
@@ -263,7 +277,7 @@ export default function NotificationsPage() {
                                                             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all cursor-pointer"
                                                         >
                                                             {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                                                            Accept
+                                                            {t('accept')}
                                                         </button>
                                                         <button
                                                             onClick={(e) => handleRejectFollowRequest(e, reqUser.username)}
@@ -271,7 +285,7 @@ export default function NotificationsPage() {
                                                             className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 font-bold px-4 py-2 rounded-xl text-sm border border-zinc-700 transition-all cursor-pointer"
                                                         >
                                                             {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                                                            Decline
+                                                            {t('decline')}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -282,8 +296,8 @@ export default function NotificationsPage() {
                                             <div className="inline-block p-4 rounded-full bg-zinc-800/50 mb-4">
                                                 <UserPlus className="h-8 w-8 text-zinc-600" />
                                             </div>
-                                            <p className="font-medium">No pending follow requests</p>
-                                            <p className="text-sm text-zinc-600 mt-1">When someone requests to follow your private account, they'll appear here.</p>
+                                            <p className="font-medium">{t('noPendingFollowRequests')}</p>
+                                            <p className="text-sm text-zinc-600 mt-1">{t('noPendingFollowRequestsDesc')}</p>
                                         </div>
                                     )}
                                 </div>
@@ -334,7 +348,7 @@ export default function NotificationsPage() {
                                                                     {notif.actor.username}
                                                                     {notif.actor.is_verified && <CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />}
                                                                 </Link>
-                                                                <span className="text-zinc-400">{notif.verb}</span>
+                                                                <span className="text-zinc-400">{getTranslatedVerb(notif.verb)}</span>
                                                             </div>
                                                         </div>
 
@@ -345,13 +359,13 @@ export default function NotificationsPage() {
                                                                     onClick={(e) => handleAcceptInvite(e, notif.target_id)}
                                                                     className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
                                                                 >
-                                                                    Accept
+                                                                    {t('accept')}
                                                                 </button>
                                                                 <button
                                                                     onClick={(e) => handleDeclineInvite(e, notif.target_id)}
                                                                     className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700"
                                                                 >
-                                                                    Decline
+                                                                    {t('decline')}
                                                                 </button>
                                                             </div>
                                                         )}
@@ -365,7 +379,7 @@ export default function NotificationsPage() {
                                                                     className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition-all cursor-pointer"
                                                                 >
                                                                     {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                                                                    Accept
+                                                                    {t('accept')}
                                                                 </button>
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleRejectFollowRequest(e, notif.actor.username); }}
@@ -373,7 +387,7 @@ export default function NotificationsPage() {
                                                                     className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700 cursor-pointer"
                                                                 >
                                                                     {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                                                                    Decline
+                                                                    {t('decline')}
                                                                 </button>
                                                             </div>
                                                         )}
@@ -397,7 +411,7 @@ export default function NotificationsPage() {
                                             <div className="inline-block p-4 rounded-full bg-zinc-800/50 mb-4">
                                                 <Bell className="h-8 w-8 text-zinc-600" />
                                             </div>
-                                            <p className="font-medium">No notifications yet</p>
+                                            <p className="font-medium">{t('noNotifications')}</p>
                                         </div>
                                     )}
                                 </div>

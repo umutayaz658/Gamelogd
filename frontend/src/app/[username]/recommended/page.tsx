@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
-import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, ListTodo, Users, TrendingUp, Sparkles, RefreshCw, LinkIcon, Settings, Gem, Search } from 'lucide-react';
+import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, Users, TrendingUp, Sparkles, RefreshCw, LinkIcon, Settings, Gem } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface GameItem {
     id: number;
@@ -15,6 +16,9 @@ interface GameItem {
     cover_image: string | null;
     friend_username?: string;
     entry_count?: number;
+    platforms?: string[];
+    release_date?: string;
+    avg_rating?: number;
 }
 
 interface GenreStat {
@@ -58,12 +62,12 @@ export default function RecommendedGamesPage() {
     const params = useParams();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useTranslation();
     const username = params.username as string;
 
     const hasPlatformLinked = !!user?.steam_id;
 
     const [games, setGames] = useState<GameItem[]>([]);
-    const [backlog, setBacklog] = useState<GameItem[]>([]);
     const [friendsPlaying, setFriendsPlaying] = useState<GameItem[]>([]);
     const [trending, setTrending] = useState<GameItem[]>([]);
     const [hiddenGems, setHiddenGems] = useState<GameItem[]>([]);
@@ -90,17 +94,12 @@ export default function RecommendedGamesPage() {
                 setTrending(trendingRes.data);
                 setHiddenGems(hiddenGemsRes.data);
 
-                // Only fetch DNA/backlog/friends if platform is linked
+                // Only fetch DNA/friends if platform is linked
                 if (hasPlatformLinked) {
                     const dnaRes = await api.get(`/users/${username}/game-dna/`);
                     setDnaGenres(dnaRes.data.slice(0, 5)); // Take top 5
 
-                    const [backlogRes, friendsRes] = await Promise.all([
-                        api.get(`/users/${username}/backlog/`),
-                        api.get(`/users/${username}/friends-playing/`),
-                    ]);
-
-                    setBacklog(backlogRes.data);
+                    const friendsRes = await api.get(`/users/${username}/friends-playing/`);
                     setFriendsPlaying(friendsRes.data);
                 }
             } catch (err) {
@@ -130,7 +129,7 @@ export default function RecommendedGamesPage() {
                         // Only use cache if it actually contains games and is not expired
                         if (!isExpired && parsed.games && parsed.games.length > 0) {
                             // Check if all covers are null (legacy cache), force refresh if so
-                            const hasCovers = parsed.games.some((g: any) => g.cover_image !== null);
+                            const hasCovers = parsed.games.some((g: GameItem) => g.cover_image !== null);
                             if (hasCovers || parsed.games.length === 0) {
                                 setGames(parsed.games);
                                 // Add artificial delay to show loading state smoothly
@@ -170,29 +169,33 @@ export default function RecommendedGamesPage() {
         fetchRecommended();
 
         // Expose refresh function to component
-        (window as any).__refreshRecommendedPage = () => fetchRecommended(true);
+        const win = typeof window !== 'undefined' ? (window as unknown as { __refreshRecommendedPage?: (force?: boolean) => void }) : null;
+        if (win) {
+            win.__refreshRecommendedPage = () => fetchRecommended(true);
+        }
     }, [username, activeTab, hasPlatformLinked]);
 
     const handleManualRefresh = () => {
         setIsRefreshing(true);
-        if ((window as any).__refreshRecommendedPage) {
-            (window as any).__refreshRecommendedPage();
+        const win = typeof window !== 'undefined' ? (window as unknown as { __refreshRecommendedPage?: (force?: boolean) => void }) : null;
+        if (win?.__refreshRecommendedPage) {
+            win.__refreshRecommendedPage();
         }
     };
 
     const availablePlatforms = Array.from(
-        new Set(games.flatMap((g: any) => g.platforms || []))
+        new Set(games.flatMap((g: GameItem) => g.platforms || []))
     ).filter(Boolean).sort() as string[];
 
     const YEAR_RANGES = [
-        { label: 'All Years', value: 'All' },
+        { label: t('allYears'), value: 'All' },
         { label: '?-2000', value: '?-2000' },
         { label: '2000-2010', value: '2000-2010' },
         { label: '2010-2020', value: '2010-2020' },
         { label: '2020-?', value: '2020-?' },
     ];
 
-    const filteredGames = games.filter((game: any) => {
+    const filteredGames = games.filter((game: GameItem) => {
         if (selectedPlatform !== 'All') {
             if (!game.platforms || !game.platforms.includes(selectedPlatform)) return false;
         }
@@ -236,7 +239,7 @@ export default function RecommendedGamesPage() {
                             </button>
                             <h1 className="text-3xl font-bold flex items-center gap-3">
                                 <Sparkles className="text-indigo-500 h-8 w-8" />
-                                Recommended for You
+                                {t('recommendedForYou')}
                             </h1>
                         </div>
 
@@ -251,20 +254,20 @@ export default function RecommendedGamesPage() {
                                             <LinkIcon className="h-12 w-12 text-amber-400" />
                                         </div>
                                         <h2 className="text-2xl font-bold text-white mb-3">
-                                            No platform connected yet
+                                            {t('noPlatformConnectedHeader')}
                                         </h2>
                                         <p className="text-zinc-400 max-w-md leading-relaxed mb-2">
-                                            Please link a gaming platform to your account to receive personalized game recommendations.
+                                            {t('noPlatformConnectedDesc')}
                                         </p>
                                         <p className="text-zinc-500 text-sm mb-6">
-                                            You can connect your Steam, PlayStation, Xbox or other gaming platforms.
+                                            {t('noPlatformConnectedDescSub')}
                                         </p>
                                         <button
                                             onClick={() => router.push('/settings?tab=connected')}
                                             className="flex items-center gap-2 px-6 py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/20 hover:border-amber-500/30 rounded-xl text-sm font-semibold transition-all"
                                         >
                                             <Settings className="h-5 w-5" />
-                                            Link Platform
+                                            {t('linkPlatform')}
                                         </button>
                                     </div>
                                 </div>
@@ -275,12 +278,12 @@ export default function RecommendedGamesPage() {
                                         <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-6">
                                             <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
                                                 <TrendingUp className="text-amber-400 h-6 w-6" />
-                                                Trending on Gamelogd
+                                                {t('trendingOnGamelogd')}
                                             </h2>
                                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                                 {trending.slice(0, 10).map((game, i) => (
                                                     <div key={game.id} className="animate-fade-in" style={{ animationDelay: `${i * 80}ms` }}>
-                                                        <GameCard game={game} subtitle={`${game.entry_count} players logged`} />
+                                                        <GameCard game={game} subtitle={t('playersLoggedThis').replace('{count}', String(game.entry_count))} />
                                                     </div>
                                                 ))}
                                             </div>
@@ -298,7 +301,7 @@ export default function RecommendedGamesPage() {
                                                 onClick={() => setActiveTab('all')}
                                                 className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activeTab === 'all' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
                                             >
-                                                All Recommendations
+                                                {t('allRecommendations')}
                                             </button>
                                             {dnaGenres.map(cat => (
                                                 <button
@@ -316,7 +319,7 @@ export default function RecommendedGamesPage() {
                                                 onChange={(e) => {setSelectedPlatform(e.target.value); setPageIndex(0);}}
                                                 className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
                                             >
-                                                <option value="All">All Platforms</option>
+                                                <option value="All">{t('allPlatforms')}</option>
                                                 {availablePlatforms.map(p => (
                                                     <option key={p} value={p}>{p}</option>
                                                 ))}
@@ -350,10 +353,10 @@ export default function RecommendedGamesPage() {
                                         <div>
                                             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                                 <Gamepad2 className="text-indigo-400 h-5 w-5" />
-                                                {activeTab === 'all' ? 'Top Picks' : `${activeTab} Showcase`}
+                                                {activeTab === 'all' ? t('topPicks') : t('genreShowcase').replace('{genre}', activeTab)}
                                             </h2>
                                             <p className="text-sm text-zinc-500 mt-1">
-                                                Games carefully selected for your unique profile.
+                                                {t('showcaseDesc')}
                                             </p>
                                         </div>
 
@@ -372,11 +375,11 @@ export default function RecommendedGamesPage() {
 
                                     {loading ? (
                                         <div className="flex justify-center items-center h-64">
-                                            <span className="loading-spinner text-indigo-500">Loading showcase...</span>
+                                            <span className="loading-spinner text-indigo-500">{t('loadingShowcase')}</span>
                                         </div>
                                     ) : games.length === 0 ? (
                                         <div className="text-center py-16 text-zinc-500">
-                                            No recommendations found for this category.
+                                            {t('noRecommendationsFound')}
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -396,7 +399,7 @@ export default function RecommendedGamesPage() {
                                     <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
                                         <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
                                             <TrendingUp className="text-amber-400 h-5 w-5" />
-                                            Trending on Gamelogd
+                                            {t('trendingOnGamelogd')}
                                         </h2>
                                         {trending.length > 0 ? (
                                             <div className="space-y-3">
@@ -407,13 +410,13 @@ export default function RecommendedGamesPage() {
                                                         </div>
                                                         <div>
                                                             <h4 className="text-sm font-semibold group-hover:text-amber-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">{game.entry_count} players logged this</p>
+                                                            <p className="text-xs text-zinc-500">{t('playersLoggedThis').replace('{count}', String(game.entry_count))}</p>
                                                         </div>
                                                     </Link>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <div className="text-sm text-zinc-500 italic py-4">No trending data currently available.</div>
+                                            <div className="text-sm text-zinc-500 italic py-4">{t('noTrendingData')}</div>
                                         )}
                                     </div>
 
@@ -421,7 +424,7 @@ export default function RecommendedGamesPage() {
                                     <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
                                         <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
                                             <Users className="text-emerald-400 h-5 w-5" />
-                                            Logged by your friends
+                                            {t('loggedByFriends')}
                                         </h2>
                                         {friendsPlaying.length > 0 ? (
                                             <div className="space-y-3">
@@ -432,14 +435,14 @@ export default function RecommendedGamesPage() {
                                                         </div>
                                                         <div>
                                                             <h4 className="text-sm font-semibold group-hover:text-emerald-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">Logged by @{game.friend_username}</p>
+                                                            <p className="text-xs text-zinc-500">{t('loggedByFriend').replace('{username}', game.friend_username || '')}</p>
                                                         </div>
                                                     </Link>
                                                 ))}
                                             </div>
                                         ) : (
                                             <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
-                                                None of your friends have logged games recently.
+                                                {t('noFriendsLogged')}
                                             </div>
                                         )}
                                     </div>
@@ -448,7 +451,7 @@ export default function RecommendedGamesPage() {
                                     <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
                                         <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
                                             <Gem className="text-purple-400 h-5 w-5" />
-                                            Hidden Gems
+                                            {t('hiddenGems')}
                                         </h2>
                                         {hiddenGems.length > 0 ? (
                                             <div className="space-y-3">
@@ -459,14 +462,14 @@ export default function RecommendedGamesPage() {
                                                         </div>
                                                         <div>
                                                             <h4 className="text-sm font-semibold group-hover:text-purple-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">Avg Rating: {(game as any).avg_rating?.toFixed(1) || 'N/A'}</p>
+                                                            <p className="text-xs text-zinc-500">{t('avgRating')}: {game.avg_rating?.toFixed(1) || 'N/A'}</p>
                                                         </div>
                                                     </Link>
                                                 ))}
                                             </div>
                                         ) : (
                                             <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
-                                                No hidden gems discovered yet.
+                                                {t('noHiddenGems')}
                                             </div>
                                         )}
                                     </div>
