@@ -28,6 +28,8 @@ router.register(r'pitches', PitchViewSet, basename='pitch')
 router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call')
 router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 router.register(r'feed', FeedViewSet, basename='feed')
+from .views import ExplorePostsViewSet
+router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),

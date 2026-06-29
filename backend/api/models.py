@@ -204,17 +204,36 @@ class Conversation(models.Model):
         return f"Conversation {self.id}"
 
 class ConversationMember(models.Model):
+    MEMBERSHIP_STATUS = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+        ('left', 'Left'),
+        ('blocked', 'Blocked'),
+    ]
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='conversation_memberships')
     is_admin = models.BooleanField(default=False)
     is_muted = models.BooleanField(default=False)
     joined_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=MEMBERSHIP_STATUS, default='accepted', db_index=True)
+    invited_by = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_group_invites')
 
     class Meta:
         unique_together = ('conversation', 'user')
 
     def __str__(self):
-        return f"{self.user.username} in Conversation {self.conversation.id}"
+        return f"{self.user.username} ({self.status}) in Conversation {self.conversation.id}"
+
+@receiver(post_save, sender=ConversationMember)
+def create_group_invite_notification(sender, instance, created, **kwargs):
+    if created and instance.status == 'pending' and instance.invited_by:
+        Notification.objects.create(
+            recipient=instance.user,
+            actor=instance.invited_by,
+            verb='invited you to a group chat',
+            target=instance.conversation
+        )
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, related_name='messages', on_delete=models.CASCADE)
@@ -235,6 +254,12 @@ class Message(models.Model):
     # Replying
     reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
 
+    # Message states
+    is_pinned = models.BooleanField(default=False)
+    is_edited = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
+    edited_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['created_at']
 
@@ -252,6 +277,26 @@ class MessageReaction(models.Model):
 
     def __str__(self):
         return f"{self.user.username} reacted {self.emoji} to message {self.message.id}"
+
+class BlockedUser(models.Model):
+    blocker = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blocked_chat_users')
+    blocked = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blocked_by_chat')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+    def __str__(self):
+        return f"{self.blocker.username} blocked {self.blocked.username}"
+
+class ConversationReport(models.Model):
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='reports')
+    reported_by = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='conversation_reports')
+    reason = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Report on Conversation {self.conversation.id} by {self.reported_by.username}"
 
 class SupportTicket(models.Model):
     TICKET_TYPE_CHOICES = [
