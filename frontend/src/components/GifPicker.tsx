@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface GifPickerProps {
     onSelected: (gifUrl: string) => void;
 }
 
 export default function GifPicker({ onSelected }: GifPickerProps) {
+    const { t } = useTranslation();
     const [gifs, setGifs] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -49,7 +51,7 @@ export default function GifPicker({ onSelected }: GifPickerProps) {
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
                 <input
                     type="text"
-                    placeholder="Search GIFs..."
+                    placeholder={t('searchGifs')}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -81,7 +83,7 @@ export default function GifPicker({ onSelected }: GifPickerProps) {
             </div>
 
             <div className="mt-2 text-[10px] text-zinc-600 text-center">
-                Powered by GIPHY
+                {t('poweredByGiphy')}
             </div>
         </div>
     );

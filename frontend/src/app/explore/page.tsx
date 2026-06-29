@@ -8,9 +8,9 @@ import Feed from "@/components/Feed";
 import PostCard from "@/components/PostCard";
 import { useAuth } from "@/context/AuthContext";
 import { Post } from "@/types";
-
 import api from "@/lib/api";
 import { Loader2, Gamepad2, MessageSquare, TrendingUp, Search } from "lucide-react";
+import { useTranslation } from '@/lib/useTranslation';
 
 // Post category filters for the explore page
 const POST_CATEGORIES = [
@@ -34,6 +34,7 @@ const GAME_GENRES = [
 ];
 
 export default function ExplorePage() {
+    const { t } = useTranslation();
     const { user } = useAuth();
     
     // Main tab: Games or Posts
@@ -71,19 +72,16 @@ export default function ExplorePage() {
             } else {
                 setPosts(prev => [...prev, ...(data.results || [])]);
             }
-            setHasMorePosts(data.has_next || false);
-        } catch (error: any) {
+            setHasMorePosts(data.has_next);
+        } catch (error) {
             console.error("Failed to fetch explore posts:", error);
-            // Fallback: try for-you feed if explore endpoint doesn't exist yet
-            if (error.response?.status === 404) {
+            // Fallback client-side filtering if endpoint has issues
+            if (reset) {
                 try {
                     const fallbackRes = await api.get('/feed/for-you/');
                     const fallbackPosts = fallbackRes.data || [];
                     if (category !== 'all') {
-                        // Client-side filtering as fallback
-                        const filtered = fallbackPosts.filter((p: any) => 
-                            p.category === category || !p.category
-                        );
+                        const filtered = fallbackPosts.filter((p: any) => p.category === category);
                         setPosts(reset ? filtered : prev => [...prev, ...filtered]);
                     } else {
                         setPosts(reset ? fallbackPosts : prev => [...prev, ...fallbackPosts]);
@@ -134,27 +132,29 @@ export default function ExplorePage() {
         }
     }, [mainTab, activeGenre, gameSearch, gameSort, fetchGames]);
 
-    // Infinite scroll for posts
+    // Intersection observer for infinite scrolling on posts
     useEffect(() => {
-        if (mainTab !== 'posts') return;
+        if (!hasMorePosts || isLoadingPosts || mainTab !== 'posts') return;
         
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && hasMorePosts && !isLoadingPosts) {
-                    const nextPage = postsPage + 1;
-                    setPostsPage(nextPage);
-                    fetchExplorePosts(nextPage, activeCategory);
-                }
-            },
-            { threshold: 0.1 }
-        );
-
-        if (postsObserverRef.current) {
-            observer.observe(postsObserverRef.current);
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                const nextPage = postsPage + 1;
+                setPostsPage(nextPage);
+                fetchExplorePosts(nextPage, activeCategory);
+            }
+        }, { threshold: 1.0 });
+        
+        const currentTarget = postsObserverRef.current;
+        if (currentTarget) {
+            observer.observe(currentTarget);
         }
-
-        return () => observer.disconnect();
-    }, [mainTab, hasMorePosts, isLoadingPosts, postsPage, activeCategory, fetchExplorePosts]);
+        
+        return () => {
+            if (currentTarget) {
+                observer.unobserve(currentTarget);
+            }
+        };
+    }, [hasMorePosts, isLoadingPosts, postsPage, activeCategory, mainTab, fetchExplorePosts]);
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -229,63 +229,44 @@ export default function ExplorePage() {
                                     </div>
 
                                     {/* Posts Feed */}
-                                    <div className="mt-4 flex flex-col gap-4">
-                                        {isLoadingPosts && posts.length === 0 ? (
-                                            <div className="flex justify-center py-12">
-                                                <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+                                    <div className="space-y-4 mt-4">
+                                        {posts.map((post) => (
+                                            <PostCard key={post.id} post={post} />
+                                        ))}
+                                        
+                                        {isLoadingPosts && (
+                                            <div className="flex justify-center py-6">
+                                                <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
                                             </div>
-                                        ) : posts.length === 0 ? (
-                                            <div className="text-center py-16">
-                                                <div className="text-4xl mb-4">
-                                                    {POST_CATEGORIES.find(c => c.key === activeCategory)?.emoji || '🔍'}
-                                                </div>
-                                                <h3 className="text-lg font-bold text-zinc-300 mb-2">No posts found</h3>
-                                                <p className="text-sm text-zinc-500 max-w-xs mx-auto">
-                                                    {activeCategory === 'all' 
-                                                        ? 'No trending posts right now. Be the first to share something!'
-                                                        : `No trending posts in ${POST_CATEGORIES.find(c => c.key === activeCategory)?.label || activeCategory}. Try a different category.`
-                                                    }
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                {posts.map((post) => (
-                                                    <PostCard key={`explore-${post.id}`} post={post} />
-                                                ))}
-                                                
-                                                {/* Infinite scroll trigger */}
-                                                <div ref={postsObserverRef} className="py-4">
-                                                    {isLoadingPosts && (
-                                                        <div className="flex justify-center">
-                                                            <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                
-                                                {!hasMorePosts && posts.length > 0 && (
-                                                    <div className="text-center py-6 text-zinc-600 text-xs font-medium">
-                                                        You&apos;ve reached the end • Pull to refresh
-                                                    </div>
-                                                )}
-                                            </>
                                         )}
+                                        
+                                        {!isLoadingPosts && posts.length === 0 && (
+                                            <div className="text-center py-16 bg-zinc-900/30 rounded-2xl border border-zinc-800/50">
+                                                <div className="text-4xl mb-3">📭</div>
+                                                <h3 className="text-sm font-bold text-zinc-300">No posts in this category</h3>
+                                                <p className="text-xs text-zinc-550 mt-1">Be the first to share something about this category!</p>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Sentinel element for infinite scroll */}
+                                        <div ref={postsObserverRef} className="h-4" />
                                     </div>
                                 </div>
                             )}
 
                             {/* Games Tab Content */}
                             {mainTab === 'games' && (
-                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    {/* Game Search */}
-                                    <div className="sticky top-[57px] z-10 bg-zinc-950/80 backdrop-blur-md -mx-4 px-4 py-3 border-b border-zinc-800/50">
-                                        <div className="relative mb-3">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 py-4">
+                                    <div className="space-y-4 mb-6">
+                                        {/* Search Input */}
+                                        <div className="relative">
+                                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                                             <input
                                                 type="text"
-                                                placeholder="Search games..."
+                                                placeholder="Search games by title..."
                                                 value={gameSearch}
                                                 onChange={(e) => setGameSearch(e.target.value)}
-                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                                                className="w-full bg-zinc-900 border border-zinc-800 focus:border-emerald-500/50 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none transition-all placeholder:text-zinc-500"
                                             />
                                         </div>
                                         
@@ -338,7 +319,7 @@ export default function ExplorePage() {
                                         <div className="text-center py-16">
                                             <div className="text-4xl mb-4">🎮</div>
                                             <h3 className="text-lg font-bold text-zinc-300 mb-2">No games found</h3>
-                                            <p className="text-sm text-zinc-500">Try adjusting your search or filters.</p>
+                                            <p className="text-sm text-zinc-550">Try adjusting your search or filters.</p>
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

@@ -4,6 +4,7 @@ import { X, Camera, Loader2, Calendar, Check } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -14,6 +15,7 @@ interface EditProfileModalProps {
 
 export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: EditProfileModalProps) {
     const { updateUser } = useAuth();
+    const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
 
     // Form State
@@ -94,7 +96,7 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
             onClose();
         } catch (error) {
             console.error("Failed to update profile:", error);
-            alert("Failed to update profile. Please try again.");
+            alert(t('errorFailedUpdateProfile'));
         } finally {
             setIsLoading(false);
         }
@@ -112,14 +114,14 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                         <button onClick={onClose} className="p-2 rounded-full hover:bg-zinc-800 transition-colors">
                             <X className="h-5 w-5 text-zinc-400" />
                         </button>
-                        <h2 className="text-xl font-bold text-white">Edit Profile</h2>
+                        <h2 className="text-xl font-bold text-white">{t('editProfile')}</h2>
                     </div>
                     <button
                         onClick={handleSubmit}
                         disabled={isLoading}
                         className="px-5 py-1.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-500 disabled:opacity-50 transition-colors text-sm"
                     >
-                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('save')}
                     </button>
                     <style>{`
                         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -187,37 +189,37 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
 
                         {/* Name */}
                         <div className="space-y-1">
-                            <label className="text-zinc-500 text-sm font-bold ml-1">Name</label>
+                            <label className="text-zinc-500 text-sm font-bold ml-1">{t('fieldName')}</label>
                             <input
                                 type="text"
                                 value={realName}
                                 onChange={(e) => setRealName(e.target.value)}
                                 className="w-full bg-black border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-zinc-700"
-                                placeholder="Display Name"
+                                placeholder={t('placeholderDisplayName')}
                             />
                         </div>
 
                         {/* Bio */}
                         <div className="space-y-1">
-                            <label className="text-zinc-500 text-sm font-bold ml-1">Bio</label>
+                            <label className="text-zinc-500 text-sm font-bold ml-1">{t('fieldBio')}</label>
                             <textarea
                                 value={bio}
                                 onChange={(e) => setBio(e.target.value)}
                                 rows={3}
                                 className="w-full bg-black border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-zinc-700 resize-none"
-                                placeholder="Tell us about yourself..."
+                                placeholder={t('placeholderBio')}
                             />
                         </div>
 
                         {/* Location */}
                         <div className="space-y-1">
-                            <label className="text-zinc-500 text-sm font-bold ml-1">Location</label>
+                            <label className="text-zinc-500 text-sm font-bold ml-1">{t('location')}</label>
                             <input
                                 type="text"
                                 value={location}
                                 onChange={(e) => setLocation(e.target.value)}
                                 className="w-full bg-black border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-zinc-700"
-                                placeholder="Where are you based?"
+                                placeholder={t('placeholderLocation')}
                             />
                         </div>
 
@@ -225,7 +227,7 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                         <div className="space-y-1">
                             <label className="text-zinc-500 text-sm font-bold ml-1 flex items-center gap-2">
                                 <Calendar className="h-3 w-3" />
-                                Birth Date
+                                {t('fieldBirthDate')}
                             </label>
                             <input
                                 type="date"
@@ -243,7 +245,7 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                                     {showBirthDate && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                                 </div>
                                 <span className="text-zinc-300 text-sm select-none font-medium">
-                                    Show on profile
+                                    {t('fieldShowOnProfile')}
                                 </span>
                             </div>
                         </div>

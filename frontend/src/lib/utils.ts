@@ -60,37 +60,68 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     return "https://placehold.co/400x600?text=No+Image";
 };
 
-/**
- * Returns a relative time string (e.g., "5m", "2h", "1d").
- */
-export function getRelativeTime(timestamp: string | Date, lang: string = 'en'): string {
+export function getRelativeTime(timestamp: string | Date, lang: string = 'English'): string {
     const date = new Date(timestamp);
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
+    const l = lang.toLowerCase();
+    const isTurkish = l === 'turkish' || l === 'tr';
+    const isSpanish = l === 'spanish' || l === 'es';
+    const isFrench = l === 'french' || l === 'fr';
+    const isGerman = l === 'german' || l === 'de';
+
     if (diffInSeconds < 60) {
-        return lang === 'tr' ? `${diffInSeconds}s` : `${diffInSeconds}s`;
+        if (isTurkish) return `${diffInSeconds}sn`;
+        if (isSpanish) return `${diffInSeconds}s`;
+        if (isFrench) return `${diffInSeconds}s`;
+        if (isGerman) return `${diffInSeconds}s`;
+        return `${diffInSeconds}s`;
     }
     const diffInMinutes = Math.floor(diffInSeconds / 60);
     if (diffInMinutes < 60) {
-        return lang === 'tr' ? `${diffInMinutes}dk` : `${diffInMinutes}m`;
+        if (isTurkish) return `${diffInMinutes}dk`;
+        if (isSpanish) return `${diffInMinutes}m`;
+        if (isFrench) return `${diffInMinutes}m`;
+        if (isGerman) return `${diffInMinutes}m`;
+        return `${diffInMinutes}m`;
     }
     const diffInHours = Math.floor(diffInMinutes / 60);
     if (diffInHours < 24) {
-        return lang === 'tr' ? `${diffInHours}s` : `${diffInHours}h`;
+        if (isTurkish) return `${diffInHours}sa`;
+        if (isSpanish) return `${diffInHours}h`;
+        if (isFrench) return `${diffInHours}h`;
+        if (isGerman) return `${diffInHours}std`;
+        return `${diffInHours}h`;
     }
     const diffInDays = Math.floor(diffInHours / 24);
     if (diffInDays < 7) {
-        return lang === 'tr' ? `${diffInDays}g` : `${diffInDays}d`;
+        if (isTurkish) return `${diffInDays}g`;
+        if (isSpanish) return `${diffInDays}d`;
+        if (isFrench) return `${diffInDays}j`;
+        if (isGerman) return `${diffInDays}t`;
+        return `${diffInDays}d`;
     }
     const diffInWeeks = Math.floor(diffInDays / 7);
     if (diffInWeeks < 4) {
-        return lang === 'tr' ? `${diffInWeeks}h` : `${diffInWeeks}w`;
+        if (isTurkish) return `${diffInWeeks}hf`;
+        if (isSpanish) return `${diffInWeeks}sem`;
+        if (isFrench) return `${diffInWeeks}sem`;
+        if (isGerman) return `${diffInWeeks}w`;
+        return `${diffInWeeks}w`;
     }
     const diffInMonths = Math.floor(diffInDays / 30);
     if (diffInMonths < 12) {
-        return lang === 'tr' ? `${diffInMonths}a` : `${diffInMonths}mo`;
+        if (isTurkish) return `${diffInMonths}ay`;
+        if (isSpanish) return `${diffInMonths}mes`;
+        if (isFrench) return `${diffInMonths}mois`;
+        if (isGerman) return `${diffInMonths}mon`;
+        return `${diffInMonths}mo`;
     }
     const diffInYears = Math.floor(diffInDays / 365);
-    return lang === 'tr' ? `${diffInYears}y` : `${diffInYears}y`;
+    if (isTurkish) return `${diffInYears}y`;
+    if (isSpanish) return `${diffInYears}a`;
+    if (isFrench) return `${diffInYears}an`;
+    if (isGerman) return `${diffInYears}j`;
+    return `${diffInYears}y`;
 }

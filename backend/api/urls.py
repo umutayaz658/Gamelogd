@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView, 
     GoogleLoginView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, 
-    LibraryViewSet, CustomAuthToken
+    LibraryViewSet, CustomAuthToken, VerifyEmailView, ResendVerificationView
 )
 
 router = DefaultRouter()
@@ -37,4 +37,6 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('google-login/', GoogleLoginView.as_view(), name='google-login'),
     path('login/', CustomAuthToken.as_view(), name='api_token_auth'),
+    path('verify-email/', VerifyEmailView.as_view(), name='verify-email'),
+    path('resend-verification/', ResendVerificationView.as_view(), name='resend-verification'),
 ]

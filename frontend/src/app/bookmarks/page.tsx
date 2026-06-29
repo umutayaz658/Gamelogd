@@ -9,9 +9,12 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { Bookmark } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/lib/useTranslation';
+import { FeedItem } from '@/types';
 
 export default function BookmarksPage() {
-  const [items, setItems] = useState<any[]>([]);
+  const { t } = useTranslation();
+  const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
@@ -39,7 +42,7 @@ export default function BookmarksPage() {
         setItems(bookmarkedItems);
       } catch (err) {
         console.error('Failed to fetch bookmarks:', err);
-        setError('Failed to load bookmarks. Please try again later.');
+        setError(t('failedToLoadBookmarks'));
       } finally {
         setLoading(false);
       }
@@ -65,7 +68,7 @@ export default function BookmarksPage() {
           <div className="col-span-12 lg:col-span-6">
             <div className="mb-4 flex items-center gap-3 pb-4 border-b border-zinc-800">
                 <Bookmark className="h-6 w-6 text-emerald-500" />
-                <h1 className="text-2xl font-bold">Bookmarks</h1>
+                <h1 className="text-2xl font-bold">{t('bookmarks')}</h1>
             </div>
 
             {loading ? (
@@ -79,7 +82,7 @@ export default function BookmarksPage() {
             ) : items.length === 0 ? (
                 <div className="text-center text-zinc-500 py-12 bg-zinc-900/50 rounded-2xl border border-zinc-800">
                     <Bookmark className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>You haven't bookmarked anything yet.</p>
+                    <p>{t('noBookmarksYet')}</p>
                 </div>
             ) : (
               <Feed initialItems={items} hideComposer={true} />

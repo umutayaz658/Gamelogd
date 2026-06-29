@@ -14,6 +14,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 // API Data Types
 interface MessageReaction {
@@ -59,6 +61,8 @@ interface ConversationMember {
         username: string;
         avatar: string | null;
         real_name: string;
+        is_blocked?: boolean;
+        has_blocked_me?: boolean;
     };
     is_admin: boolean;
     status: string;
@@ -75,6 +79,8 @@ interface Conversation {
         username: string;
         avatar: string | null;
         real_name: string;
+        is_blocked?: boolean;
+        has_blocked_me?: boolean;
     } | null;
     last_message: {
         content: string;
@@ -94,6 +100,7 @@ export default function MessagesDrawer() {
     const pathname = usePathname();
     const { user } = useAuth();
     const { unreadMessages } = useNotifications();
+    const { t } = useTranslation();
 
     if (pathname?.startsWith('/messages')) return null;
 
@@ -104,6 +111,14 @@ export default function MessagesDrawer() {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Confirm Modal State
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [confirmConfig, setConfirmConfig] = useState({
+        title: '',
+        message: '',
+        onConfirm: () => {}
+    });
 
     // Media & upload state
     const [selectedGif, setSelectedGif] = useState<string | null>(null);
@@ -258,7 +273,6 @@ export default function MessagesDrawer() {
     const handleMessageReact = async (messageId: number, emoji: string) => {
         try {
             await api.post(`/messages/${messageId}/react/`, { emoji });
-            // Update reaction state locally immediately
             setMessages(prev => prev.map(msg => {
                 if (msg.id !== messageId) return msg;
                 const existing = msg.reactions?.find(r => r.emoji === emoji && r.username === user?.username);
@@ -267,7 +281,7 @@ export default function MessagesDrawer() {
                     updatedReactions = updatedReactions.filter(r => r.id !== existing.id);
                 } else {
                     updatedReactions.push({
-                        id: Date.now(), // dummy ID
+                        id: Date.now(),
                         emoji,
                         username: user?.username || '',
                         user: user?.id || 0
@@ -302,19 +316,25 @@ export default function MessagesDrawer() {
     };
 
     const handleBlockGroup = async (chatId: number) => {
-        if (!window.confirm("Block group invitation?")) return;
-        try {
-            await api.post(`/conversations/${chatId}/block-group/`);
-            setActiveChatId(null);
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to block group:", error);
-        }
+        setConfirmConfig({
+            title: 'Block Group Invite?',
+            message: 'Are you sure you want to block invitation from this group?',
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${chatId}/block-group/`);
+                    setActiveChatId(null);
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to block group:", error);
+                }
+                setIsConfirmOpen(false);
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleChatClick = (chatId: number) => {
         setActiveChatId(chatId);
-        // Mark as read locally
         setConversations(prev => prev.map(c =>
             c.id === chatId ? { ...c, unread_count: 0 } : c
         ));
@@ -324,12 +344,23 @@ export default function MessagesDrawer() {
 
     const getChatName = (chat: Conversation) => {
         if (chat.is_group) return chat.name || "Group Chat";
+        
+        if (chat.other_user?.is_blocked) {
+            return `${chat.other_user?.real_name || chat.other_user?.username} (${t('blocked')})`;
+        }
+        if (chat.other_user?.has_blocked_me) {
+            return "Gamer";
+        }
         return chat.other_user?.real_name || chat.other_user?.username || "Gamer Chat";
     };
 
     const getChatAvatar = (chat: Conversation) => {
         if (chat.is_group) {
             return chat.avatar || "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?q=80&w=100&auto=format&fit=crop";
+        }
+        
+        if (chat.other_user?.is_blocked || chat.other_user?.has_blocked_me) {
+            return "https://ui-avatars.com/api/?name=%3F&background=3f3f46&color=a1a1aa";
         }
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
@@ -374,7 +405,7 @@ export default function MessagesDrawer() {
                     ) : (
                         <div className="flex items-center gap-2 font-bold text-sm text-white">
                             <MessageSquare className="h-4.5 w-4.5 text-emerald-500" />
-                            <span>Messages</span>
+                            <span>{t('messages')}</span>
                             {unreadMessages > 0 && (
                                 <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
                                     {unreadMessages}
@@ -493,7 +524,7 @@ export default function MessagesDrawer() {
                                                             <div className={`text-[8px] mt-1.5 text-right flex items-center justify-end gap-1 ${
                                                                 msg.is_me ? 'text-emerald-250' : 'text-zinc-500'
                                                             }`}>
-                                                                <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                                                                 {msg.is_edited && <span>(edited)</span>}
                                                                 {msg.is_me && (
                                                                     msg.is_read 
@@ -534,7 +565,7 @@ export default function MessagesDrawer() {
                                             <span className="text-[9px] font-bold text-emerald-500">Replying to @{replyingTo.sender.username}</span>
                                             <p className="text-[10px] text-zinc-400 truncate">{replyingTo.content || 'Attachment'}</p>
                                         </div>
-                                        <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white">
+                                        <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white">
                                             <X className="h-3.5 w-3.5" />
                                         </button>
                                     </div>
@@ -655,10 +686,10 @@ export default function MessagesDrawer() {
                             <div className="flex-1 overflow-y-auto">
                                 {conversations.length === 0 ? (
                                     <div className="p-4 text-center text-zinc-500 text-xs leading-relaxed">
-                                        No conversations yet.
+                                        {t('noConversations')}
                                         <br />
                                         <Link href="/messages" className="text-emerald-500 hover:underline mt-2 inline-block font-semibold">
-                                            Open Full Chat Page
+                                            {t('goToMessagesPage')}
                                         </Link>
                                     </div>
                                 ) : (
@@ -700,7 +731,7 @@ export default function MessagesDrawer() {
                                                             {chat.last_message.content}
                                                         </span>
                                                     ) : (
-                                                        'No messages yet'
+                                                        t('noMessages')
                                                     )}
                                                 </div>
                                             </div>
@@ -717,6 +748,13 @@ export default function MessagesDrawer() {
                     </div>
                 )}
             </div>
+            <ConfirmModal
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={confirmConfig.onConfirm}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+            />
         </div>
     );
 }

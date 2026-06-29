@@ -17,6 +17,8 @@ import { useNotifications } from '@/context/NotificationContext';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import Link from 'next/link';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 // API Data Types
 interface MessageReaction {
@@ -81,6 +83,8 @@ interface Conversation {
         username: string;
         avatar: string | null;
         real_name: string;
+        is_blocked?: boolean;
+        has_blocked_me?: boolean;
     } | null;
     last_message: {
         content: string;
@@ -265,6 +269,7 @@ function MessagesContent() {
     const { markMessagesRead } = useNotifications();
     const searchParams = useSearchParams();
     const initialChatId = searchParams.get('chatId');
+    const { t, language } = useTranslation();
 
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedChatId, setSelectedChatId] = useState<number | null>(initialChatId ? parseInt(initialChatId) : null);
@@ -273,6 +278,15 @@ function MessagesContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isMessagesLoading, setIsMessagesLoading] = useState(false);
     const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+    
+    // Confirm Modal State
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [confirmConfig, setConfirmConfig] = useState({
+        title: '',
+        message: '',
+        onConfirm: () => {},
+        isDanger: false
+    });
     
     // Do Not Disturb
     const [dndMode, setDndMode] = useState(user?.dnd_mode || false);
@@ -535,6 +549,35 @@ function MessagesContent() {
         }
     };
 
+    const handleToggleBlock = async () => {
+        if (!selectedChatId || !activeChat || !activeChat.other_user) return;
+        const otherUser = activeChat.other_user;
+        const isBlocked = otherUser.is_blocked;
+
+        setConfirmConfig({
+            title: isBlocked ? t('unblockUser') : t('blockUser'),
+            message: isBlocked 
+                ? t('areYouSureUnblock').replace('{username}', otherUser.username)
+                : t('areYouSureBlock').replace('{username}', otherUser.username),
+            isDanger: !isBlocked,
+            onConfirm: async () => {
+                try {
+                    if (isBlocked) {
+                        await api.post(`/users/${otherUser.username}/unblock/`);
+                    } else {
+                        await api.post(`/users/${otherUser.username}/block/`);
+                    }
+                    // Refresh conversations to update blocked state
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to toggle block:", error);
+                    alert("Failed to update block status.");
+                }
+            }
+        });
+        setIsConfirmOpen(true);
+    };
+
     // Group Admin Settings Actions
     const handleAddMember = async (username: string) => {
         if (!selectedChatId) return;
@@ -553,37 +596,58 @@ function MessagesContent() {
 
     const handleRemoveMember = async (username: string) => {
         if (!selectedChatId) return;
-        if (!window.confirm(`Are you sure you want to remove @${username} from this group?`)) return;
-        try {
-            await api.post(`/conversations/${selectedChatId}/remove-member/`, { username });
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to remove member:", error);
-        }
+        setConfirmConfig({
+            title: t('removeMember'),
+            message: t('removeMemberDesc').replace('{username}', username),
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${selectedChatId}/remove-member/`, { username });
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to remove member:", error);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleMakeAdmin = async (username: string) => {
         if (!selectedChatId) return;
-        if (!window.confirm(`Promote @${username} to Admin?`)) return;
-        try {
-            await api.post(`/conversations/${selectedChatId}/make-admin/`, { username });
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to make admin:", error);
-        }
+        setConfirmConfig({
+            title: t('promoteToAdmin'),
+            message: t('promoteToAdminDesc').replace('{username}', username),
+            isDanger: false,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${selectedChatId}/make-admin/`, { username });
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to make admin:", error);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleLeaveGroup = async () => {
         if (!selectedChatId) return;
-        if (!window.confirm("Are you sure you want to leave this group chat?")) return;
-        try {
-            await api.post(`/conversations/${selectedChatId}/leave/`);
-            setSelectedChatId(null);
-            setShowDetails(false);
-            fetchConversations();
-        } catch (error) {
-            console.error("Failed to leave group:", error);
-        }
+        setConfirmConfig({
+            title: t('leaveGroup'),
+            message: t('areYouSureLeaveGroup'),
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${selectedChatId}/leave/`);
+                    setSelectedChatId(null);
+                    setShowDetails(false);
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to leave group:", error);
+                }
+            }
+        });
+        setIsConfirmOpen(true);
     };
 
     const handleGroupDetailsSave = async () => {
@@ -774,12 +838,21 @@ function MessagesContent() {
     // Chat rendering metadata helpers
     const getChatName = (chat: Conversation) => {
         if (chat.is_group) return chat.name || "Group Chat";
+        if (chat.other_user?.is_blocked) {
+            return `${chat.other_user?.real_name || chat.other_user?.username} (Blocked)`;
+        }
+        if (chat.other_user?.has_blocked_me) {
+            return "Gamer";
+        }
         return chat.other_user?.real_name || chat.other_user?.username || "Gamer Chat";
     };
 
     const getChatAvatar = (chat: Conversation) => {
         if (chat.is_group) {
             return chat.avatar || "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?q=80&w=100&auto=format&fit=crop";
+        }
+        if (chat.other_user?.is_blocked || chat.other_user?.has_blocked_me) {
+            return "https://ui-avatars.com/api/?name=%3F&background=3f3f46&color=a1a1aa";
         }
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
@@ -801,21 +874,21 @@ function MessagesContent() {
                     {/* Sidebar Header */}
                     <div className="p-4 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-950 z-10">
                         <h1 className="text-xl font-bold flex items-center gap-2">
-                            Messages
+                            {t('messages')}
                             {dndMode && <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Do Not Disturb active" />}
                         </h1>
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={handleToggleDnd}
                                 className={`p-2 rounded-full hover:bg-zinc-900 transition-colors ${dndMode ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                title={dndMode ? 'Disable Do Not Disturb' : 'Enable Do Not Disturb (Mute notifications)'}
+                                title={dndMode ? t('dndDisabled') : t('dndEnabled')}
                             >
                                 {dndMode ? <BellOff className="h-4.5 w-4.5" /> : <Bell className="h-4.5 w-4.5" />}
                             </button>
                             <button
                                 onClick={() => setIsNewChatOpen(true)}
                                 className="p-2 rounded-full hover:bg-zinc-900 transition-colors text-emerald-500"
-                                title="New Conversation / Group Chat"
+                                title={t('newConversationGroup')}
                             >
                                 <Plus className="h-5 w-5" />
                             </button>
@@ -827,7 +900,7 @@ function MessagesContent() {
                         <div className="relative">
                             <input
                                 type="text"
-                                placeholder="Search messages..."
+                                placeholder={t('searchMessagesPlaceholder')}
                                 className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 transition-all"
                             />
                             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-zinc-500" />
@@ -835,10 +908,10 @@ function MessagesContent() {
                     </div>
 
                     {/* Conversation List */}
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin-dark">
                         {conversations.length === 0 ? (
                             <div className="p-4 text-center text-zinc-500 text-sm">
-                                No conversations yet.
+                                {t('noConversationsYet')}
                             </div>
                         ) : (
                             conversations.map((chat) => (
@@ -870,7 +943,7 @@ function MessagesContent() {
                                         <div className="flex justify-between items-baseline mb-1">
                                             <span className="font-bold truncate text-sm">{getChatName(chat)}</span>
                                             <span className="text-xs text-zinc-500 whitespace-nowrap ml-2">
-                                                {chat.last_message ? new Date(chat.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                {chat.last_message ? new Date(chat.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
@@ -881,7 +954,7 @@ function MessagesContent() {
                                                         {chat.last_message.content || 'Sent an attachment'}
                                                     </>
                                                 ) : (
-                                                    <span className="italic text-zinc-650">No messages yet</span>
+                                                    <span className="italic text-zinc-650">{t('noMessagesYet')}</span>
                                                 )}
                                             </p>
                                             {chat.unread_count > 0 && (
@@ -912,24 +985,46 @@ function MessagesContent() {
                                         >
                                             ←
                                         </button>
-                                        <div className="relative">
-                                            <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
-                                                <img
-                                                    src={getChatAvatar(activeChat)}
-                                                    alt={getChatName(activeChat)}
-                                                    className="w-full h-full object-cover"
-                                                />
+                                        {activeChat.is_group ? (
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                <div className="relative">
+                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                                        <img
+                                                            src={getChatAvatar(activeChat)}
+                                                            alt={getChatName(activeChat)}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h2 className="font-bold text-sm truncate">{getChatName(activeChat)}</h2>
+                                                    <p className="text-xs text-zinc-500 truncate">
+                                                        {t('memberCount').replace('{count}', activeChat.participants.length.toString())}
+                                                    </p>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h2 className="font-bold text-sm truncate">{getChatName(activeChat)}</h2>
-                                            <p className="text-xs text-zinc-500 truncate">
-                                                {activeChat.is_group 
-                                                    ? `${activeChat.participants.length} members` 
-                                                    : `@${activeChat.other_user?.username}`
-                                                }
-                                            </p>
-                                        </div>
+                                        ) : (
+                                            <Link 
+                                                href={`/${activeChat.other_user?.username || ''}`}
+                                                className="flex items-center gap-4 min-w-0 hover:opacity-85 transition-opacity"
+                                            >
+                                                <div className="relative">
+                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                                        <img
+                                                            src={getChatAvatar(activeChat)}
+                                                            alt={getChatName(activeChat)}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h2 className="font-bold text-sm truncate hover:underline">{getChatName(activeChat)}</h2>
+                                                    <p className="text-xs text-zinc-500 truncate">
+                                                        @{activeChat.other_user?.username}
+                                                    </p>
+                                                </div>
+                                            </Link>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2 text-zinc-400">
                                         <button 
@@ -946,7 +1041,7 @@ function MessagesContent() {
                                 </div>
 
                                 {/* Messages Area */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin-dark">
                                     {isMessagesLoading ? (
                                         <div className="flex justify-center py-4">
                                             <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
@@ -1077,7 +1172,7 @@ function MessagesContent() {
                                                             <MessageAttachment msg={msg} />
 
                                                             <p className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${msg.is_me ? 'text-emerald-200' : 'text-zinc-550'}`}>
-                                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                                 {msg.is_edited && <span className="italic">(edited)</span>}
                                                                 {msg.is_me && (
                                                                     msg.is_read 
@@ -1170,144 +1265,175 @@ function MessagesContent() {
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
-
                                 {/* Input Composer Area */}
-                                <div className="p-4 border-t border-zinc-800 bg-zinc-950">
-                                    <form onSubmit={handleSendMessage} className="flex flex-col gap-2 relative">
-                                        
-                                        {/* Replying To Preview */}
-                                        {replyingTo && (
-                                            <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-zinc-900/60 border-l-4 border-emerald-500 border border-zinc-800/80 text-left animate-in slide-in-from-bottom-2 duration-200">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="text-[10px] font-bold text-emerald-400">
-                                                        Replying to @{replyingTo.sender.username}
+                                {!activeChat.is_group && activeChat.other_user?.is_blocked ? (
+                                    <div className="flex flex-col items-center justify-center gap-2.5 p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-400 text-sm animate-in fade-in duration-200">
+                                        <p className="font-semibold text-zinc-400">{t('youBlockedUserAlert').replace('{username}', activeChat.other_user.username)}</p>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setConfirmConfig({
+                                                    title: t('unblockUser'),
+                                                    message: t('areYouSureUnblock').replace('{username}', activeChat.other_user!.username),
+                                                    isDanger: false,
+                                                    onConfirm: async () => {
+                                                        try {
+                                                            await api.post(`/users/${activeChat.other_user!.username}/unblock/`);
+                                                            fetchConversations();
+                                                        } catch (err) {
+                                                            console.error("Failed to unblock:", err);
+                                                        }
+                                                    }
+                                                });
+                                                setIsConfirmOpen(true);
+                                            }}
+                                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-md shadow-emerald-950/20"
+                                        >
+                                            {t('unblockUser')}
+                                        </button>
+                                    </div>
+                                ) : !activeChat.is_group && activeChat.other_user?.has_blocked_me ? (
+                                    <div className="flex items-center justify-center p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-550 text-sm italic font-semibold animate-in fade-in duration-200">
+                                        {t('youCannotMessage')}
+                                    </div>
+                                ) : (
+                                    <div className="p-4 border-t border-zinc-800 bg-zinc-950">
+                                        <form onSubmit={handleSendMessage} className="flex flex-col gap-2 relative">
+                                            
+                                            {/* Replying To Preview */}
+                                            {replyingTo && (
+                                                <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-zinc-900/60 border-l-4 border-emerald-500 border border-zinc-800/80 text-left animate-in slide-in-from-bottom-2 duration-200">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-[10px] font-bold text-emerald-400">
+                                                            {t('replyingTo')} @{replyingTo.sender.username}
+                                                        </div>
+                                                        <div className="text-xs text-zinc-400 truncate mt-0.5">
+                                                            {replyingTo.content || (replyingTo.image ? '📷 Photo' : replyingTo.gif_url ? 'GIF' : 'Attachment')}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xs text-zinc-400 truncate mt-0.5">
-                                                        {replyingTo.content || (replyingTo.image ? '📷 Photo' : replyingTo.gif_url ? 'GIF' : 'Attachment')}
-                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setReplyingTo(null)}
+                                                        className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white transition-colors ml-2"
+                                                    >
+                                                        <X className="h-4 w-4" />
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setReplyingTo(null)}
-                                                    className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white transition-colors ml-2"
+                                            )}
+                                            
+                                            {/* Media Upload / GIF Previews */}
+                                            {(previewUrl || selectedGif) && (
+                                                <div className="relative p-2 rounded-xl border border-zinc-800 bg-black/40 flex items-center gap-3 w-fit animate-in zoom-in-95 duration-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearMedia}
+                                                        className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white p-0.5 rounded-full z-10 transition-colors"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                    <img src={previewUrl || selectedGif!} className="h-16 w-auto rounded object-cover border border-zinc-800" alt="Composer Preview" />
+                                                    <span className="text-xs text-zinc-500 font-medium">{selectedGif ? 'GIF selected' : 'Image ready'}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-2">
+                                                {/* Hidden file input */}
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    className="hidden"
+                                                    accept="image/png, image/jpeg, image/gif"
+                                                    onChange={handleFileSelect}
+                                                />
+                                                
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    className="p-2 text-zinc-400 hover:text-white transition-colors"
+                                                    title={t('uploadImage')}
                                                 >
-                                                    <X className="h-4 w-4" />
+                                                    <ImageIcon className="h-5 w-5" />
+                                                </button>
+                                                
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowGifPicker(!showGifPicker);
+                                                        setShowEmojiPicker(false);
+                                                    }}
+                                                    className={`p-2 transition-colors ${showGifPicker ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+                                                    title={t('selectGif')}
+                                                >
+                                                    <FileImage className="h-5 w-5" />
+                                                </button>
+
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        setShowEmojiPicker(!showEmojiPicker);
+                                                        setShowGifPicker(false);
+                                                    }}
+                                                    className={`p-2 transition-colors ${showEmojiPicker ? 'text-yellow-500' : 'text-zinc-400 hover:text-yellow-500'}`}
+                                                    title={t('addEmoji')}
+                                                >
+                                                    <Smile className="h-5 w-5" />
+                                                </button>
+                                                
+                                                <input
+                                                    type="text"
+                                                    value={inputText}
+                                                    onChange={(e) => setInputText(e.target.value)}
+                                                    placeholder={t('typeAMessage')}
+                                                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
+                                                />
+                                                
+                                                <button
+                                                    type="submit"
+                                                    disabled={isSending || (!inputText.trim() && !selectedFile && !selectedGif)}
+                                                    className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-950/20"
+                                                >
+                                                    {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                                                 </button>
                                             </div>
-                                        )}
-                                        
-                                        {/* Media Upload / GIF Previews */}
-                                        {(previewUrl || selectedGif) && (
-                                            <div className="relative p-2 rounded-xl border border-zinc-800 bg-black/40 flex items-center gap-3 w-fit animate-in zoom-in-95 duration-200">
-                                                <button
-                                                    type="button"
-                                                    onClick={clearMedia}
-                                                    className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white p-0.5 rounded-full z-10 transition-colors"
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                                <img src={previewUrl || selectedGif!} className="h-16 w-auto rounded object-cover border border-zinc-800" alt="Composer Preview" />
-                                                <span className="text-xs text-zinc-500 font-medium">{selectedGif ? 'GIF selected' : 'Image ready'}</span>
-                                            </div>
-                                        )}
 
-                                        <div className="flex items-center gap-2">
-                                            {/* Hidden file input */}
-                                            <input
-                                                type="file"
-                                                ref={fileInputRef}
-                                                className="hidden"
-                                                accept="image/png, image/jpeg, image/gif"
-                                                onChange={handleFileSelect}
-                                            />
-                                            
-                                            <button 
-                                                type="button" 
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="p-2 text-zinc-400 hover:text-white transition-colors"
-                                                title="Upload Image"
-                                            >
-                                                <ImageIcon className="h-5 w-5" />
-                                            </button>
-                                            
-                                            <button 
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowGifPicker(!showGifPicker);
-                                                    setShowEmojiPicker(false);
-                                                }}
-                                                className={`p-2 transition-colors ${showGifPicker ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
-                                                title="Select GIF"
-                                            >
-                                                <FileImage className="h-5 w-5" />
-                                            </button>
-
-                                            <button 
-                                                type="button" 
-                                                onClick={() => {
-                                                    setShowEmojiPicker(!showEmojiPicker);
-                                                    setShowGifPicker(false);
-                                                }}
-                                                className={`p-2 transition-colors ${showEmojiPicker ? 'text-yellow-500' : 'text-zinc-400 hover:text-yellow-500'}`}
-                                                title="Add Emoji"
-                                            >
-                                                <Smile className="h-5 w-5" />
-                                            </button>
-                                            
-                                            <input
-                                                type="text"
-                                                value={inputText}
-                                                onChange={(e) => setInputText(e.target.value)}
-                                                placeholder="Type a message..."
-                                                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
-                                            />
-                                            
-                                            <button
-                                                type="submit"
-                                                disabled={isSending || (!inputText.trim() && !selectedFile && !selectedGif)}
-                                                className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-950/20"
-                                            >
-                                                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                                            </button>
-                                        </div>
-
-                                        {/* Emoji Picker Popover */}
-                                        {showEmojiPicker && (
-                                            <div className="absolute bottom-14 left-0 z-50 animate-in fade-in zoom-in-95 duration-200">
-                                                <div className="shadow-2xl rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
-                                                    <EmojiPicker
-                                                        onEmojiClick={onEmojiClick}
-                                                        theme={Theme.DARK}
-                                                        lazyLoadEmojis={true}
-                                                        width={300}
-                                                        height={380}
-                                                    />
+                                            {/* Emoji Picker Popover */}
+                                            {showEmojiPicker && (
+                                                <div className="absolute bottom-14 left-0 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                                    <div className="shadow-2xl rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
+                                                        <EmojiPicker
+                                                            onEmojiClick={onEmojiClick}
+                                                            theme={Theme.DARK}
+                                                            lazyLoadEmojis={true}
+                                                            width={300}
+                                                            height={380}
+                                                        />
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {/* GIF Picker Popover */}
-                                        {showGifPicker && (
-                                            <div className="absolute bottom-14 left-0 right-0 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-2xl max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Trending GIFs</span>
-                                                    <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white"><X className="h-4 w-4" /></button>
+                                            {/* GIF Picker Popover */}
+                                            {showGifPicker && (
+                                                <div className="absolute bottom-14 left-0 right-0 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-2xl max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Trending GIFs</span>
+                                                        <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white"><X className="h-4 w-4" /></button>
+                                                    </div>
+                                                    <GifPicker onSelected={handleGifSelect} />
                                                 </div>
-                                                <GifPicker onSelected={handleGifSelect} />
-                                            </div>
-                                        )}
+                                            )}
 
-                                    </form>
-                                </div>
+                                        </form>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Details & Settings Drawer */}
                             {showDetails && (
-                                <div className="w-80 border-l border-zinc-800 bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto animate-in slide-in-from-right duration-300">
+                                <div className="w-80 border-l border-zinc-800 bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto scrollbar-thin-dark animate-in slide-in-from-right duration-300">
                                     
                                     {/* Drawer Header */}
                                     <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
-                                        <h3 className="font-bold text-base text-white">Details</h3>
+                                        <h3 className="font-bold text-base text-white">{t('detailsTitle')}</h3>
                                         <button 
                                             onClick={() => setShowDetails(false)} 
                                             className="p-1.5 hover:bg-zinc-900 rounded-full transition-colors text-zinc-500 hover:text-white"
@@ -1327,7 +1453,7 @@ function MessagesContent() {
                                                     ? <BellOff className="h-5 w-5 text-amber-500" /> 
                                                     : <Bell className="h-5 w-5 text-emerald-500" />
                                                 }
-                                                <span className="text-sm font-semibold text-zinc-200">Mute Notifications</span>
+                                                <span className="text-sm font-semibold text-zinc-200">{t('muteNotifications')}</span>
                                             </div>
                                             <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ${isMuted ? 'bg-emerald-600' : 'bg-zinc-800'}`}>
                                                 <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-200 ${isMuted ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -1380,10 +1506,27 @@ function MessagesContent() {
                                         )}
                                     </div>
 
+                                    {/* Block User Setting (Only for direct messages) */}
+                                    {!activeChat.is_group && activeChat.other_user && (
+                                        <div className="border-t border-zinc-850 pt-4">
+                                            <button
+                                                onClick={handleToggleBlock}
+                                                className={`w-full flex items-center justify-center gap-2.5 p-3.5 rounded-2xl font-semibold text-sm transition-all ${
+                                                    activeChat.other_user.is_blocked 
+                                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-md' 
+                                                        : 'bg-red-950/20 hover:bg-red-950/45 border border-red-900/30 hover:border-red-900/50 text-red-500 cursor-pointer'
+                                                }`}
+                                            >
+                                                <Shield className="h-5 w-5" />
+                                                {activeChat.other_user.is_blocked ? t('unblockUser') : t('blockUser')}
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Group customization (For Groups only) */}
                                     {activeChat.is_group && (
                                         <div className="space-y-4 border-t border-zinc-850 pt-4">
-                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Group Settings</h4>
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('groupSettings')}</h4>
                                             
                                             {/* Avatar Edit */}
                                             <div className="flex flex-col items-center gap-3">
@@ -1399,7 +1542,7 @@ function MessagesContent() {
                                                         <button 
                                                             onClick={() => groupAvatarInputRef.current?.click()}
                                                             className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
-                                                            title="Change Group Photo"
+                                                            title={t('changeGroupPhoto')}
                                                         >
                                                             <Edit2 className="h-5 w-5" />
                                                         </button>
@@ -1416,11 +1559,11 @@ function MessagesContent() {
 
                                             {/* Name Input */}
                                             <div className="space-y-2">
-                                                <label className="text-xs font-medium text-zinc-400">Group Name</label>
+                                                <label className="text-xs font-medium text-zinc-400">{t('groupName')}</label>
                                                 <input
                                                     type="text"
                                                     disabled={!isAdmin}
-                                                    placeholder="Edit group name..."
+                                                    placeholder={t('editGroupNamePlaceholder')}
                                                     value={editingName}
                                                     onChange={(e) => setEditingName(e.target.value)}
                                                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
@@ -1434,7 +1577,7 @@ function MessagesContent() {
                                                     disabled={isSavingDetails}
                                                     className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
                                                 >
-                                                    {isSavingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Group Changes'}
+                                                    {isSavingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('saveGroupChanges')}
                                                 </button>
                                             )}
                                         </div>
@@ -1443,7 +1586,7 @@ function MessagesContent() {
                                     {/* Members Section (Groups only) */}
                                     {activeChat.is_group && (
                                         <div className="space-y-4 border-t border-zinc-850 pt-4 flex-1 flex flex-col min-h-0">
-                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Group Members ({activeChat.memberships?.length || 0})</h4>
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('groupMembers')} ({activeChat.memberships?.length || 0})</h4>
                                             
                                             {/* Add member (Admin only) */}
                                             {isAdmin && (
@@ -1451,7 +1594,7 @@ function MessagesContent() {
                                                     <div className="flex gap-2">
                                                         <input
                                                             type="text"
-                                                            placeholder="Add member by username..."
+                                                            placeholder={t('addMemberPlaceholder')}
                                                             value={addMemberQuery}
                                                             onChange={(e) => setAddMemberQuery(e.target.value)}
                                                             className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500/50"
@@ -1460,7 +1603,7 @@ function MessagesContent() {
                                                     
                                                     {/* Member Add Search Results */}
                                                     {addMemberResults.length > 0 && (
-                                                        <div className="absolute left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 max-h-40 overflow-y-auto z-20">
+                                                        <div className="absolute left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 max-h-40 overflow-y-auto scrollbar-thin-dark z-20">
                                                             {addMemberResults.map(u => (
                                                                 <button
                                                                     key={u.id}
@@ -1502,7 +1645,7 @@ function MessagesContent() {
                                                                     <button
                                                                         onClick={() => handleMakeAdmin(member.user.username)}
                                                                         className="p-1 hover:bg-zinc-800 rounded text-emerald-500"
-                                                                        title="Make Group Admin"
+                                                                        title={t('makeGroupAdmin')}
                                                                     >
                                                                         <Shield className="h-3.5 w-3.5" />
                                                                     </button>
@@ -1510,7 +1653,7 @@ function MessagesContent() {
                                                                 <button
                                                                     onClick={() => handleRemoveMember(member.user.username)}
                                                                     className="p-1 hover:bg-zinc-800 rounded text-red-500"
-                                                                    title="Remove from Group"
+                                                                    title={t('removeFromGroup')}
                                                                 >
                                                                     <UserMinus className="h-3.5 w-3.5" />
                                                                 </button>
@@ -1559,7 +1702,7 @@ function MessagesContent() {
                                                     className="w-full flex items-center justify-center gap-2 p-3 bg-red-950/20 hover:bg-red-950/45 border border-red-900/30 hover:border-red-900/50 rounded-2xl text-red-500 transition-all font-bold text-sm"
                                                 >
                                                     <LogOut className="h-4.5 w-4.5" />
-                                                    Leave Group
+                                                    {t('leaveGroup')}
                                                 </button>
                                                 <button
                                                     onClick={handleReportConversation}
@@ -1593,18 +1736,26 @@ function MessagesContent() {
                             <div className="h-20 w-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-zinc-800">
                                 <Send className="h-8 w-8 text-zinc-600 animate-pulse" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Your Messages</h3>
-                            <p className="max-w-xs text-sm text-zinc-550">Select a conversation from the list or start a new one to chat with fellow gamers.</p>
+                            <h3 className="text-xl font-bold text-white mb-2">{t('yourMessages')}</h3>
+                            <p className="max-w-xs text-sm text-zinc-550">{t('selectConversationToChat')}</p>
                             <button
                                 onClick={() => setIsNewChatOpen(true)}
                                 className="mt-6 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold transition-all shadow-lg shadow-emerald-950/30"
                             >
-                                Send Message
+                                {t('sendMessage')}
                             </button>
                         </div>
                     )}
                 </div>
             </div>
+            <ConfirmModal
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={confirmConfig.onConfirm}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                isDanger={confirmConfig.isDanger}
+            />
         </div>
     );
 }
