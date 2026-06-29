@@ -24,6 +24,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     // Create Post State
     const [content, setContent] = useState('');
     const [isPosting, setIsPosting] = useState(false);
+    const [category, setCategory] = useState('general');
 
     // Media State
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -120,6 +121,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             // FormData
             const formData = new FormData();
             formData.append('content', content);
+            formData.append('category', category);
 
             if (parentId) {
                 if (parentType === 'review') {
@@ -166,6 +168,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             setPollOptions(['', '']);
             setShowEmojiPicker(false);
             setShowGifPicker(false);
+            setCategory('general');
         } catch (error: any) {
             console.error('Failed to create post:', error);
             if (error.response?.data?.traceback) {
@@ -311,6 +314,23 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             >
                                 <BarChart2 className="h-4 w-4" />
                             </button>
+                            <select
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                className="bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-zinc-450 hover:text-white transition-colors focus:outline-none focus:border-emerald-500/50 cursor-pointer"
+                                title="Select Post Category"
+                            >
+                                <option value="general">📁 General</option>
+                                <option value="reviews">⭐ Reviews</option>
+                                <option value="gameplay">🎮 Gameplay</option>
+                                <option value="news">📰 News</option>
+                                <option value="discussion">💬 Discussion</option>
+                                <option value="memes">😂 Memes</option>
+                                <option value="esports">🏆 Esports</option>
+                                <option value="indie">🎨 Indie</option>
+                                <option value="devlogs">🛠️ Dev Logs</option>
+                                <option value="tips">📖 Tips & Guides</option>
+                            </select>
                         </div>
 
                         <div className="flex items-center gap-3">

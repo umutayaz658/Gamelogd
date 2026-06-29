@@ -6,7 +6,8 @@ import Navbar from "@/components/Navbar";
 import { 
     Search, Plus, MoreVertical, Phone, Video, Info, 
     Image as ImageIcon, Send, Smile, Loader2, Bell, BellOff, 
-    LogOut, UserPlus, UserMinus, Shield, FileImage, X, Check, Edit2, CornerUpLeft
+    LogOut, UserPlus, UserMinus, Shield, FileImage, X, Check, Edit2, CornerUpLeft,
+    Ban, Trash2, Pin, PinOff, Flag, CheckCheck, MailQuestion
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -51,6 +52,9 @@ interface Message {
         image?: string | null;
         gif_url?: string | null;
     } | null;
+    is_edited?: boolean;
+    is_deleted?: boolean;
+    is_pinned?: boolean;
 }
 
 interface ConversationMember {
@@ -86,6 +90,8 @@ interface Conversation {
     unread_count: number;
     updated_at: string;
     memberships?: ConversationMember[];
+    is_pending_invite?: boolean;
+    my_membership_status?: string;
 }
 
 function MessageAttachment({ msg }: { msg: Message }) {
@@ -293,6 +299,16 @@ function MessagesContent() {
 
     // Replying
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+    // Search in conversation
+    const [showSearchMessages, setShowSearchMessages] = useState(false);
+    const [searchMessagesQuery, setSearchMessagesQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<Message[]>([]);
+
+    // Message context menu
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: Message } | null>(null);
+    const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+    const [editContent, setEditContent] = useState('');
 
     const scrollToMessage = (msgId: number) => {
         const element = document.getElementById(`msg-${msgId}`);
@@ -608,6 +624,153 @@ function MessagesContent() {
         setGroupAvatarPreview(URL.createObjectURL(file));
     };
 
+    // Search messages client-side
+    const handleSearchMessages = (query: string) => {
+        setSearchMessagesQuery(query);
+        if (!query.trim()) {
+            setSearchResults([]);
+            return;
+        }
+        const results = messages.filter(m =>
+            m.content?.toLowerCase().includes(query.toLowerCase())
+        );
+        setSearchResults(results);
+    };
+
+    // Block user (individual chats)
+    const handleBlockUser = async () => {
+        if (!selectedChatId) return;
+        if (!window.confirm('Are you sure you want to block this user? You will no longer receive messages from them.')) return;
+        try {
+            await api.post(`/conversations/${selectedChatId}/block-user/`);
+            setSelectedChatId(null);
+            setShowDetails(false);
+            fetchConversations();
+        } catch (error) {
+            console.error('Failed to block user:', error);
+            alert('Failed to block user.');
+        }
+    };
+
+    // Report conversation
+    const handleReportConversation = async () => {
+        if (!selectedChatId) return;
+        const reason = window.prompt('Please describe why you are reporting this conversation:');
+        if (!reason) return;
+        try {
+            await api.post(`/conversations/${selectedChatId}/report/`, { reason });
+            alert('Report submitted. Thank you.');
+        } catch (error) {
+            console.error('Failed to report conversation:', error);
+            alert('Failed to submit report.');
+        }
+    };
+
+    // Delete conversation
+    const handleDeleteConversation = async () => {
+        if (!selectedChatId) return;
+        if (!window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) return;
+        try {
+            await api.delete(`/conversations/${selectedChatId}/`);
+            setSelectedChatId(null);
+            setShowDetails(false);
+            fetchConversations();
+        } catch (error) {
+            console.error('Failed to delete conversation:', error);
+            alert('Failed to delete conversation.');
+        }
+    };
+
+    // Pin/Unpin message
+    const handlePinMessage = async (messageId: number) => {
+        try {
+            const res = await api.post(`/messages/${messageId}/pin/`);
+            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_pinned: res.data.is_pinned } : m));
+        } catch (error) {
+            console.error('Failed to pin message:', error);
+        }
+    };
+
+    // Edit message
+    const handleEditMessage = async (messageId: number, newContent: string) => {
+        try {
+            const res = await api.patch(`/messages/${messageId}/`, { content: newContent });
+            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: res.data.content, is_edited: true } : m));
+            setEditingMessage(null);
+            setEditContent('');
+        } catch (error) {
+            console.error('Failed to edit message:', error);
+            alert('Failed to edit message. You can only edit messages within 15 minutes.');
+        }
+    };
+
+    // Delete message
+    const handleDeleteMessage = async (messageId: number) => {
+        if (!window.confirm('Delete this message?')) return;
+        try {
+            await api.delete(`/messages/${messageId}/`);
+            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true, content: '' } : m));
+        } catch (error) {
+            console.error('Failed to delete message:', error);
+            alert('Failed to delete message.');
+        }
+    };
+
+    // Group invitation handlers
+    const handleAcceptInvite = async () => {
+        if (!selectedChatId) return;
+        try {
+            await api.post(`/conversations/${selectedChatId}/accept-invite/`);
+            fetchConversations();
+        } catch (error) {
+            console.error('Failed to accept invite:', error);
+            alert('Failed to accept invitation.');
+        }
+    };
+
+    const handleDeclineInvite = async () => {
+        if (!selectedChatId) return;
+        try {
+            await api.post(`/conversations/${selectedChatId}/decline-invite/`);
+            setSelectedChatId(null);
+            fetchConversations();
+        } catch (error) {
+            console.error('Failed to decline invite:', error);
+            alert('Failed to decline invitation.');
+        }
+    };
+
+    const handleBlockGroup = async () => {
+        if (!selectedChatId) return;
+        if (!window.confirm('Block this group? You will no longer receive invitations from it.')) return;
+        try {
+            await api.post(`/conversations/${selectedChatId}/block-group/`);
+            setSelectedChatId(null);
+            fetchConversations();
+        } catch (error) {
+            console.error('Failed to block group:', error);
+        }
+    };
+
+    // Context menu handler
+    const handleContextMenu = (e: React.MouseEvent, msg: Message) => {
+        if (!msg.is_me || msg.is_deleted) return;
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY, msg });
+    };
+
+    const canEditMessage = (msg: Message) => {
+        const fifteenMinutes = 15 * 60 * 1000;
+        return msg.is_me && !msg.is_deleted && (Date.now() - new Date(msg.created_at).getTime()) < fifteenMinutes;
+    };
+
+    // Close context menu on click outside
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+    }, []);
+
     // Chat rendering metadata helpers
     const getChatName = (chat: Conversation) => {
         if (chat.is_group) return chat.name || "Group Chat";
@@ -697,6 +860,11 @@ function MessagesContent() {
                                                 GP
                                             </div>
                                         )}
+                                        {chat.is_pending_invite && (
+                                            <div className="absolute -top-1 -right-1 bg-amber-500 border border-amber-600 text-[8px] px-1 rounded font-bold text-black">
+                                                INVITE
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex-1 text-left min-w-0">
                                         <div className="flex justify-between items-baseline mb-1">
@@ -783,22 +951,56 @@ function MessagesContent() {
                                         <div className="flex justify-center py-4">
                                             <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
                                         </div>
+                                    ) : activeChat.is_pending_invite ? (
+                                        /* Pending Invite View */
+                                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                                            <div className="h-20 w-20 bg-amber-950/30 rounded-full flex items-center justify-center mb-4 border border-amber-900/40">
+                                                <MailQuestion className="h-8 w-8 text-amber-500" />
+                                            </div>
+                                            <h3 className="text-lg font-bold text-white mb-2">Group Invitation</h3>
+                                            <p className="text-sm text-zinc-400 mb-6 max-w-xs">
+                                                You&apos;ve been invited to join <span className="font-bold text-white">{getChatName(activeChat)}</span>. Would you like to accept?
+                                            </p>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={handleAcceptInvite}
+                                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold text-sm transition-all shadow-lg shadow-emerald-950/30"
+                                                >
+                                                    Accept
+                                                </button>
+                                                <button
+                                                    onClick={handleDeclineInvite}
+                                                    className="px-6 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full font-bold text-sm transition-all"
+                                                >
+                                                    Decline
+                                                </button>
+                                                <button
+                                                    onClick={handleBlockGroup}
+                                                    className="px-4 py-2.5 bg-red-950/30 hover:bg-red-950/50 border border-red-900/30 text-red-500 rounded-full font-bold text-sm transition-all"
+                                                    title="Block this group"
+                                                >
+                                                    <Ban className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
                                     ) : (
                                         messages.map((msg) => (
-                                            <div key={msg.id} id={`msg-${msg.id}`} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-150 group relative rounded-2xl transition-all duration-300 p-0.5`}>
+                                            <div key={msg.id} id={`msg-${msg.id}`} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-150 group relative rounded-2xl transition-all duration-300`} onContextMenu={(e) => handleContextMenu(e, msg)}>
                                                 <div className={`flex items-center gap-2 max-w-[75%] ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
                                                     
-                                                    <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-150 ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
-                                                        <ReactionButton msg={msg} onReact={handleMessageReact} />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setReplyingTo(msg)}
-                                                            className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850 transition-colors"
-                                                            title="Reply to message"
-                                                        >
-                                                            <CornerUpLeft className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
+                                                    {!msg.is_deleted && (
+                                                        <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-150 z-10 ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                            <ReactionButton msg={msg} onReact={handleMessageReact} />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setReplyingTo(msg)}
+                                                                className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850 transition-colors"
+                                                                title="Reply to message"
+                                                            >
+                                                                <CornerUpLeft className="h-4 w-4" />
+                                                            </button>
+                                                        </div>
+                                                    )}
 
                                                     <div className={`flex flex-col ${msg.is_me ? 'items-end' : 'items-start'}`}>
                                                         
@@ -806,7 +1008,44 @@ function MessagesContent() {
                                                         {activeChat.is_group && !msg.is_me && (
                                                             <span className="text-[10px] text-zinc-500 mb-1 pl-2">@{msg.sender.username}</span>
                                                         )}
+
+                                                        {/* Pinned indicator */}
+                                                        {msg.is_pinned && (
+                                                            <div className="flex items-center gap-1 text-[9px] text-amber-500 mb-0.5">
+                                                                <Pin className="h-2.5 w-2.5" />
+                                                                <span>Pinned</span>
+                                                            </div>
+                                                        )}
                                                         
+                                                        {msg.is_deleted ? (
+                                                            <div className={`rounded-2xl px-4 py-2 ${msg.is_me
+                                                                ? 'bg-zinc-800/50 rounded-tr-none'
+                                                                : 'bg-zinc-800/50 rounded-tl-none border border-zinc-750/50'
+                                                            }`}>
+                                                                <p className="text-sm italic text-zinc-500">This message was deleted</p>
+                                                            </div>
+                                                        ) : editingMessage?.id === msg.id ? (
+                                                            <div className={`rounded-2xl px-4 py-2 ${msg.is_me
+                                                                ? 'bg-emerald-600 text-white rounded-tr-none shadow-lg shadow-emerald-950/20'
+                                                                : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-750'
+                                                            }`}>
+                                                                <input
+                                                                    type="text"
+                                                                    value={editContent}
+                                                                    onChange={(e) => setEditContent(e.target.value)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') handleEditMessage(msg.id, editContent);
+                                                                        if (e.key === 'Escape') { setEditingMessage(null); setEditContent(''); }
+                                                                    }}
+                                                                    className="bg-transparent border-b border-white/30 text-sm w-full focus:outline-none py-0.5"
+                                                                    autoFocus
+                                                                />
+                                                                <div className="flex items-center gap-2 mt-1.5">
+                                                                    <button onClick={() => handleEditMessage(msg.id, editContent)} className="text-[10px] font-bold hover:underline">Save</button>
+                                                                    <button onClick={() => { setEditingMessage(null); setEditContent(''); }} className="text-[10px] opacity-70 hover:underline">Cancel</button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
                                                         <div className={`rounded-2xl px-4 py-2 ${msg.is_me
                                                             ? 'bg-emerald-600 text-white rounded-tr-none shadow-lg shadow-emerald-950/20'
                                                             : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-750'
@@ -837,10 +1076,17 @@ function MessagesContent() {
                                                             {/* Attachment renderer */}
                                                             <MessageAttachment msg={msg} />
 
-                                                            <p className={`text-[9px] mt-1 text-right ${msg.is_me ? 'text-emerald-200' : 'text-zinc-550'}`}>
+                                                            <p className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${msg.is_me ? 'text-emerald-200' : 'text-zinc-550'}`}>
                                                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                {msg.is_edited && <span className="italic">(edited)</span>}
+                                                                {msg.is_me && (
+                                                                    msg.is_read 
+                                                                        ? <span title="Read"><CheckCheck className="h-3 w-3 text-emerald-300" /></span>
+                                                                        : <span title="Sent"><Check className="h-3 w-3 opacity-70" /></span>
+                                                                )}
                                                             </p>
                                                         </div>
+                                                        )}
 
                                                         {/* Reactions Display */}
                                                         {msg.reactions && msg.reactions.length > 0 && (
@@ -878,6 +1124,49 @@ function MessagesContent() {
                                                 </div>
                                             </div>
                                         ))
+                                    )}
+
+                                    {/* Context Menu */}
+                                    {contextMenu && (
+                                        <div
+                                            className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-1 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+                                            style={{ top: contextMenu.y, left: contextMenu.x }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {canEditMessage(contextMenu.msg) && (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingMessage(contextMenu.msg);
+                                                        setEditContent(contextMenu.msg.content);
+                                                        setContextMenu(null);
+                                                    }}
+                                                    className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
+                                                >
+                                                    <Edit2 className="h-3.5 w-3.5" />
+                                                    Edit Message
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    handlePinMessage(contextMenu.msg.id);
+                                                    setContextMenu(null);
+                                                }}
+                                                className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
+                                            >
+                                                {contextMenu.msg.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                                                {contextMenu.msg.is_pinned ? 'Unpin Message' : 'Pin Message'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    handleDeleteMessage(contextMenu.msg.id);
+                                                    setContextMenu(null);
+                                                }}
+                                                className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                                Delete Message
+                                            </button>
+                                        </div>
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
@@ -1046,6 +1335,51 @@ function MessagesContent() {
                                         </button>
                                     </div>
 
+                                    {/* Search in Conversation */}
+                                    <div>
+                                        <button
+                                            onClick={() => setShowSearchMessages(!showSearchMessages)}
+                                            className="w-full flex items-center gap-3 p-3.5 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-zinc-900 transition-colors"
+                                        >
+                                            <Search className="h-5 w-5 text-zinc-400" />
+                                            <span className="text-sm font-semibold text-zinc-200">Search in Conversation</span>
+                                        </button>
+                                        {showSearchMessages && (
+                                            <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <input
+                                                    type="text"
+                                                    value={searchMessagesQuery}
+                                                    onChange={(e) => handleSearchMessages(e.target.value)}
+                                                    placeholder="Search messages..."
+                                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50"
+                                                    autoFocus
+                                                />
+                                                {searchResults.length > 0 && (
+                                                    <div className="max-h-[200px] overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+                                                        {searchResults.map(result => (
+                                                            <button
+                                                                key={result.id}
+                                                                onClick={() => {
+                                                                    scrollToMessage(result.id);
+                                                                    setShowSearchMessages(false);
+                                                                    setSearchMessagesQuery('');
+                                                                    setSearchResults([]);
+                                                                }}
+                                                                className="w-full p-2 text-left bg-zinc-900/50 hover:bg-zinc-800 rounded-lg text-xs transition-colors"
+                                                            >
+                                                                <span className="text-zinc-500">@{result.sender.username}</span>
+                                                                <p className="text-zinc-300 truncate">{result.content}</p>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {searchMessagesQuery && searchResults.length === 0 && (
+                                                    <p className="text-xs text-zinc-500 text-center py-2">No messages found</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
                                     {/* Group customization (For Groups only) */}
                                     {activeChat.is_group && (
                                         <div className="space-y-4 border-t border-zinc-850 pt-4">
@@ -1109,7 +1443,7 @@ function MessagesContent() {
                                     {/* Members Section (Groups only) */}
                                     {activeChat.is_group && (
                                         <div className="space-y-4 border-t border-zinc-850 pt-4 flex-1 flex flex-col min-h-0">
-                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Group Members</h4>
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Group Members ({activeChat.memberships?.length || 0})</h4>
                                             
                                             {/* Add member (Admin only) */}
                                             {isAdmin && (
@@ -1143,7 +1477,7 @@ function MessagesContent() {
                                             )}
 
                                             {/* Member List */}
-                                            <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+                                            <div className="space-y-2 overflow-y-auto max-h-[300px] pr-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
                                                 {activeChat.memberships?.map((member) => (
                                                     <div key={member.id} className="flex items-center justify-between group py-1.5">
                                                         <div className="flex items-center gap-2.5 min-w-0">
@@ -1188,16 +1522,62 @@ function MessagesContent() {
                                         </div>
                                     )}
 
+                                    {/* Individual chat action buttons */}
+                                    {!activeChat.is_group && (
+                                        <div className="space-y-2 border-t border-zinc-850 pt-4">
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Conversation Actions</h4>
+                                            <button
+                                                onClick={handleBlockUser}
+                                                className="w-full flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-red-950/20 hover:border-red-900/30 transition-colors text-sm font-semibold text-zinc-300 hover:text-red-400"
+                                            >
+                                                <Ban className="h-4.5 w-4.5" />
+                                                Block User
+                                            </button>
+                                            <button
+                                                onClick={handleReportConversation}
+                                                className="w-full flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-amber-950/20 hover:border-amber-900/30 transition-colors text-sm font-semibold text-zinc-300 hover:text-amber-400"
+                                            >
+                                                <Flag className="h-4.5 w-4.5" />
+                                                Report Conversation
+                                            </button>
+                                            <button
+                                                onClick={handleDeleteConversation}
+                                                className="w-full flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-red-950/20 hover:border-red-900/30 transition-colors text-sm font-semibold text-zinc-300 hover:text-red-400"
+                                            >
+                                                <Trash2 className="h-4.5 w-4.5" />
+                                                Delete Conversation
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Action button at bottom */}
                                     <div className="border-t border-zinc-850 pt-4 mt-auto">
                                         {activeChat.is_group ? (
-                                            <button
-                                                onClick={handleLeaveGroup}
-                                                className="w-full flex items-center justify-center gap-2 p-3 bg-red-950/20 hover:bg-red-950/45 border border-red-900/30 hover:border-red-900/50 rounded-2xl text-red-500 transition-all font-bold text-sm"
-                                            >
-                                                <LogOut className="h-4.5 w-4.5" />
-                                                Leave Group
-                                            </button>
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={handleLeaveGroup}
+                                                    className="w-full flex items-center justify-center gap-2 p-3 bg-red-950/20 hover:bg-red-950/45 border border-red-900/30 hover:border-red-900/50 rounded-2xl text-red-500 transition-all font-bold text-sm"
+                                                >
+                                                    <LogOut className="h-4.5 w-4.5" />
+                                                    Leave Group
+                                                </button>
+                                                <button
+                                                    onClick={handleReportConversation}
+                                                    className="w-full flex items-center justify-center gap-2 p-2.5 hover:bg-amber-950/20 rounded-2xl text-zinc-500 hover:text-amber-400 transition-all text-xs"
+                                                >
+                                                    <Flag className="h-3.5 w-3.5" />
+                                                    Report Group
+                                                </button>
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={handleDeleteConversation}
+                                                        className="w-full flex items-center justify-center gap-2 p-2.5 hover:bg-red-950/20 rounded-2xl text-zinc-500 hover:text-red-400 transition-all text-xs"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                        Delete Group
+                                                    </button>
+                                                )}
+                                            </div>
                                         ) : (
                                             <div className="text-center text-xs text-zinc-650">
                                                 Encrypted Direct Message
