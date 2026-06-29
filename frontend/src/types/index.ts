@@ -151,9 +151,12 @@ export interface Post {
     }[];
     repost_parent?: number | null;
     repost_details?: Post | null;
+    repost_parent_review?: number | null;
     repost_review_details?: Review | null;
     reposts_count?: number;
     is_reposted?: boolean;
+    category?: string;
+    trending_score?: number;
 }
 
 export interface Reply extends Post {

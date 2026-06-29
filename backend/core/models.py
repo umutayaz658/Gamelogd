@@ -145,6 +145,20 @@ class JobPosting(models.Model):
     def __str__(self):
         return f"{self.title} at {self.project.title if self.project else 'Indie'}"
 
+# Explore categorization choices
+POST_CATEGORIES = [
+    ('reviews', 'Reviews'),
+    ('gameplay', 'Gameplay'),
+    ('news', 'News'),
+    ('discussion', 'Discussion'),
+    ('memes', 'Memes'),
+    ('esports', 'Esports'),
+    ('indie', 'Indie'),
+    ('devlogs', 'Dev Logs'),
+    ('tips', 'Tips & Guides'),
+    ('general', 'General'),
+]
+
 class Post(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     title = models.CharField(max_length=255, blank=True, null=True) # For Devlogs
@@ -168,6 +182,10 @@ class Post(models.Model):
     repost_parent_review = models.ForeignKey('Review', on_delete=models.CASCADE, null=True, blank=True, related_name='reposts')
     
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    # Explore categorization
+    category = models.CharField(max_length=20, choices=POST_CATEGORIES, default='general', db_index=True)
+    trending_score = models.FloatField(default=0.0, db_index=True)
 
     def __str__(self):
         return f"Post by {self.user.username} at {self.timestamp}"
