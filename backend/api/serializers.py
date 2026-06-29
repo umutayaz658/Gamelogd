@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
@@ -22,13 +22,13 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
+            'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
         read_only_fields = ['id', 'date_joined']
 
     def to_representation(self, instance):
-        """Override to safely handle mixed Cloudinary and local media paths."""
+        """Override to safely handle mixed Cloudinary and local media paths and enforce privacy settings."""
         representation = super().to_representation(instance)
         request = self.context.get('request')
 
@@ -48,6 +48,32 @@ class UserSerializer(serializers.ModelSerializer):
                         representation[field] = request.build_absolute_uri(val)
                     except Exception:
                         pass
+
+        # Privacy Enforcement: strip private details if the requesting user is not authorized
+        is_private = instance.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance).exists()
+
+        if is_private and not is_owner and not is_following:
+            sensitive_fields = [
+                'email', 'phone_number', 'location', 'birth_date', 'gender', 
+                'steam_id', 'social_links', 'top_favorites', 'platforms', 
+                'interests', 'show_birth_date'
+            ]
+            for f in sensitive_fields:
+                if f in representation:
+                    if f in ['social_links', 'top_favorites', 'platforms', 'interests']:
+                        representation[f] = []
+                    elif f == 'settings':
+                        representation[f] = {'privateProfile': True}
+                    else:
+                        representation[f] = None
+            if 'settings' in representation:
+                representation['settings'] = {'privateProfile': True}
+
         return representation
 
     def validate_username(self, value):
@@ -61,6 +87,10 @@ class UserSerializer(serializers.ModelSerializer):
     following_count = serializers.IntegerField(source='following.count', read_only=True)
     reviews_count = serializers.IntegerField(source='reviews.count', read_only=True)
     is_following = serializers.SerializerMethodField()
+    is_requested = serializers.SerializerMethodField()
+    has_requested_me = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()
+    has_blocked_me = serializers.SerializerMethodField()
 
     def get_is_following(self, obj):
         request = self.context.get('request')
@@ -69,6 +99,36 @@ class UserSerializer(serializers.ModelSerializer):
             # Follow model: follower=request.user, following=obj
             from api.models import Follow
             return Follow.objects.filter(follower=request.user, following=obj).exists()
+        return False
+
+    def get_is_requested(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            from api.models import FollowRequest
+            return FollowRequest.objects.filter(sender=request.user, receiver=obj).exists()
+        return False
+
+    def get_has_requested_me(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            from api.models import FollowRequest
+            return FollowRequest.objects.filter(sender=obj, receiver=request.user).exists()
+        return False
+
+    def get_is_blocked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if request.user has blocked obj
+            from api.models import Block
+            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
+        return False
+
+    def get_has_blocked_me(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if obj has blocked request.user
+            from api.models import Block
+            return Block.objects.filter(blocker=obj, blocked=request.user).exists()
         return False
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -82,6 +142,9 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     def get_target_url(self, obj):
         try:
+            if 'requested to follow' in obj.verb:
+                return None  # No redirect - handled by inline accept/reject buttons
+            
             if 'following' in obj.verb:
                 return f"/{obj.actor.username}"
             
@@ -134,6 +197,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    real_name = serializers.CharField(required=True, max_length=100, min_length=1)
     # Explicitly tell DRF to accept a list of strings, not IDs
     interests = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
     roles = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
@@ -143,15 +207,27 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = [
             'username', 'email', 'password', 'phone_number', 
             'is_gamer', 'is_developer', 'is_investor',
-            'gender', 'birth_date', 'platforms', 'interests', 'roles'
+            'gender', 'birth_date', 'platforms', 'interests', 'roles', 'real_name'
         ]
         extra_kwargs = {'password': {'write_only': True}}
+
+    def validate_real_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Display name is required.")
+        value = value.strip()
+        if '<' in value or '>' in value:
+            raise serializers.ValidationError("Display name contains invalid characters.")
+        return value
 
     def validate_username(self, value):
         if value.lower() in RESERVED_USERNAMES:
             raise serializers.ValidationError("This username is reserved.")
         if '/' in value or '?' in value or '&' in value or '%' in value:
              raise serializers.ValidationError("Username contains invalid characters.")
+        
+        user = User.objects.filter(username=value).first()
+        if user and user.is_active:
+            raise serializers.ValidationError("A user with that username already exists.")
         return value
 
     def validate_password(self, value):
@@ -160,12 +236,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        user = User.objects.filter(email=value).first()
+        if user and user.is_active:
             raise serializers.ValidationError("A user with that email already exists.")
         return value
 
     def create(self, validated_data):
         print("DEBUG: Validated Data received:", validated_data)
+        
+        email = validated_data.get('email')
+        username = validated_data.get('username')
+        
+        # Clean up any unverified, inactive users with matching email or username
+        if email:
+            User.objects.filter(email=email, is_active=False).delete()
+        if username:
+            User.objects.filter(username=username, is_active=False).delete()
         
         interests_data = validated_data.pop('interests', [])
         roles_data = validated_data.pop('roles', [])
@@ -177,7 +263,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             if 'Developer' in roles_data: validated_data['is_developer'] = True
             if 'Investor' in roles_data: validated_data['is_investor'] = True
 
-        # Create user securely
+        # Create user securely (will default to is_active=False in view, but here we can create normally)
         user = User.objects.create_user(password=password, **validated_data)
 
         # Handle Interests
@@ -195,7 +281,7 @@ class GameSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Game
-        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id', 'genres']
+        fields = ['id', 'title', 'cover_image', 'release_date', 'igdb_id', 'genres', 'platforms']
         read_only_fields = ['id']
 
     def get_cover_image(self, obj):
@@ -223,7 +309,8 @@ class GameDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'cover_image', 'release_date', 'igdb_id', 'steam_appid', 'genres',
             'summary', 'description', 'developer', 'publisher', 'screenshots', 'platforms', 'igdb_url',
-            'average_rating', 'review_count', 'log_count'
+            'average_rating', 'review_count', 'log_count',
+            'metacritic_score', 'hltb_main', 'hltb_main_extra', 'hltb_completionist'
         ]
         read_only_fields = ['id']
 
@@ -258,7 +345,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 
             'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
-            'is_liked_by_user', 'likes_count'
+            'is_liked_by_user', 'likes_count', 'playthrough_number'
         ]
         read_only_fields = ['id', 'user', 'timestamp']
 
@@ -278,10 +365,42 @@ class ReviewSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.method == 'POST':
             game = data.get('game')
-            # If game is looked up via game_id, it might be in validated_data as 'game' object
-            if Review.objects.filter(user=request.user, game=game).exists():
-                raise serializers.ValidationError("You have already reviewed this game.")
+            playthrough = data.get('playthrough_number', 1)
+            if Review.objects.filter(user=request.user, game=game, playthrough_number=playthrough).exists():
+                raise serializers.ValidationError("You have already logged this playthrough.")
+        # Prevent changing game_id on update
+        if request and request.method in ['PUT', 'PATCH']:
+            if 'game' in data and self.instance and data['game'] != self.instance.game:
+                raise serializers.ValidationError("You cannot change the game of an existing review.")
         return data
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the review's author
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['content'] = "This review is from a private account."
+            representation['rating'] = None
+            representation['is_completed'] = False
+            representation['contains_spoilers'] = False
+            representation['is_private_restricted'] = True
+            
+            # Clear interactive fields
+            representation['is_liked'] = False
+            representation['is_bookmarked'] = False
+            representation['bookmarks_count'] = 0
+            representation['is_liked_by_user'] = False
+            representation['likes_count'] = 0
+            
+        return representation
 
 
 class SimplePostSerializer(serializers.ModelSerializer):
@@ -312,6 +431,30 @@ class SimplePostSerializer(serializers.ModelSerializer):
                 'source_icon': obj.news_parent.source.icon
             }
         return None
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the post's author
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['content'] = "This post is from a private account."
+            representation['title'] = None
+            representation['image'] = None
+            representation['media_file'] = None
+            representation['media_type'] = None
+            representation['gif_url'] = None
+            representation['poll_options'] = []
+            representation['is_private_restricted'] = True
+            
+        return representation
 
 
 # from core.models import Game, Review, Post, Project, JobPosting, PostMedia (Imported at top)
@@ -465,6 +608,46 @@ class PostSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Poll options must be non-empty strings.")
         return value
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the post's author
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['content'] = "This post is from a private account."
+            representation['title'] = None
+            representation['image'] = None
+            representation['media_file'] = None
+            representation['media_type'] = None
+            representation['gif_url'] = None
+            representation['poll_options'] = []
+            representation['media'] = []
+            representation['is_private_restricted'] = True
+            
+            # Hide nested comments/parent details
+            representation['replies'] = []
+            representation['likes'] = []
+            representation['replies_count'] = 0
+            representation['likes_count'] = 0
+            representation['is_liked'] = False
+            representation['is_bookmarked'] = False
+            representation['bookmarks_count'] = 0
+            representation['reposts_count'] = 0
+            representation['is_reposted'] = False
+            representation['repost_parent'] = None
+            representation['repost_details'] = None
+            representation['repost_parent_review'] = None
+            representation['repost_review_details'] = None
+            
+        return representation
+
 
 class ConversationMemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -556,6 +739,27 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
         if obj.playtime_forever:
             return round(obj.playtime_forever / 60, 1)
         return 0.0
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Check private profile access for the library entry's owner
+        is_private = instance.user.settings.get('privateProfile', False)
+        is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
+        is_following = False
+        if request and request.user.is_authenticated:
+            from api.models import Follow
+            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+            
+        if is_private and not is_owner and not is_following:
+            representation['playtime_forever'] = 0
+            representation['playtime_hours'] = 0.0
+            representation['platform'] = None
+            representation['status'] = None
+            representation['is_private_restricted'] = True
+            
+        return representation
 
 
 

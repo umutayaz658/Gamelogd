@@ -4,10 +4,12 @@ import { useState, use, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import FilterDropdown from "@/components/FilterDropdown";
-import { Search, Filter, ArrowUpDown, LayoutGrid, List, Gamepad2, Monitor, Zap, Play, Loader2 } from 'lucide-react';
+import { Filter, ArrowUpDown, LayoutGrid, List, Gamepad2, Monitor, Play, Loader2 } from 'lucide-react';
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
 import Link from 'next/link';
+import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/lib/useTranslation";
 
 interface Game {
     id: number;
@@ -28,7 +30,9 @@ interface LibraryEntry {
 
 export default function GameLibraryPage({ params }: { params: Promise<{ username: string }> }) {
     const { username } = use(params);
-
+    const { user: currentUser } = useAuth();
+    const { t } = useTranslation();
+    const isOwnProfile = currentUser?.username?.toLowerCase() === username?.toLowerCase();
     // State
     const [games, setGames] = useState<LibraryEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -104,6 +108,16 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
 
     const statusOptions = ['unplayed', 'plan_to_play', 'playing', 'replaying', 'completed', 'dropped'];
 
+    const statusMap: Record<string, string> = {
+        all: t('all'),
+        unplayed: t('unplayed'),
+        plan_to_play: t('planToPlay'),
+        playing: t('playing'),
+        replaying: t('replaying'),
+        completed: t('completed'),
+        dropped: t('dropped')
+    };
+
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
@@ -120,9 +134,9 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
 
                         {/* Header */}
                         <div className="mb-8">
-                            <h1 className="text-3xl font-bold mb-2">{username}'s Game Library</h1>
+                            <h1 className="text-3xl font-bold mb-2">{t('gamesLibraryTitle').replace('{username}', username)}</h1>
                             <p className="text-zinc-400">
-                                <span className="text-white font-bold">{totalGames}</span> games in collection • <span className="text-emerald-400 font-bold">{Math.round(totalHours)}h</span> played total
+                                <span className="text-white font-bold">{totalGames}</span> {t('gamesInCollection')} • <span className="text-emerald-400 font-bold">{Math.round(totalHours)}h</span> {t('playedTotal')}
                             </p>
                         </div>
 
@@ -130,27 +144,27 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                         <div className="sticky top-20 z-30 bg-zinc-950/80 backdrop-blur-md border border-zinc-800 rounded-xl p-4 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl shadow-black/20">
 
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
-                                {/* Status Filter wrapper (scrollable on mobile) */}
-                                <div className="overflow-x-auto w-full sm:w-auto scrollbar-none pb-2 sm:pb-0">
-                                    <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 min-w-max">
-                                        {['all', 'unplayed', 'plan_to_play', 'playing', 'replaying', 'completed', 'dropped'].map((status) => (
-                                            <button
-                                                key={status}
-                                                onClick={() => setFilterStatus(status)}
-                                                className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-all ${filterStatus === status
-                                                    ? 'bg-zinc-800 text-white shadow-sm ring-1 ring-zinc-700'
-                                                    : 'text-zinc-400 hover:text-zinc-200'
-                                                    }`}
-                                            >
-                                                {status.replace(/_/g, ' ')}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                {/* Status Filter */}
+                                <FilterDropdown
+                                    label={t('status')}
+                                    allLabel={t('all')}
+                                    icon={<Filter className="h-4 w-4" />}
+                                    options={[
+                                        { value: 'unplayed', label: t('unplayed') },
+                                        { value: 'plan_to_play', label: t('planToPlay') },
+                                        { value: 'playing', label: t('playing') },
+                                        { value: 'replaying', label: t('replaying') },
+                                        { value: 'completed', label: t('completed') },
+                                        { value: 'dropped', label: t('dropped') }
+                                    ]}
+                                    value={filterStatus === 'all' ? '' : filterStatus}
+                                    onChange={(val) => setFilterStatus(val || 'all')}
+                                />
 
                                 {/* Platform Filter */}
                                 <FilterDropdown
-                                    label="Platforms"
+                                    label={t('platforms')}
+                                    allLabel={t('allPlatforms')}
                                     icon={<Gamepad2 className="h-4 w-4" />}
                                     options={[
                                         { value: 'Steam', label: 'Steam' },
@@ -166,11 +180,11 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                             <div className="flex items-center gap-3 w-full md:w-auto justify-end">
                                 {/* Sort */}
                                 <FilterDropdown
-                                    label="Sort"
+                                    label={t('sortBy')}
                                     icon={<ArrowUpDown className="h-4 w-4" />}
                                     options={[
-                                        { value: 'playtime', label: 'Playtime' },
-                                        { value: 'name', label: 'Name' }
+                                        { value: 'playtime', label: t('playtime') },
+                                        { value: 'name', label: t('name') }
                                     ]}
                                     value={sortBy}
                                     onChange={(val) => setSortBy(val)}
@@ -209,10 +223,10 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                         ) : games.length === 0 ? (
                             <div className="text-center py-20 text-zinc-500 border border-dashed border-zinc-800 rounded-xl bg-zinc-900/50">
                                 <Gamepad2 className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                                <p className="text-lg font-medium mb-2">No games found</p>
-                                <p className="text-sm mb-6">Try adjusting your filters or sync your accounts.</p>
+                                <p className="text-lg font-medium mb-2">{t('noGamesInLibrary')}</p>
+                                <p className="text-sm mb-6">{t('adjustFiltersOrSync')}</p>
                                 <Link href="/settings" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors">
-                                    Connect Accounts
+                                    {t('connectAccounts')}
                                 </Link>
                             </div>
                         ) : (
@@ -246,11 +260,10 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
 
                                                 {/* Hover Overlay */}
                                                 <div className={`absolute inset-0 bg-black/90 transition-opacity duration-300 flex flex-col items-center justify-center p-4 text-center ${editingId === entry.id ? 'opacity-100 z-20' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                    <h3 className="font-bold text-white mb-2 line-clamp-2">{entry.game.title}</h3>
-
-                                                    {editingId === entry.id ? (
+                                                    <Link href={`/games/${entry.game.id}`} className="font-bold text-white mb-2 line-clamp-2 hover:text-emerald-400 hover:underline transition-colors">{entry.game.title}</Link>
+                                                    {isOwnProfile && editingId === entry.id ? (
                                                         <div className="flex flex-col gap-2 w-full animate-in zoom-in-95 duration-200">
-                                                            <div className="text-xs text-zinc-400 mb-1">Select Status</div>
+                                                            <div className="text-xs text-zinc-400 mb-1">{t('selectStatus')}</div>
                                                             {statusOptions.map(status => (
                                                                 <button
                                                                     key={status}
@@ -260,25 +273,27 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                                         ? 'bg-emerald-600 text-white'
                                                                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
                                                                 >
-                                                                    {status.replace(/_/g, ' ')}
+                                                                    {statusMap[status] || status}
                                                                 </button>
                                                             ))}
                                                             <button
                                                                 onClick={() => setEditingId(null)}
                                                                 className="mt-2 text-xs text-zinc-500 hover:text-white"
                                                             >
-                                                                Cancel
+                                                                {t('cancel')}
                                                             </button>
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4">{entry.status.replace(/_/g, ' ')}</span>
-                                                            <button
-                                                                onClick={() => setEditingId(entry.id)}
-                                                                className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-bold hover:bg-zinc-200 transition-colors"
-                                                            >
-                                                                Edit Status
-                                                            </button>
+                                                            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4">{statusMap[entry.status] || entry.status}</span>
+                                                            {isOwnProfile && (
+                                                                <button
+                                                                    onClick={() => setEditingId(entry.id)}
+                                                                    className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-bold hover:bg-zinc-200 transition-colors"
+                                                                >
+                                                                    {t('editStatus')}
+                                                                </button>
+                                                            )}
                                                         </>
                                                     )}
                                                 </div>
@@ -297,31 +312,33 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-white truncate group-hover:text-emerald-400 transition-colors">{entry.game.title}</h3>
+                                                <Link href={`/games/${entry.game.id}`} className="font-bold text-white truncate hover:text-emerald-400 hover:underline transition-colors block">{entry.game.title}</Link>
                                                 <div className="flex items-center gap-2 text-sm text-zinc-400 mt-1">
                                                     <div className="flex items-center gap-1">
                                                         <PlatformIcon platform={entry.platform} />
                                                         <span className="uppercase text-xs">{entry.platform}</span>
                                                     </div>
                                                     <span>•</span>
-                                                    <span className="capitalize text-emerald-400 text-xs font-bold">{entry.status.replace(/_/g, ' ')}</span>
+                                                    <span className="capitalize text-emerald-400 text-xs font-bold">{statusMap[entry.status] || entry.status}</span>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <div className="text-right px-4">
                                                     <div className="font-bold text-white">{entry.playtime_hours}h</div>
-                                                    <div className="text-xs text-zinc-500">played</div>
+                                                    <div className="text-xs text-zinc-500">{t('playedLabel')}</div>
                                                 </div>
-                                                <button
-                                                    onClick={() => setEditingId(editingId === entry.id ? null : entry.id)}
-                                                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                >
-                                                    <Filter className="h-4 w-4" />
-                                                </button>
+                                                {isOwnProfile && (
+                                                    <button
+                                                        onClick={() => setEditingId(editingId === entry.id ? null : entry.id)}
+                                                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                    >
+                                                        <Filter className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* List View Popover (Simple implementation) */}
-                                            {editingId === entry.id && (
+                                            {isOwnProfile && editingId === entry.id && (
                                                 <div className="absolute right-12 mt-12 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl p-2 flex flex-col gap-1 min-w-[120px] animate-in zoom-in-95">
                                                     {statusOptions.map(status => (
                                                         <button
@@ -331,7 +348,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                                 ? 'bg-emerald-600 text-white'
                                                                 : 'text-zinc-300 hover:bg-zinc-800'}`}
                                                         >
-                                                            {status.replace(/_/g, ' ')}
+                                                            {statusMap[status] || status}
                                                         </button>
                                                     ))}
                                                 </div>

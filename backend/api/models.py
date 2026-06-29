@@ -5,6 +5,10 @@ from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings as django_settings
+from django.utils import timezone
+from datetime import timedelta
+import random
+
 
 class Interest(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -124,6 +128,17 @@ class Follow(models.Model):
 
     def __str__(self):
         return f"{self.follower} follows {self.following}"
+
+class FollowRequest(models.Model):
+    sender = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='sent_follow_requests', on_delete=models.CASCADE)
+    receiver = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='received_follow_requests', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('sender', 'receiver')
+
+    def __str__(self):
+        return f"{self.sender} wants to follow {self.receiver}"
 
 class Notification(models.Model):
     recipient = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
@@ -315,3 +330,56 @@ class SupportTicket(models.Model):
 
     def __str__(self):
         return f"{self.ticket_type.upper()} - {self.subject} by {self.user.username}"
+
+
+class PendingRegistration(models.Model):
+    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150, unique=True)
+    code = models.CharField(max_length=6)
+    registration_data = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=5)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def generate_code(cls):
+        import secrets
+        return "".join(secrets.choice("0123456789") for _ in range(6))
+
+    def __str__(self):
+        return f"Pending registration for {self.email} (Code: {self.code})"
+
+
+class Block(models.Model):
+    blocker = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='blocking_users', on_delete=models.CASCADE)
+    blocked = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='blocked_users', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+    def save(self, *args, **kwargs):
+        # Automatically clean up any mutual follows when blocking
+        from api.models import Follow, FollowRequest
+        Follow.objects.filter(
+            models.Q(follower=self.blocker, following=self.blocked) |
+            models.Q(follower=self.blocked, following=self.blocker)
+        ).delete()
+        # Automatically clean up any pending follow requests when blocking
+        FollowRequest.objects.filter(
+            models.Q(sender=self.blocker, receiver=self.blocked) |
+            models.Q(sender=self.blocked, receiver=self.blocker)
+        ).delete()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.blocker} blocked {self.blocked}"
+
+

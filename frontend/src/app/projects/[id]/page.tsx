@@ -11,6 +11,7 @@ import { getImageUrl } from '@/lib/utils';
 import { MapPin, Calendar, Link as LinkIcon, Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, MoreHorizontal, ChevronDown, Clock, UserPlus, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import { useTranslation } from '@/lib/useTranslation';
 
 const AVAILABLE_TECH = [
@@ -62,6 +63,8 @@ export default function ProjectDetailPage() {
     const [isFollowing, setIsFollowing] = useState(false);
     const [followersCount, setFollowersCount] = useState(0);
     const [isFollowLoading, setIsFollowLoading] = useState(false);
+    const [showDevlogModal, setShowDevlogModal] = useState(false);
+    const [isInviteActionLoading, setIsInviteActionLoading] = useState(false);
 
     // Collapsible Roles
     const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>({
@@ -103,6 +106,33 @@ export default function ProjectDetailPage() {
     const userMember = project?.members?.find(m => m.user.id === user?.id);
     const isAdmin = isOwner || (userMember?.role === 'admin' && userMember?.status === 'active');
     const isEditor = isAdmin || (userMember?.role === 'editor' && userMember?.status === 'active');
+
+    const handleAcceptInvite = async () => {
+        if (!userMember || isInviteActionLoading) return;
+        setIsInviteActionLoading(true);
+        try {
+            await api.post(`/project-members/${userMember.id}/accept/`);
+            await fetchProjectData();
+        } catch (error) {
+            console.error("Failed to accept invite:", error);
+        } finally {
+            setIsInviteActionLoading(false);
+        }
+    };
+
+    const handleDeclineInvite = async () => {
+        if (!userMember || isInviteActionLoading) return;
+        if (!confirm("Are you sure you want to decline this invitation?")) return;
+        setIsInviteActionLoading(true);
+        try {
+            await api.delete(`/project-members/${userMember.id}/`);
+            router.push('/devs');
+        } catch (error) {
+            console.error("Failed to decline invite:", error);
+        } finally {
+            setIsInviteActionLoading(false);
+        }
+    };
 
     const handleFollowToggle = async () => {
         if (!project || isFollowLoading) return;
@@ -345,22 +375,53 @@ export default function ProjectDetailPage() {
                                 </div>
                             </div>
 
-                            {/* Follow Button */}
-                            <button
-                                onClick={handleFollowToggle}
-                                disabled={isFollowLoading}
-                                className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
-                                    isFollowing
-                                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
-                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
-                                } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
-                            >
-                                {isFollowing ? (
-                                    <><UserCheck className="w-4 h-4" /> {t('following')}</>
-                                ) : (
-                                    <><UserPlus className="w-4 h-4" /> {t('follow')}</>
-                                )}
-                            </button>
+                             <div className="flex items-center gap-3">
+                                 {userMember && userMember.status === 'pending' ? (
+                                     <>
+                                         <button
+                                             onClick={handleAcceptInvite}
+                                             disabled={isInviteActionLoading}
+                                             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-emerald-900/20"
+                                         >
+                                             Accept Invite
+                                         </button>
+                                         <button
+                                             onClick={handleDeclineInvite}
+                                             disabled={isInviteActionLoading}
+                                             className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200"
+                                         >
+                                             Decline
+                                         </button>
+                                     </>
+                                 ) : (
+                                     <>
+                                         {isEditor && (
+                                             <button
+                                                 onClick={() => setShowDevlogModal(true)}
+                                                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
+                                             >
+                                                 <Plus className="w-4 h-4" /> Log Dev
+                                             </button>
+                                         )}
+                                         {/* Follow Button */}
+                                         <button
+                                             onClick={handleFollowToggle}
+                                             disabled={isFollowLoading}
+                                             className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all duration-200 ${
+                                                 isFollowing
+                                                     ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
+                                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
+                                             } ${isFollowLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                                         >
+                                             {isFollowing ? (
+                                                 <><UserCheck className="w-4 h-4" /> {t('following')}</>
+                                             ) : (
+                                                 <><UserPlus className="w-4 h-4" /> {t('follow')}</>
+                                             )}
+                                         </button>
+                                     </>
+                                 )}
+                             </div>
                         </div>
 
                         {/* Tabs */}
@@ -986,6 +1047,16 @@ export default function ProjectDetailPage() {
                     </div>
                 </div>
             )}
+
+            {/* Create Devlog Modal */}
+            <CreateDevlogModal
+                isOpen={showDevlogModal}
+                onClose={() => setShowDevlogModal(false)}
+                defaultProjectId={project.id}
+                onSuccess={(newPost) => {
+                    setDevlogs(prev => [newPost, ...prev]);
+                }}
+            />
         </div>
     );
 }

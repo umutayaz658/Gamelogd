@@ -4,14 +4,20 @@ from rest_framework import viewsets, permissions, filters, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post
-from api.models import User, Notification, SupportTicket
+from api.models import User, Notification, SupportTicket, Interest, PendingRegistration
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
-from django.db.models import Q
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.conf import settings
+from api.services.email_service import send_verification_email, send_support_ticket_email
+
 from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
 
 class CustomAuthToken(ObtainAuthToken):
@@ -25,13 +31,34 @@ class CustomAuthToken(ObtainAuthToken):
         # Find the user by email or username
         user = User.objects.filter(Q(email=username_or_email) | Q(username=username_or_email)).first()
 
-        if user and user.check_password(password):
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'token': token.key,
-                'user_id': user.pk,
-                'email': user.email
-            })
+        if user:
+            if user.check_password(password):
+                # Check if user has verified their email
+                if not user.is_active:
+                    return Response({
+                        'status': 'verification_required',
+                        'email': user.email,
+                        'error': 'Please verify your email address before logging in.'
+                    }, status=status.HTTP_403_FORBIDDEN)
+
+                token, created = Token.objects.get_or_create(user=user)
+                return Response({
+                    'token': token.key,
+                    'user_id': user.pk,
+                    'email': user.email
+                })
+        else:
+            # Check if there is a pending registration
+            pending = PendingRegistration.objects.filter(Q(email=username_or_email) | Q(username=username_or_email)).first()
+            if pending:
+                from django.contrib.auth.hashers import check_password as django_check_password
+                hashed_pw = pending.registration_data.get('password')
+                if hashed_pw and django_check_password(password, hashed_pw):
+                    return Response({
+                        'status': 'verification_required',
+                        'email': pending.email,
+                        'error': 'Please verify your email address before logging in.'
+                    }, status=status.HTTP_403_FORBIDDEN)
         
         return Response({'non_field_errors': ['Unable to log in with provided credentials.']}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -86,24 +113,85 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'real_name']
     lookup_field = 'username'
 
+    def filter_queryset(self, queryset):
+        # Strip leading '@' from search term if present to allow searching like @username
+        search_query = self.request.query_params.get('search', '')
+        if search_query.startswith('@'):
+            q_params = self.request._request.GET.copy()
+            q_params['search'] = search_query[1:]
+            self.request._request.GET = q_params
+        return super().filter_queryset(queryset)
+
+    def get_queryset(self):
+        queryset = User.objects.all()
+        request = self.request
+        if request and request.user.is_authenticated:
+            if self.action == 'list':
+                from api.models import Block
+                blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+                blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+                queryset = queryset.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
+        return queryset
+
+    def _check_private_access(self, target_user, request):
+        is_private = target_user.settings.get('privateProfile', False)
+        is_owner = request.user.is_authenticated and request.user.id == target_user.id
+        from api.models import Follow
+        is_following = request.user.is_authenticated and Follow.objects.filter(follower=request.user, following=target_user).exists()
+        
+        if is_private and not is_owner and not is_following:
+            return False
+        return True
+
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, username=None):
         target_user = self.get_object()
         if request.user == target_user:
             return Response({"error": "You cannot follow yourself."}, status=status.HTTP_400_BAD_REQUEST)
         
-        from api.models import Follow
+        # Check block restrictions
+        from api.models import Block
+        if Block.objects.filter(blocker=request.user, blocked=target_user).exists() or \
+           Block.objects.filter(blocker=target_user, blocked=request.user).exists():
+            return Response({"error": "Cannot follow this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
+        
+        from api.models import Follow, FollowRequest, Notification
+        # If target user has a private profile
+        if target_user.settings.get('privateProfile', False):
+            if Follow.objects.filter(follower=request.user, following=target_user).exists():
+                return Response({"message": "You are already following this user.", "status": "following", "is_following": True, "is_requested": False}, status=status.HTTP_200_OK)
+            
+            follow_req, req_created = FollowRequest.objects.get_or_create(sender=request.user, receiver=target_user)
+            if not req_created:
+                return Response({"message": "Follow request already pending.", "status": "pending", "is_following": False, "is_requested": True}, status=status.HTTP_200_OK)
+            
+            # Send Notification for follow request
+            Notification.objects.create(
+                recipient=target_user,
+                actor=request.user,
+                verb='requested to follow you'
+            )
+            return Response({"message": "Follow request sent.", "status": "pending", "is_following": False, "is_requested": True}, status=status.HTTP_201_CREATED)
+        
         follow_instance, created = Follow.objects.get_or_create(follower=request.user, following=target_user)
         
         if not created:
-            return Response({"message": "You are already following this user."}, status=status.HTTP_200_OK)
+            return Response({"message": "You are already following this user.", "status": "following", "is_following": True, "is_requested": False}, status=status.HTTP_200_OK)
             
-        return Response({"message": f"You are now following {target_user.username}"}, status=status.HTTP_201_CREATED)
+        return Response({"message": f"You are now following {target_user.username}", "status": "following", "is_following": True, "is_requested": False}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def followers(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
+        
         followers = User.objects.filter(id__in=user.followers.values_list('follower_id', flat=True)).order_by('username')
+        if request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            followers = followers.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
         
         search_query = request.query_params.get('search', '')
         if search_query:
@@ -116,7 +204,15 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='following-list', permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def following_list(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
+        
         following = User.objects.filter(id__in=user.following.values_list('following_id', flat=True)).order_by('username')
+        if request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            following = following.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
         
         search_query = request.query_params.get('search', '')
         if search_query:
@@ -161,32 +257,52 @@ class UserViewSet(viewsets.ModelViewSet):
         if not steam_id:
             return Response({"error": "Steam ID is required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        from django.conf import settings
-        if not settings.STEAM_API_KEY:
-            return Response({"error": "Server configuration error: STEAM_API_KEY not set."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Save Steam ID
+        # Always save Steam ID first so it persists
         request.user.steam_id = steam_id
         request.user.save()
-        
-        # Trigger Sync
-        from api.services.steam import fetch_steam_library
-        try:
-            stats = fetch_steam_library(request.user.id, steam_id)
-        except Exception as e:
-            print(f"Sync trigger failed: {e}")
+
+        from django.conf import settings
+        if not settings.STEAM_API_KEY:
             return Response({
-                "status": "Steam ID saved, but sync failed. Check privacy settings or try again later.",
-                "warning": str(e)
+                "status": "Steam ID saved, but library sync is unavailable (STEAM_API_KEY not configured).",
+                "steam_id_saved": True
             }, status=status.HTTP_200_OK)
-        
+
+        # Run sync in background thread so the user doesn't wait
+        import threading
+        user_id = request.user.id
+
+        def run_sync():
+            from api.services.steam import fetch_steam_library
+            from api.models import Notification, User as UserModel
+            try:
+                stats = fetch_steam_library(user_id, steam_id)
+                # Create a notification for the user when sync completes
+                user = UserModel.objects.get(id=user_id)
+                synced = stats.get('synced', 0)
+                total = stats.get('total', 0)
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.'
+                )
+            except Exception as e:
+                print(f"Background Steam sync failed for user {user_id}: {e}")
+                try:
+                    user = UserModel.objects.get(id=user_id)
+                    Notification.objects.create(
+                        recipient=user,
+                        actor=user,
+                        verb='Steam library sync failed. Please check your privacy settings and try again.'
+                    )
+                except Exception:
+                    pass
+
+        threading.Thread(target=run_sync, daemon=True).start()
+
         return Response({
-            "status": "Sync completed",
-            "total_games": stats.get('total', 0),
-            "synced": stats.get('synced', 0),
-            "created": stats.get('created', 0),
-            "covers_fixed": stats.get('cover_fixed', 0),
-            "errors": stats.get('errors', 0),
+            "status": "sync_started",
+            "message": "Steam library sync has been started. You will be notified when it's complete."
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -228,6 +344,13 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='steam-status')
     def steam_status(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({
+                "is_playing": False,
+                "game_title": None,
+                "steam_appid": None,
+                "cover_image": None
+            }, status=status.HTTP_200_OK)
         
         # Check settings for privacy
         is_private = user.settings.get('steamStatusPrivate', False)
@@ -248,6 +371,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='game-dna')
     def game_dna(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         
         # Playtime > 0 olan tüm oyunları dahil et (dropped dahil)
@@ -278,12 +403,15 @@ class UserViewSet(viewsets.ModelViewSet):
         # Yüzde hesapla ve sırala (playtime ağırlığına göre)
         colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
         result = []
-        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)):
+        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
+            percentage = round((weight / total_weight) * 100)
+            if percentage == 0:
+                continue
             total_hours = round(weight / 60, 1)
             result.append({
                 "genre": genre,
-                "percentage": round((weight / total_weight) * 100),
-                "color": colors[i % len(colors)],
+                "percentage": percentage,
+                "color": colors[len(result) % len(colors)],
                 "total_hours": total_hours,
                 "game_count": genre_game_counts.get(genre, 0)
             })
@@ -293,6 +421,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='recommended-games')
     def recommended_games(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         from core.models import Game
         
@@ -378,6 +508,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def backlog(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         
         entries = LibraryEntry.objects.filter(
@@ -397,6 +529,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='friends-playing')
     def friends_playing(self, request, username=None):
         user = self.get_object()
+        if not self._check_private_access(user, request):
+            return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import Follow, LibraryEntry
         
         following_users = Follow.objects.filter(follower=user).values_list('following_id', flat=True)
@@ -428,13 +562,106 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def unfollow(self, request, username=None):
         target_user = self.get_object()
-        from api.models import Follow
+        from api.models import Follow, FollowRequest, Notification
         deleted_count, _ = Follow.objects.filter(follower=request.user, following=target_user).delete()
         
         if deleted_count == 0:
+            # Check for a pending follow request
+            req_deleted_count, _ = FollowRequest.objects.filter(sender=request.user, receiver=target_user).delete()
+            if req_deleted_count > 0:
+                # Remove follow request notification
+                Notification.objects.filter(recipient=target_user, actor=request.user, verb='requested to follow you').delete()
+                return Response({"message": "Follow request cancelled.", "status": "none", "is_following": False, "is_requested": False}, status=status.HTTP_200_OK)
             return Response({"error": "You are not following this user."}, status=status.HTTP_400_BAD_REQUEST)
             
-        return Response({"message": f"You have unfollowed {target_user.username}"}, status=status.HTTP_200_OK)
+        return Response({"message": f"You have unfollowed {target_user.username}", "status": "none", "is_following": False, "is_requested": False}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='approve-request', permission_classes=[permissions.IsAuthenticated])
+    def approve_request(self, request, username=None):
+        sender = self.get_object()
+        from api.models import FollowRequest, Follow, Notification
+        try:
+            follow_req = FollowRequest.objects.get(sender=sender, receiver=request.user)
+        except FollowRequest.DoesNotExist:
+            return Response({"error": "Follow request not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        Follow.objects.get_or_create(follower=sender, following=request.user)
+        follow_req.delete()
+        
+        # Delete notification
+        Notification.objects.filter(recipient=request.user, actor=sender, verb='requested to follow you').delete()
+        
+        # Notify the sender that their request was approved
+        Notification.objects.create(
+            recipient=sender,
+            actor=request.user,
+            verb='accepted your follow request'
+        )
+        
+        return Response({"message": f"Approved follow request from {sender.username}."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reject-request', permission_classes=[permissions.IsAuthenticated])
+    def reject_request(self, request, username=None):
+        sender = self.get_object()
+        from api.models import FollowRequest, Notification
+        try:
+            follow_req = FollowRequest.objects.get(sender=sender, receiver=request.user)
+        except FollowRequest.DoesNotExist:
+            return Response({"error": "Follow request not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        follow_req.delete()
+        
+        # Delete notification
+        Notification.objects.filter(recipient=request.user, actor=sender, verb='requested to follow you').delete()
+        
+        return Response({"message": f"Rejected follow request from {sender.username}."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='follow-requests', permission_classes=[permissions.IsAuthenticated])
+    def follow_requests(self, request):
+        from api.models import FollowRequest
+        requests_qs = FollowRequest.objects.filter(receiver=request.user).select_related('sender')
+        senders = [req.sender for req in requests_qs]
+        serializer = self.get_serializer(senders, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def block(self, request, username=None):
+        target_user = self.get_object()
+        if request.user == target_user:
+            return Response({"error": "You cannot block yourself."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from api.models import Block, Follow, FollowRequest, Notification
+        block_instance, created = Block.objects.get_or_create(blocker=request.user, blocked=target_user)
+        if not created:
+            return Response({"message": "You have already blocked this user."}, status=status.HTTP_200_OK)
+            
+        # Clean up follows, follow requests, and follow request notifications when blocking
+        Follow.objects.filter(follower=request.user, following=target_user).delete()
+        Follow.objects.filter(follower=target_user, following=request.user).delete()
+        FollowRequest.objects.filter(sender=request.user, receiver=target_user).delete()
+        FollowRequest.objects.filter(sender=target_user, receiver=request.user).delete()
+        
+        Notification.objects.filter(recipient=target_user, actor=request.user, verb='requested to follow you').delete()
+        Notification.objects.filter(recipient=request.user, actor=target_user, verb='requested to follow you').delete()
+        
+        return Response({"message": f"Blocked {target_user.username} successfully."}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unblock(self, request, username=None):
+        target_user = self.get_object()
+        from api.models import Block
+        deleted_count, _ = Block.objects.filter(blocker=request.user, blocked=target_user).delete()
+        if deleted_count == 0:
+            return Response({"error": "You have not blocked this user."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Unblocked {target_user.username} successfully."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='blocked-users', permission_classes=[permissions.IsAuthenticated])
+    def blocked_users(self, request):
+        from api.models import Block
+        blocked_relations = Block.objects.filter(blocker=request.user).select_related('blocked')
+        blocked_users_list = [relation.blocked for relation in blocked_relations]
+        serializer = self.get_serializer(blocked_users_list, many=True)
+        return Response(serializer.data)
 
 from api.models import Notification
 from .serializers import NotificationSerializer
@@ -455,6 +682,180 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        try:
+            import json
+            from datetime import date, datetime
+            from django.contrib.auth.hashers import make_password
+            
+            validated_data = serializer.validated_data
+            
+            # Convert to a plain dict with JSON-safe values
+            safe_data = {}
+            for key, value in validated_data.items():
+                if isinstance(value, (date, datetime)):
+                    safe_data[key] = value.isoformat()
+                elif isinstance(value, list):
+                    safe_data[key] = list(value)
+                else:
+                    safe_data[key] = value
+            
+            # Pre-hash password so we don't store cleartext in the pending table
+            raw_password = safe_data.get('password')
+            if raw_password:
+                safe_data['password'] = make_password(raw_password)
+                
+            email = safe_data.get('email')
+            username = safe_data.get('username')
+            
+            # Verify the data is truly JSON-serializable before saving
+            json.dumps(safe_data)
+            
+            # Clean up any existing pending registration for this email/username
+            if email:
+                PendingRegistration.objects.filter(email=email).delete()
+            if username:
+                PendingRegistration.objects.filter(username=username).delete()
+                
+            # Generate code
+            code = PendingRegistration.generate_code()
+            
+            # Save pending registration
+            PendingRegistration.objects.create(
+                email=email,
+                username=username,
+                code=code,
+                registration_data=safe_data
+            )
+            
+            # Send Email (async - does not block response)
+            send_verification_email(email, code)
+
+            return Response({
+                'status': 'verification_required',
+                'email': email
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Registration processing failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VerifyEmailView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email')
+        code = request.data.get('code')
+
+        if not email or not code:
+            return Response({'error': 'Email and verification code are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Look up pending registration
+        pending = PendingRegistration.objects.filter(email=email).first()
+        if not pending:
+            user_exists = User.objects.filter(email=email, is_active=True).exists()
+            if user_exists:
+                return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No pending registration found for this email.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.code != str(code).strip():
+            return Response({'error': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.is_expired():
+            return Response({'error': 'Verification code has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Success! Extract registration data and create user
+        data = pending.registration_data
+        
+        # Clean up legacy inactive users with same email or username (if any)
+        username = data.get('username')
+
+        try:
+            with transaction.atomic():
+                if email:
+                    User.objects.filter(email=email).delete()
+                if username:
+                    User.objects.filter(username=username).delete()
+
+                interests_data = data.pop('interests', [])
+                roles_data = data.pop('roles', [])
+                password = data.pop('password')
+                
+                if roles_data:
+                    if 'Gamer' in roles_data: data['is_gamer'] = True
+                    if 'Developer' in roles_data: data['is_developer'] = True
+                    if 'Investor' in roles_data: data['is_investor'] = True
+                    
+                if 'birth_date' in data and data['birth_date']:
+                    from datetime import datetime
+                    if isinstance(data['birth_date'], str):
+                        data['birth_date'] = datetime.strptime(data['birth_date'], '%Y-%m-%d').date()
+
+                # Create active user
+                user = User.objects.create(is_active=True, password=password, **data)
+                
+                # Add interests
+                if interests_data:
+                    from django.utils.text import slugify
+                    for interest_name in interests_data:
+                        interest_obj, _ = Interest.objects.get_or_create(name=interest_name, defaults={'slug': slugify(interest_name)})
+                        user.interests.add(interest_obj)
+
+                # Delete pending registration
+                pending.delete()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Registration processing failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Login user immediately by generating auth token
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user_id': user.pk,
+            'email': user.email,
+            'username': user.username,
+            'message': 'Email verified and account created successfully.'
+        }, status=status.HTTP_200_OK)
+
+
+class ResendVerificationView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email')
+
+        if not email:
+            return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        pending = PendingRegistration.objects.filter(email=email).first()
+        if not pending:
+            user_exists = User.objects.filter(email=email, is_active=True).exists()
+            if user_exists:
+                return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No pending registration found for this email.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate new code
+        code = PendingRegistration.generate_code()
+        pending.code = code
+        pending.expires_at = timezone.now() + timedelta(minutes=5)
+        pending.save()
+
+        # Send Email (async - does not block response)
+        send_verification_email(email, code)
+
+        return Response({'message': 'New verification code sent.'}, status=status.HTTP_200_OK)
+
 
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -527,6 +928,42 @@ class GameViewSet(viewsets.ModelViewSet):
             })
         return Response(result)
 
+    @action(detail=False, methods=['get'], url_path='hidden-gems')
+    def hidden_gems(self, request):
+        from django.db.models import Avg, Count
+        # High average rating but low review count or library entries
+        gems = Game.objects.annotate(
+            avg_rating=Avg('reviews__rating'),
+            rev_count=Count('reviews')
+        ).filter(rev_count__gt=0, rev_count__lte=5, avg_rating__gte=7).order_by('-avg_rating', '?')[:10]
+        
+        if not gems.exists():
+            # Fallback if no specific data
+            gems = Game.objects.annotate(
+                rev_count=Count('reviews')
+            ).filter(rev_count__lte=5).order_by('?')[:10]
+            
+        result = []
+        for g in gems:
+            image_url = None
+            if g.cover_image:
+                if str(g.cover_image).startswith('http'):
+                    image_url = str(g.cover_image)
+                elif hasattr(g.cover_image, 'url'):
+                    url = g.cover_image.url
+                    if request and not str(url).startswith('http'):
+                        host = request.get_host()
+                        if 'backend' in host: host = host.replace('backend', '127.0.0.1')
+                        image_url = f"{request.scheme}://{host}{url}"
+            
+            result.append({
+                "id": g.id,
+                "title": g.title,
+                "cover_image": image_url,
+                "avg_rating": getattr(g, 'avg_rating', 0)
+            })
+        return Response(result)
+
     @action(detail=False, methods=['get'], url_path='company-info')
     def company_info(self, request):
         """GET /api/games/company-info/?name=Rockstar+Games"""
@@ -540,6 +977,32 @@ class GameViewSet(viewsets.ModelViewSet):
             return Response({"error": "Company not found"}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(info)
+
+    @action(detail=False, methods=['get'], url_path='global-search')
+    def global_search(self, request):
+        """GET /api/games/global-search/?q=Rockstar"""
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response([])
+
+        # 1. Search Local Games (with some fuzzy matching or icontains)
+        local_games = Game.objects.filter(Q(title__icontains=query))[:5]
+        from api.serializers import GameSerializer
+        games_data = GameSerializer(local_games, many=True, context={'request': request}).data
+        
+        # Tag them
+        for g in games_data:
+            g['result_type'] = 'game'
+
+        # 2. Search IGDB Companies
+        from api.services.igdb_service import search_igdb_companies
+        companies_data = search_igdb_companies(query, limit=5)
+        for c in companies_data:
+            c['result_type'] = 'company'
+
+        # 3. Combine and return
+        combined = list(games_data) + list(companies_data)
+        return Response(combined)
 
     @action(detail=False, methods=['get'], url_path='company-games')
     def company_games(self, request):
@@ -588,6 +1051,26 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Review.objects.all().select_related('user', 'game')
         
+        # Exclude reviews from blocked/blocking users and private profiles (unless authorized)
+        request = self.request
+        from django.db.models import Q
+        if request and request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
+            following_ids = list(request.user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        
         # Annotate with likes count for ordering by popularity
         from django.db.models import Count
         queryset = queryset.annotate(likes_count=Count('likes', distinct=True))
@@ -609,8 +1092,33 @@ class ReviewViewSet(viewsets.ModelViewSet):
             
         return queryset
 
+    def _sync_library_status(self, review):
+        """Sync LibraryEntry status based on review is_completed flag, and ensure logged games are in the library."""
+        from api.models import LibraryEntry
+        
+        entry, created = LibraryEntry.objects.get_or_create(
+            user=review.user,
+            game=review.game,
+            defaults={
+                'status': 'completed' if review.is_completed else 'playing',
+                'platform': 'Manual'
+            }
+        )
+        
+        if review.is_completed and entry.status != 'completed':
+            entry.status = 'completed'
+            entry.save(update_fields=['status'])
+        elif not review.is_completed and entry.status == 'completed':
+            entry.status = 'playing'
+            entry.save(update_fields=['status'])
+
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        review = serializer.save(user=self.request.user)
+        self._sync_library_status(review)
+
+    def perform_update(self, serializer):
+        review = serializer.save()
+        self._sync_library_status(review)
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -625,11 +1133,32 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Post.objects.all().select_related('user').order_by('-timestamp')
+        
+        # Exclude posts from blocked/blocking users and private profiles (unless authorized)
+        request = self.request
+        from django.db.models import Q
+        if request and request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
+            following_ids = list(request.user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+            
         username = self.request.query_params.get('username', None)
         parent_id = self.request.query_params.get('parent', None)
 
         if username is not None:
-            queryset = queryset.filter(user__username=username)
+            queryset = queryset.filter(user__username=username, project_parent__isnull=True)
         
         if parent_id is not None:
             queryset = queryset.filter(parent_id=parent_id)
@@ -682,7 +1211,26 @@ class PostViewSet(viewsets.ModelViewSet):
                 if not is_authorized:
                     from rest_framework.exceptions import PermissionDenied
                     raise PermissionDenied("You do not have permission to post a devlog for this project.")
+        # Check block restrictions for interactions (reply, quote repost, comments)
+        repost_parent = serializer.validated_data.get('repost_parent')
+        parent = serializer.validated_data.get('parent')
+        review_parent = serializer.validated_data.get('review_parent')
         
+        target_author = None
+        if repost_parent:
+            target_author = repost_parent.user
+        elif parent:
+            target_author = parent.user
+        elif review_parent:
+            target_author = review_parent.user
+            
+        if target_author:
+            from api.models import Block
+            if Block.objects.filter(blocker=self.request.user, blocked=target_author).exists() or \
+               Block.objects.filter(blocker=target_author, blocked=self.request.user).exists():
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Cannot interact with this post due to block restrictions.")
+                
         category = self.request.data.get('category')
         post_kwargs = {}
         if category:
@@ -774,6 +1322,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         if target_user == request.user:
             return Response({"error": "Cannot chat with yourself"}, status=400)
+
+        # Check block relationships
+        from api.models import Block
+        if Block.objects.filter(blocker=request.user, blocked=target_user).exists() or \
+           Block.objects.filter(blocker=target_user, blocked=request.user).exists():
+            return Response({"error": "Cannot message this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
 
         # Check if conversation exists (complex query for exact participants)
         conversations = Conversation.objects.filter(is_group=False).filter(participants=request.user).filter(participants=target_user)
@@ -1181,16 +1735,17 @@ class MessageViewSet(viewsets.ModelViewSet):
         if membership and membership.status == 'pending':
             raise permissions.PermissionDenied("You must accept the group invitation first.")
             
-        # Check if either user blocked the other (for DM)
+        # Check if conversation is a 1-on-1 direct message and has a block relationship
         if not conversation.is_group:
-            other_user = conversation.participants.exclude(id=self.request.user.id).first()
-            if other_user:
-                from api.models import BlockedUser
-                if BlockedUser.objects.filter(blocker=other_user, blocked=self.request.user).exists():
-                    raise permissions.PermissionDenied("You are blocked by this user.")
-                if BlockedUser.objects.filter(blocker=self.request.user, blocked=other_user).exists():
-                    raise permissions.PermissionDenied("You have blocked this user. Unblock to send messages.")
-                    
+            other_participants = conversation.participants.exclude(id=self.request.user.id)
+            from api.models import Block
+            from django.db.models import Q
+            if Block.objects.filter(
+                Q(blocker=self.request.user, blocked__in=other_participants) |
+                Q(blocker__in=other_participants, blocked=self.request.user)
+            ).exists():
+                raise permissions.PermissionDenied("You cannot send messages to this conversation due to block restrictions.")
+        
         # File validations
         image = self.request.FILES.get('image')
         if image:
@@ -1201,7 +1756,6 @@ class MessageViewSet(viewsets.ModelViewSet):
             if ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError("Unsupported file format. Allowed formats: jpg, jpeg, png, gif, webp.")
-
         message = serializer.save(sender=self.request.user)
         
         # Update conversation timestamp
@@ -1313,6 +1867,29 @@ class LibraryViewSet(viewsets.ModelViewSet):
     ordering_fields = ['playtime_forever', 'game__title']
     ordering = ['-playtime_forever']
 
+    def get_queryset(self):
+        queryset = LibraryEntry.objects.all().select_related('game', 'user')
+        # Exclude library entries from blocked/blocking users and private profiles (unless authorized)
+        request = self.request
+        from django.db.models import Q
+        if request and request.user.is_authenticated:
+            from api.models import Block
+            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
+            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
+            
+            following_ids = list(request.user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            queryset = queryset.exclude(user_id__in=private_ids)
+        return queryset
+
 from core.models import News
 from .serializers import NewsSerializer
 
@@ -1372,6 +1949,25 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         review_id = request.data.get('review')
         news_id = request.data.get('news')
         
+        # Check block restrictions before liking content
+        target_author = None
+        if post_id:
+            from core.models import Post
+            post = Post.objects.filter(id=post_id).first()
+            if post:
+                target_author = post.user
+        elif review_id:
+            from core.models import Review
+            review = Review.objects.filter(id=review_id).first()
+            if review:
+                target_author = review.user
+                
+        if target_author:
+            from api.models import Block
+            if Block.objects.filter(blocker=user, blocked=target_author).exists() or \
+               Block.objects.filter(blocker=target_author, blocked=user).exists():
+                return Response({"error": "Cannot like content from this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
+                
         existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id).first()
         
         if existing:
@@ -1608,82 +2204,8 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         ticket = serializer.save(user=self.request.user)
         
-        try:
-            from django.core.mail import send_mail
-            from django.conf import settings
-            
-            if ticket.ticket_type == 'bug':
-                subject = f"New Bug Report Submission: {ticket.subject}"
-                body = (
-                    f"New Bug Report from Roark Forge Website\n"
-                    f"--------------------------------------------------\n"
-                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
-                    f"Email: {self.request.user.email}\n"
-                    f"Severity: {ticket.severity}\n"
-                    f"Subject: {ticket.subject}\n\n"
-                    f"Steps to Reproduce:\n"
-                    f"{ticket.steps_to_reproduce}\n\n"
-                    f"Message:\n"
-                    f"{ticket.description}"
-                )
-                html_body = (
-                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Bug Report from Roark Forge Website</h2>\n'
-                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
-                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
-                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
-                    f'    <strong>Severity:</strong> {ticket.severity}<br>\n'
-                    f'    <strong>Subject:</strong> {ticket.subject}\n'
-                    f'</p>\n'
-                    f'<br>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
-                    f'    <strong>Steps to Reproduce:</strong>\n'
-                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.steps_to_reproduce}</span>\n'
-                    f'</p>\n'
-                    f'<br>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
-                    f'    <strong>Message:</strong>\n'
-                    f'    <span style="display: block; margin-top: 10px; white-space: pre-wrap;">{ticket.description}</span>\n'
-                    f'</p>'
-                )
-            else:
-                subject = f"New Contact Form Submission: {ticket.subject}"
-                body = (
-                    f"New Message from Roark Forge Website\n"
-                    f"--------------------------------------------------\n"
-                    f"Name: {self.request.user.real_name or self.request.user.username}\n"
-                    f"Email: {self.request.user.email}\n"
-                    f"Category: {ticket.category}\n"
-                    f"Subject: {ticket.subject}\n\n"
-                    f"Message:\n"
-                    f"{ticket.description}"
-                )
-                html_body = (
-                    f'<h2 style="font-family: sans-serif; font-size: 24px; font-weight: bold; margin: 0 0 5px 0;">New Message from Roark Forge Website</h2>\n'
-                    f'<hr style="border: none; border-top: 1px solid #555; margin: 10px 0 20px 0;" />\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; line-height: 1.5;">\n'
-                    f'    <strong>Name:</strong> {self.request.user.real_name or self.request.user.username}<br>\n'
-                    f'    <strong>Email:</strong> {self.request.user.email}<br>\n'
-                    f'    <strong>Category:</strong> {ticket.category}<br>\n'
-                    f'    <strong>Subject:</strong> {ticket.subject}\n'
-                    f'</p>\n'
-                    f'<br>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0;">\n'
-                    f'    <strong>Message:</strong>\n'
-                    f'</p>\n'
-                    f'<p style="font-family: sans-serif; font-size: 16px; margin: 10px 0; white-space: pre-wrap;">{ticket.description}</p>'
-                )
-            
-            send_mail(
-                subject=subject,
-                message=body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=['support@roarkforge.com'],
-                fail_silently=False,
-                html_message=html_body,
-            )
-        except Exception as e:
-            print(f"Failed to send support/bug email: {e}")
+        # Send email (async - does not block response)
+        send_support_ticket_email(ticket, self.request.user)
 
 
 from datetime import timedelta
@@ -1696,23 +2218,54 @@ class FeedViewSet(viewsets.ViewSet):
         user = request.user
         time_limit = timezone.now() - timedelta(days=30)
         
+        exclude_ids = set()
+        if user.is_authenticated:
+            from api.models import Block
+            exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
+            exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+            
+            # Exclude private profiles the user does not follow, unless it's their own profile
+            following_ids = list(user.following.values_list('following_id', flat=True))
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).exclude(id__in=following_ids).exclude(id=user.id).values_list('id', flat=True)
+            exclude_ids.update(private_ids)
+        else:
+            private_ids = User.objects.filter(
+                settings__privateProfile=True
+            ).values_list('id', flat=True)
+            exclude_ids.update(private_ids)
+
         posts = Post.objects.filter(
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True,
             timestamp__gte=time_limit
-        ).select_related('user').order_by('-timestamp')[:80]
+        )
+        if exclude_ids:
+            posts = posts.exclude(user_id__in=exclude_ids)
+        posts = posts.select_related('user').order_by('-timestamp')[:80]
         
         if posts.count() < 40:
             posts = Post.objects.filter(
                 parent__isnull=True,
                 review_parent__isnull=True,
                 news_parent__isnull=True
-            ).select_related('user').order_by('-timestamp')[:80]
+            )
+            if exclude_ids:
+                posts = posts.exclude(user_id__in=exclude_ids)
+            posts = posts.select_related('user').order_by('-timestamp')[:80]
             
-        reviews = Review.objects.filter(timestamp__gte=time_limit).select_related('user', 'game').order_by('-timestamp')[:80]
+        reviews = Review.objects.filter(timestamp__gte=time_limit)
+        if exclude_ids:
+            reviews = reviews.exclude(user_id__in=exclude_ids)
+        reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
+
         if reviews.count() < 40:
-            reviews = Review.objects.all().select_related('user', 'game').order_by('-timestamp')[:80]
+            reviews = Review.objects.all()
+            if exclude_ids:
+                reviews = reviews.exclude(user_id__in=exclude_ids)
+            reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
 
         followed_users_ids = set()
         library_game_ids = set()
@@ -1801,7 +2354,13 @@ class FeedViewSet(viewsets.ViewSet):
         if not user.is_authenticated:
             return Response([])
 
+        from api.models import Block
+        exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
+        exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+
         followed_users_ids = user.following.values_list('following_id', flat=True)
+        if exclude_ids:
+            followed_users_ids = [uid for uid in followed_users_ids if uid not in exclude_ids]
         
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
@@ -1865,5 +2424,3 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             'has_next': posts.count() > end,
             'page': page,
         })
-            
-

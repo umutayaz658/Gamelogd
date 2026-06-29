@@ -272,7 +272,7 @@ def fetch_steam_library(user_id, steam_id):
                     if playtime_2weeks > 0 or rtime_last_played > two_weeks_ago:
                         new_status = 'playing'
                     else:
-                        new_status = 'dropped'
+                        new_status = 'unplayed'
 
                 # 5. Create or Update Library Entry
                 existing_entry = LibraryEntry.objects.filter(user=user, game=game).first()
