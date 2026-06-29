@@ -168,6 +168,8 @@ class NotificationSerializer(serializers.ModelSerializer):
                         return f"/{obj.target.user.username}/review/{obj.target.id}"
                 
                 elif 'invited' in obj.verb:
+                    if model_name == 'conversation':
+                        return f"/messages?chatId={obj.target.id}"
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
@@ -183,6 +185,12 @@ class NotificationSerializer(serializers.ModelSerializer):
 
                 elif 'followed' in obj.verb and model_name == 'project':
                     return f"/projects/{obj.target.id}"
+                
+                elif 'mentioned' in obj.verb:
+                    if model_name == 'post':
+                        return f"/{obj.target.user.username}/status/{obj.target.id}"
+                    elif model_name == 'review':
+                        return f"/{obj.target.user.username}/review/{obj.target.id}"
         except Exception as e:
             print("Error generating target_url in NotificationSerializer:", e)
         return None
@@ -404,7 +412,7 @@ class SimplePostSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
 
     def get_reply_to_username(self, obj):
         if obj.parent:
@@ -490,9 +498,9 @@ class PostSerializer(serializers.ModelSerializer):
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
             'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted',
-            'repost_parent_review', 'repost_review_details'
+            'repost_parent_review', 'repost_review_details', 'category', 'trending_score'
         ]
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details']
+        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details', 'trending_score']
 
     def create(self, validated_data):
         uploaded_media = validated_data.pop('uploaded_media', [])
@@ -643,20 +651,23 @@ class PostSerializer(serializers.ModelSerializer):
 
 class ConversationMemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    invited_by = UserSerializer(read_only=True)
 
     class Meta:
         model = ConversationMember
-        fields = ['id', 'user', 'is_admin', 'is_muted', 'joined_at']
+        fields = ['id', 'user', 'is_admin', 'is_muted', 'joined_at', 'status', 'invited_by']
 
 class ConversationSerializer(serializers.ModelSerializer):
     other_user = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     memberships = ConversationMemberSerializer(many=True, read_only=True, source='members')
+    is_pending_invite = serializers.SerializerMethodField()
+    my_membership_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ['id', 'participants', 'other_user', 'last_message', 'unread_count', 'updated_at', 'is_group', 'name', 'avatar', 'memberships']
+        fields = ['id', 'participants', 'other_user', 'last_message', 'unread_count', 'updated_at', 'is_group', 'name', 'avatar', 'memberships', 'is_pending_invite', 'my_membership_status']
         read_only_fields = ['id', 'participants', 'updated_at']
 
     def to_representation(self, instance):
@@ -680,8 +691,12 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_last_message(self, obj):
         last_msg = obj.messages.order_by('-created_at').first()
         if last_msg:
+            # If deleted, hide content from last message preview
+            content = last_msg.content
+            if last_msg.is_deleted:
+                content = "This message was deleted"
             return {
-                'content': last_msg.content,
+                'content': content,
                 'created_at': last_msg.created_at,
                 'sender_username': last_msg.sender.username
             }
@@ -692,6 +707,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
         return 0
+
+    def get_is_pending_invite(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            membership = obj.members.filter(user=request.user).first()
+            if membership:
+                return membership.status == 'pending'
+        return False
+
+    def get_my_membership_status(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            membership = obj.members.filter(user=request.user).first()
+            if membership:
+                return membership.status
+        return None
 
 
 
@@ -798,12 +829,12 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'conversation', 'sender', 'content', 'is_read', 'created_at', 'is_me',
             'image', 'gif_url', 'shared_post', 'shared_review', 'shared_news',
             'shared_post_details', 'shared_review_details', 'shared_news_details',
-            'reactions', 'reply_to', 'reply_to_details'
+            'reactions', 'reply_to', 'reply_to_details', 'is_pinned', 'is_edited', 'is_deleted', 'edited_at'
         ]
         read_only_fields = [
             'id', 'sender', 'created_at', 'is_me', 
             'shared_post_details', 'shared_review_details', 'shared_news_details', 
-            'reactions', 'reply_to_details'
+            'reactions', 'reply_to_details', 'is_pinned', 'is_edited', 'is_deleted', 'edited_at'
         ]
 
     def get_is_me(self, obj):
@@ -811,6 +842,17 @@ class MessageSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.sender == request.user
         return False
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        if instance.is_deleted:
+            rep['content'] = "This message was deleted"
+            rep['image'] = None
+            rep['gif_url'] = None
+            rep['shared_post_details'] = None
+            rep['shared_review_details'] = None
+            rep['shared_news_details'] = None
+        return rep
 
 
 class BookmarkSerializer(serializers.ModelSerializer):
@@ -900,3 +942,20 @@ class SupportTicketSerializer(serializers.ModelSerializer):
         model = SupportTicket
         fields = ['id', 'user', 'ticket_type', 'subject', 'category', 'description', 'steps_to_reproduce', 'severity', 'is_resolved', 'created_at']
         read_only_fields = ['id', 'user', 'is_resolved', 'created_at']
+
+class BlockedUserSerializer(serializers.ModelSerializer):
+    blocker = UserSerializer(read_only=True)
+    blocked = UserSerializer(read_only=True)
+
+    class Meta:
+        from api.models import BlockedUser
+        model = BlockedUser
+        fields = ['id', 'blocker', 'blocked', 'created_at']
+
+class ConversationReportSerializer(serializers.ModelSerializer):
+    reported_by = UserSerializer(read_only=True)
+
+    class Meta:
+        from api.models import ConversationReport
+        model = ConversationReport
+        fields = ['id', 'conversation', 'reported_by', 'reason', 'created_at']
