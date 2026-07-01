@@ -376,9 +376,10 @@ export default function MessagesDrawer() {
                     isOpen ? 'h-[420px]' : 'h-12'
                 }`}
             >
-                {/* Drawer Header */}
                 <div
-                    className="h-12 bg-zinc-900 border-b border-zinc-850 flex items-center justify-between px-4 cursor-pointer hover:bg-zinc-850 transition-colors"
+                    className={`h-12 bg-zinc-900 flex items-center justify-between px-4 cursor-pointer hover:bg-zinc-850 transition-colors ${
+                        isOpen ? 'border-b border-zinc-850' : ''
+                    }`}
                     onClick={() => !activeChatId && setIsOpen(!isOpen)}
                 >
                     {activeChat ? (
