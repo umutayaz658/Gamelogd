@@ -14,7 +14,7 @@ def reset_details_fetched(apps, schema_editor):
         details_fetched=True,
         metacritic_score__isnull=True
     ).update(details_fetched=False)
-    print(f"\n  → Reset details_fetched for {updated} games (will re-fetch with Metacritic & HLTB data)")
+    print(f"\n  -> Reset details_fetched for {updated} games (will re-fetch with Metacritic & HLTB data)")
 
 
 def noop(apps, schema_editor):
