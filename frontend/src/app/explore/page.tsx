@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
-import Feed from "@/components/Feed";
 import PostCard from "@/components/PostCard";
 import { useAuth } from "@/context/AuthContext";
 import { Post } from "@/types";
 import api from "@/lib/api";
-import { Loader2, Gamepad2, MessageSquare, TrendingUp, Search } from "lucide-react";
+import { Loader2, Gamepad2, TrendingUp, Search } from "lucide-react";
 import { useTranslation } from '@/lib/useTranslation';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 // Post category filters for the explore page
 const POST_CATEGORIES = [
@@ -33,15 +33,21 @@ const GAME_GENRES = [
     'Racing', 'Fighting', 'Indie', 'MMO'
 ];
 
-export default function ExplorePage() {
+function ExploreContent() {
     const { t } = useTranslation();
     const { user } = useAuth();
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
+    const hashtagParam = searchParams?.get('hashtag') || null;
     
     // Main tab: Games or Posts
     const [mainTab, setMainTab] = useState<'posts' | 'games'>('posts');
     
     // Posts state
     const [activeCategory, setActiveCategory] = useState('all');
+    const [activeHashtag, setActiveHashtag] = useState<string | null>(hashtagParam);
+    const [postSort, setPostSort] = useState<'popular' | 'newest' | 'oldest'>('popular');
     const [posts, setPosts] = useState<Post[]>([]);
     const [isLoadingPosts, setIsLoadingPosts] = useState(false);
     const [postsPage, setPostsPage] = useState(1);
@@ -55,12 +61,19 @@ export default function ExplorePage() {
     const [gameSearch, setGameSearch] = useState('');
     const [gameSort, setGameSort] = useState('popular');
 
+    // Update active hashtag state when query parameter changes
+    useEffect(() => {
+        setActiveHashtag(hashtagParam);
+    }, [hashtagParam]);
+
     // Fetch posts for explore
-    const fetchExplorePosts = useCallback(async (page: number, category: string, reset: boolean = false) => {
+    const fetchExplorePosts = useCallback(async (page: number, category: string, hashtag: string | null, ordering: string, reset: boolean = false) => {
         setIsLoadingPosts(true);
         try {
             const params = new URLSearchParams();
             if (category !== 'all') params.set('category', category);
+            if (hashtag) params.set('hashtag', hashtag);
+            params.set('ordering', ordering);
             params.set('page', page.toString());
             params.set('page_size', '20');
             
@@ -75,23 +88,10 @@ export default function ExplorePage() {
             setHasMorePosts(data.has_next);
         } catch (error) {
             console.error("Failed to fetch explore posts:", error);
-            // Fallback client-side filtering if endpoint has issues
             if (reset) {
-                try {
-                    const fallbackRes = await api.get('/feed/for-you/');
-                    const fallbackPosts = fallbackRes.data || [];
-                    if (category !== 'all') {
-                        const filtered = fallbackPosts.filter((p: any) => p.category === category);
-                        setPosts(reset ? filtered : prev => [...prev, ...filtered]);
-                    } else {
-                        setPosts(reset ? fallbackPosts : prev => [...prev, ...fallbackPosts]);
-                    }
-                    setHasMorePosts(false);
-                } catch {
-                    setPosts([]);
-                    setHasMorePosts(false);
-                }
+                setPosts([]);
             }
+            setHasMorePosts(false);
         } finally {
             setIsLoadingPosts(false);
         }
@@ -115,15 +115,15 @@ export default function ExplorePage() {
         }
     }, [gameSearch, activeGenre, gameSort]);
 
-    // Load posts when category or tab changes
+    // Load posts when category, hashtag, sort or tab changes
     useEffect(() => {
         if (mainTab === 'posts') {
             setPostsPage(1);
             setPosts([]);
             setHasMorePosts(true);
-            fetchExplorePosts(1, activeCategory, true);
+            fetchExplorePosts(1, activeCategory, activeHashtag, postSort, true);
         }
-    }, [activeCategory, mainTab, fetchExplorePosts]);
+    }, [activeCategory, activeHashtag, postSort, mainTab, fetchExplorePosts]);
 
     // Load games when filters change
     useEffect(() => {
@@ -140,7 +140,7 @@ export default function ExplorePage() {
             if (entries[0].isIntersecting) {
                 const nextPage = postsPage + 1;
                 setPostsPage(nextPage);
-                fetchExplorePosts(nextPage, activeCategory);
+                fetchExplorePosts(nextPage, activeCategory, activeHashtag, postSort);
             }
         }, { threshold: 1.0 });
         
@@ -154,7 +154,7 @@ export default function ExplorePage() {
                 observer.unobserve(currentTarget);
             }
         };
-    }, [hasMorePosts, isLoadingPosts, postsPage, activeCategory, mainTab, fetchExplorePosts]);
+    }, [hasMorePosts, isLoadingPosts, postsPage, activeCategory, activeHashtag, postSort, mainTab, fetchExplorePosts]);
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -207,9 +207,30 @@ export default function ExplorePage() {
 
                             {/* Posts Tab Content */}
                             {mainTab === 'posts' && (
-                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 py-4">
+                                    
+                                    {/* Active Hashtag Banner */}
+                                    {activeHashtag && (
+                                        <div className="bg-emerald-950/10 border border-emerald-500/20 rounded-2xl p-4 flex items-center justify-between mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Filtered Hashtag</span>
+                                                <h2 className="text-lg font-black text-white mt-0.5">#{activeHashtag}</h2>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const params = new URLSearchParams(window.location.search);
+                                                    params.delete('hashtag');
+                                                    router.push(`/explore?${params.toString()}`);
+                                                }}
+                                                className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-zinc-800"
+                                            >
+                                                Clear Filter
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Category Filter Pills */}
-                                    <div className="sticky top-[57px] z-10 bg-zinc-950/80 backdrop-blur-md -mx-4 px-4 py-3 border-b border-zinc-800/50">
+                                    <div className="mb-4">
                                         <div className="flex overflow-x-auto gap-2 scrollbar-thin-dark pb-1">
                                             {POST_CATEGORIES.map((cat) => (
                                                 <button
@@ -228,8 +249,30 @@ export default function ExplorePage() {
                                         </div>
                                     </div>
 
+                                    {/* Sort Options for Posts */}
+                                    <div className="flex items-center gap-2 mb-4 px-1">
+                                        <span className="text-xs text-zinc-500 font-medium">Sort by:</span>
+                                        {[
+                                            { key: 'popular', label: 'Popular' },
+                                            { key: 'newest', label: 'Newest' },
+                                            { key: 'oldest', label: 'Oldest' },
+                                        ].map((sort) => (
+                                            <button
+                                                key={sort.key}
+                                                onClick={() => setPostSort(sort.key as any)}
+                                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                                    postSort === sort.key
+                                                        ? 'bg-zinc-900 text-emerald-400 border border-zinc-800'
+                                                        : 'text-zinc-500 hover:text-zinc-350'
+                                                }`}
+                                            >
+                                                {sort.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
                                     {/* Posts Feed */}
-                                    <div className="space-y-4 mt-4">
+                                    <div className="space-y-4">
                                         {posts.map((post) => (
                                             <PostCard key={post.id} post={post} />
                                         ))}
@@ -243,7 +286,7 @@ export default function ExplorePage() {
                                         {!isLoadingPosts && posts.length === 0 && (
                                             <div className="text-center py-16 bg-zinc-900/30 rounded-2xl border border-zinc-800/50">
                                                 <div className="text-4xl mb-3">📭</div>
-                                                <h3 className="text-sm font-bold text-zinc-300">No posts in this category</h3>
+                                                <h3 className="text-sm font-bold text-zinc-300">No posts found</h3>
                                                 <p className="text-xs text-zinc-550 mt-1">Be the first to share something about this category!</p>
                                             </div>
                                         )}
@@ -367,5 +410,17 @@ export default function ExplorePage() {
                 </div>
             </main>
         </div>
+    );
+}
+
+export default function ExplorePage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+            </div>
+        }>
+            <ExploreContent />
+        </Suspense>
     );
 }
