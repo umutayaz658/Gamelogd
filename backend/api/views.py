@@ -2396,23 +2396,37 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         from datetime import timedelta
         
         category = request.query_params.get('category', 'all')
+        hashtag = request.query_params.get('hashtag', '').strip()
+        ordering = request.query_params.get('ordering', 'popular')
         page = int(request.query_params.get('page', 1))
         page_size = min(int(request.query_params.get('page_size', 20)), 50)
         
-        cutoff = timezone.now() - timedelta(days=7)
-        
         posts = Post.objects.filter(
-            timestamp__gte=cutoff,
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
         ).select_related('user').prefetch_related('likes', 'replies', 'reposts', 'bookmarks', 'media')
         
+        if ordering == 'popular' or not ordering:
+            cutoff = timezone.now() - timedelta(days=7)
+            posts = posts.filter(timestamp__gte=cutoff)
+            
         if category and category != 'all':
             posts = posts.filter(category=category)
-        
-        posts = posts.order_by('-trending_score', '-timestamp')
-        
+            
+        if hashtag:
+            if hashtag.startswith('#'):
+                hashtag = hashtag[1:]
+            # PostgreSQL case-insensitive regex word boundary match for hashtag
+            posts = posts.filter(content__iregex=rf'#{hashtag}\b')
+            
+        if ordering == 'newest':
+            posts = posts.order_by('-timestamp')
+        elif ordering == 'oldest':
+            posts = posts.order_by('timestamp')
+        else: # popular
+            posts = posts.order_by('-trending_score', '-timestamp')
+            
         # Pagination
         start = (page - 1) * page_size
         end = start + page_size
