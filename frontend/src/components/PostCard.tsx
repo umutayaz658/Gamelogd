@@ -66,6 +66,20 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const { user } = useAuth();
     const { t, language } = useTranslation();
 
+    const author = post.author_details || {
+        type: 'user',
+        name: post.user.real_name || post.user.username,
+        slug: post.user.username,
+        avatar: post.user.avatar,
+        is_verified: false
+    };
+
+    const authorLink = author.type === 'organisation' 
+        ? `/organisations/${author.slug}` 
+        : author.type === 'project' 
+            ? `/projects/${author.slug}` 
+            : `/${author.slug}`;
+
     const [isLiked, setIsLiked] = useState(post.is_liked || false);
     const [isExpanded, setIsExpanded] = useState(false);
     const [shouldShowShowMore, setShouldShowShowMore] = useState(false);
@@ -264,12 +278,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             <div className="flex gap-4">
                 <div className="flex flex-col items-center flex-shrink-0 w-fit">
                     <Link
-                        href={`/${post.user.username}`}
+                        href={authorLink}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <img
-                            src={getImageUrl(post.user.avatar, post.user.username)}
-                            alt={post.user.username}
+                            src={getImageUrl(author.avatar, author.type === 'user' ? (author.slug as string) : undefined)}
+                            alt={author.name}
                             className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
                         />
                     </Link>
@@ -291,19 +305,32 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Link
-                                href={`/${post.user.username}`}
-                                className="font-bold text-white hover:underline"
+                                href={authorLink}
+                                className="font-bold text-white hover:underline flex items-center gap-1.5"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                {post.user.real_name || post.user.username}
+                                <span>{author.name}</span>
+                                {author.is_verified && (
+                                    <span className="inline-flex items-center justify-center bg-blue-500 text-white rounded-full w-3.5 h-3.5" title="Verified Brand">
+                                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                        </svg>
+                                    </span>
+                                )}
                             </Link>
-                            <Link
-                                href={`/${post.user.username}`}
-                                className="text-zinc-500 text-sm hover:text-zinc-400"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                @{post.user.username.toLowerCase()}
-                            </Link>
+                            {author.type === 'user' ? (
+                                <Link
+                                    href={authorLink}
+                                    className="text-zinc-500 text-sm hover:text-zinc-400"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    @{author.slug.toString().toLowerCase()}
+                                </Link>
+                            ) : (
+                                <span className="text-zinc-500 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 border border-zinc-750 rounded uppercase select-none tracking-wider">
+                                    {author.type}
+                                </span>
+                            )}
                             <span className="text-zinc-700 text-sm">•</span>
                             <span className="text-zinc-500 text-sm hover:underline" title={new Date(post.timestamp).toLocaleString()}>
                                 {new Date(post.timestamp).toLocaleDateString()} • {getRelativeTime(post.timestamp, language)}

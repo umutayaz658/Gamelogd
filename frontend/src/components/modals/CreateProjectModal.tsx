@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, Upload, Check, Image as ImageIcon } from 'lucide-react';
 import api from '@/lib/api';
-import { Project } from '@/types';
+import { Project, Organisation } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
 
 interface CreateProjectModalProps {
@@ -28,11 +28,27 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
         status: 'in_dev',
         tech_stack: []
     });
+    const [selectedOrgId, setSelectedOrgId] = useState<string>('');
+    const [userOrganisations, setUserOrganisations] = useState<Organisation[]>([]);
     const [coverImage, setCoverImage] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [showTechDropdown, setShowTechDropdown] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            const fetchOrgs = async () => {
+                try {
+                    const res = await api.get('/organisations/?member=true');
+                    setUserOrganisations(res.data.results || res.data);
+                } catch (error) {
+                    console.error("Failed to fetch user's organisations:", error);
+                }
+            };
+            fetchOrgs();
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -54,6 +70,9 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             data.append('description', formData.description);
             data.append('status', formData.status);
             data.append('tech_stack', JSON.stringify(formData.tech_stack));
+            if (selectedOrgId) {
+                data.append('organisation', selectedOrgId);
+            }
 
             if (coverImage) {
                 data.append('cover_image', coverImage);
@@ -67,6 +86,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             onClose();
             // Reset form
             setFormData({ title: '', description: '', status: 'in_dev', tech_stack: [] });
+            setSelectedOrgId('');
             setCoverImage(null);
             setPreviewUrl(null);
             setShowTechDropdown(false);
@@ -176,6 +196,28 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                             />
                         </div>
  
+                        {/* Publish As Select */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Publish As</label>
+                            <div className="relative">
+                                <select
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all text-sm"
+                                    value={selectedOrgId}
+                                    onChange={e => setSelectedOrgId(e.target.value)}
+                                >
+                                    <option value="">Personal Profile (Individual)</option>
+                                    {userOrganisations.map(org => (
+                                        <option key={org.id} value={org.id}>
+                                            Organisation: {org.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-6">
                             {/* Status Select */}
                             <div className="space-y-2">
