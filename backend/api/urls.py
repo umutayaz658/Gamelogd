@@ -32,6 +32,8 @@ router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call'
 router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 router.register(r'feed', FeedViewSet, basename='feed')
 router.register(r'workspace-state', WorkspaceStateViewSet, basename='workspace-state')
+from .views import ExplorePostsViewSet
+router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),

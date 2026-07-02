@@ -1257,7 +1257,6 @@ class PostViewSet(viewsets.ModelViewSet):
             if author_identity != 'user':
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError({"author_identity": "Can only post as user when not linking to a project parent."})
-
         # Check block restrictions for interactions (reply, quote repost, comments)
         repost_parent = serializer.validated_data.get('repost_parent')
         parent = serializer.validated_data.get('parent')
@@ -1278,7 +1277,19 @@ class PostViewSet(viewsets.ModelViewSet):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("Cannot interact with this post due to block restrictions.")
                 
-        post = serializer.save(user=self.request.user)
+        category = self.request.data.get('category')
+        post_kwargs = {}
+        if category:
+            post_kwargs['category'] = category
+            
+        post = serializer.save(user=self.request.user, **post_kwargs)
+        
+        # Calculate auto-category and trending score
+        from api.services.categorize import auto_categorize_post, calculate_trending_score
+        if not category:
+            post.category = auto_categorize_post(post)
+        post.trending_score = calculate_trending_score(post)
+        post.save()
         
         # Quote post notification
         if post.repost_parent and post.repost_parent.user != self.request.user:
@@ -1335,7 +1346,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Conversation.objects.filter(participants=self.request.user).order_by('-updated_at')
+        from api.models import ConversationMember
+        # Return conversations where user is participant and status not in declined/left/blocked
+        member_conversations = ConversationMember.objects.filter(
+            user=self.request.user
+        ).exclude(status__in=['declined', 'left', 'blocked']).values_list('conversation_id', flat=True)
+        
+        qs = Conversation.objects.filter(id__in=member_conversations).order_by('-updated_at')
         # Backfill memberships
         for c in qs:
             ConversationMember.objects.get_or_create(conversation=c, user=self.request.user)
@@ -1359,7 +1376,6 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({"error": "Cannot message this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
 
         # Check if conversation exists (complex query for exact participants)
-        # We look for a conversation where both users are participants and is not a group
         conversations = Conversation.objects.filter(is_group=False).filter(participants=request.user).filter(participants=target_user)
         
         if conversations.exists():
@@ -1369,9 +1385,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
             conversation.participants.add(request.user, target_user)
             conversation.save()
             
-        # Ensure memberships exist
-        ConversationMember.objects.get_or_create(conversation=conversation, user=request.user)
-        ConversationMember.objects.get_or_create(conversation=conversation, user=target_user)
+        # Ensure memberships exist and are accepted
+        member1, _ = ConversationMember.objects.get_or_create(conversation=conversation, user=request.user)
+        member2, _ = ConversationMember.objects.get_or_create(conversation=conversation, user=target_user)
+        member1.status = 'accepted'
+        member1.save()
+        member2.status = 'accepted'
+        member2.save()
         
         serializer = self.get_serializer(conversation)
         return Response(serializer.data)
@@ -1418,10 +1438,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
             conversation.participants.add(u)
         conversation.save()
         
-        # Create memberships
-        ConversationMember.objects.create(conversation=conversation, user=request.user, is_admin=True)
+        # Create memberships - creator is accepted admin, others are pending invited
+        ConversationMember.objects.create(conversation=conversation, user=request.user, is_admin=True, status='accepted')
         for u in users:
-            ConversationMember.objects.create(conversation=conversation, user=u, is_admin=False)
+            ConversationMember.objects.create(conversation=conversation, user=u, is_admin=False, status='pending', invited_by=request.user)
             
         serializer = self.get_serializer(conversation)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -1472,14 +1492,36 @@ class ConversationViewSet(viewsets.ModelViewSet):
         users = User.objects.filter(username__in=usernames)
         
         added_users = []
+        blocked_users = []
         for u in users:
+            member_qs = ConversationMember.objects.filter(conversation=conversation, user=u)
+            if member_qs.exists():
+                member = member_qs.first()
+                if member.status == 'blocked':
+                    blocked_users.append(u.username)
+                    continue
+                elif member.status == 'accepted':
+                    continue
+                else:
+                    member.status = 'pending'
+                    member.invited_by = request.user
+                    member.save()
+            else:
+                ConversationMember.objects.create(
+                    conversation=conversation,
+                    user=u,
+                    status='pending',
+                    invited_by=request.user
+                )
             if u not in conversation.participants.all():
                 conversation.participants.add(u)
-                ConversationMember.objects.get_or_create(conversation=conversation, user=u)
-                added_users.append(u.username)
+            added_users.append(u.username)
                 
         conversation.save()
-        return Response({'status': 'success', 'added_members': added_users})
+        res_data = {'status': 'success', 'added_members': added_users}
+        if blocked_users:
+            res_data['blocked_members'] = blocked_users
+        return Response(res_data)
 
     @action(detail=True, methods=['post'], url_path='remove-member')
     def remove_member(self, request, pk=None):
@@ -1534,7 +1576,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({"error": "You are not a participant in this conversation"}, status=400)
             
         conversation.participants.remove(request.user)
-        ConversationMember.objects.filter(conversation=conversation, user=request.user).delete()
+        member = ConversationMember.objects.filter(conversation=conversation, user=request.user).first()
+        if member:
+            member.status = 'left'
+            member.save()
         
         # If no participants left, delete conversation
         if conversation.participants.count() == 0:
@@ -1542,14 +1587,143 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({'status': 'deleted', 'message': 'Group deleted as it has no participants'})
             
         # If the user leaving was the only admin, appoint another participant as admin
-        elif not ConversationMember.objects.filter(conversation=conversation, is_admin=True).exists():
-            first_member = ConversationMember.objects.filter(conversation=conversation).first()
+        elif not ConversationMember.objects.filter(conversation=conversation, is_admin=True, status='accepted').exists():
+            first_member = ConversationMember.objects.filter(conversation=conversation, status='accepted').first()
             if first_member:
                 first_member.is_admin = True
                 first_member.save()
                 
         conversation.save()
         return Response({'status': 'success', 'message': 'You left the group'})
+
+    @action(detail=True, methods=['post'], url_path='accept-invite')
+    def accept_invite(self, request, pk=None):
+        conversation = self.get_object()
+        member = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if member.status != 'pending':
+            return Response({"error": "No pending invite for this conversation"}, status=400)
+        member.status = 'accepted'
+        member.save()
+        if request.user not in conversation.participants.all():
+            conversation.participants.add(request.user)
+            conversation.save()
+        return Response({"status": "success", "message": "Joined the conversation"})
+
+    @action(detail=True, methods=['post'], url_path='decline-invite')
+    def decline_invite(self, request, pk=None):
+        conversation = self.get_object()
+        member = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if member.status != 'pending':
+            return Response({"error": "No pending invite for this conversation"}, status=400)
+        member.status = 'declined'
+        member.save()
+        conversation.participants.remove(request.user)
+        conversation.save()
+        return Response({"status": "success", "message": "Declined group invitation"})
+
+    @action(detail=True, methods=['post'], url_path='block-group')
+    def block_group(self, request, pk=None):
+        conversation = self.get_object()
+        if not conversation.is_group:
+            return Response({"error": "Cannot block group in direct messages. Use block-user instead."}, status=400)
+        member, created = ConversationMember.objects.get_or_create(conversation=conversation, user=request.user)
+        member.status = 'blocked'
+        member.save()
+        conversation.participants.remove(request.user)
+        conversation.save()
+        return Response({"status": "success", "message": "Blocked group"})
+
+    @action(detail=True, methods=['post'], url_path='unblock-group')
+    def unblock_group(self, request, pk=None):
+        conversation = self.get_object()
+        member = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+        if member.status != 'blocked':
+            return Response({"error": "Group is not blocked"}, status=400)
+        member.status = 'declined'
+        member.save()
+        return Response({"status": "success", "message": "Group unblocked"})
+
+    @action(detail=True, methods=['post'], url_path='block-user')
+    def block_user(self, request, pk=None):
+        conversation = self.get_object()
+        if conversation.is_group:
+            return Response({"error": "Cannot block user in group chat settings"}, status=400)
+        other_user = conversation.participants.exclude(id=request.user.id).first()
+        if not other_user:
+            return Response({"error": "No other user found"}, status=400)
+        
+        from api.models import BlockedUser
+        blocked_user, created = BlockedUser.objects.get_or_create(blocker=request.user, blocked=other_user)
+        return Response({"status": "success", "message": f"Blocked user {other_user.username}"})
+
+    @action(detail=True, methods=['post'], url_path='unblock-user')
+    def unblock_user(self, request, pk=None):
+        conversation = self.get_object()
+        if conversation.is_group:
+            return Response({"error": "Cannot unblock user in group chat settings"}, status=400)
+        other_user = conversation.participants.exclude(id=request.user.id).first()
+        if not other_user:
+            return Response({"error": "No other user found"}, status=400)
+        
+        from api.models import BlockedUser
+        BlockedUser.objects.filter(blocker=request.user, blocked=other_user).delete()
+        return Response({"status": "success", "message": f"Unblocked user {other_user.username}"})
+
+    @action(detail=True, methods=['post'], url_path='report')
+    def report(self, request, pk=None):
+        conversation = self.get_object()
+        reason = request.data.get('reason')
+        if not reason:
+            return Response({"error": "Reason is required"}, status=400)
+        
+        from api.models import ConversationReport
+        ConversationReport.objects.create(conversation=conversation, reported_by=request.user, reason=reason)
+        return Response({"status": "success", "message": "Conversation reported"})
+
+    @action(detail=True, methods=['get'], url_path='media')
+    def shared_media(self, request, pk=None):
+        conversation = self.get_object()
+        messages = conversation.messages.filter(
+            Q(image__isnull=False) | Q(gif_url__isnull=False)
+        ).exclude(image='').order_by('-created_at')
+        
+        from api.serializers import MessageSerializer
+        serializer = MessageSerializer(messages, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='pinned')
+    def pinned_messages(self, request, pk=None):
+        conversation = self.get_object()
+        messages = conversation.messages.filter(is_pinned=True).order_by('-created_at')
+        from api.serializers import MessageSerializer
+        serializer = MessageSerializer(messages, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='search-messages')
+    def search_messages(self, request, pk=None):
+        conversation = self.get_object()
+        query = request.query_params.get('q', '')
+        if not query:
+            return Response([])
+        messages = conversation.messages.filter(content__icontains=query).order_by('-created_at')
+        from api.serializers import MessageSerializer
+        serializer = MessageSerializer(messages, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        conversation = self.get_object()
+        if conversation.is_group:
+            user_membership = get_object_or_404(ConversationMember, conversation=conversation, user=request.user)
+            if not user_membership.is_admin:
+                return Response({"error": "Only group admins can delete the group"}, status=403)
+            conversation.delete()
+            return Response({"status": "success", "message": "Group deleted successfully"})
+        else:
+            member = ConversationMember.objects.filter(conversation=conversation, user=request.user).first()
+            if member:
+                member.status = 'declined'
+                member.save()
+            return Response({"status": "success", "message": "Chat deleted successfully"})
 
     @action(detail=True, methods=['patch'], url_path='update-group-details')
     def update_group_details(self, request, pk=None):
@@ -1602,6 +1776,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         if self.request.user not in conversation.participants.all():
             raise permissions.PermissionDenied("You are not a participant in this conversation.")
         
+        # Check if current user is pending invite
+        membership = conversation.members.filter(user=self.request.user).first()
+        if membership and membership.status == 'pending':
+            raise permissions.PermissionDenied("You must accept the group invitation first.")
+            
         # Check if conversation is a 1-on-1 direct message and has a block relationship
         if not conversation.is_group:
             other_participants = conversation.participants.exclude(id=self.request.user.id)
@@ -1613,6 +1792,16 @@ class MessageViewSet(viewsets.ModelViewSet):
             ).exists():
                 raise permissions.PermissionDenied("You cannot send messages to this conversation due to block restrictions.")
         
+        # File validations
+        image = self.request.FILES.get('image')
+        if image:
+            if image.size > 10 * 1024 * 1024:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("File size must be less than 10MB.")
+            ext = image.name.split('.')[-1].lower()
+            if ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("Unsupported file format. Allowed formats: jpg, jpeg, png, gif, webp.")
         message = serializer.save(sender=self.request.user)
         
         # Update conversation timestamp
@@ -1642,6 +1831,74 @@ class MessageViewSet(viewsets.ModelViewSet):
             "action": action_performed,
             "message": serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='pin')
+    def pin(self, request, pk=None):
+        message = self.get_object()
+        message.is_pinned = not message.is_pinned
+        message.save()
+        return Response({"status": "success", "is_pinned": message.is_pinned})
+
+    @action(detail=True, methods=['post'], url_path='edit')
+    def edit(self, request, pk=None):
+        message = self.get_object()
+        if message.sender != request.user:
+            return Response({"error": "Only the sender can edit this message"}, status=403)
+        
+        import datetime
+        from django.utils import timezone
+        if timezone.now() - message.created_at > datetime.timedelta(minutes=15):
+            return Response({"error": "Time limit of 15 minutes to edit this message has expired"}, status=400)
+            
+        content = request.data.get('content', '').strip()
+        if not content:
+            return Response({"error": "Content cannot be empty"}, status=400)
+        if len(content) > 5000:
+            return Response({"error": "Message content exceeds limit"}, status=400)
+            
+        message.content = content
+        message.is_edited = True
+        message.edited_at = timezone.now()
+        message.save()
+        
+        serializer = self.get_serializer(message)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        message = self.get_object()
+        if message.sender != request.user:
+            return Response({"error": "Only the sender can edit this message"}, status=403)
+        
+        import datetime
+        from django.utils import timezone
+        if timezone.now() - message.created_at > datetime.timedelta(minutes=15):
+            return Response({"error": "Time limit of 15 minutes to edit this message has expired"}, status=400)
+            
+        content = request.data.get('content', '').strip()
+        if not content:
+            return Response({"error": "Content cannot be empty"}, status=400)
+        if len(content) > 5000:
+            return Response({"error": "Message content exceeds limit"}, status=400)
+            
+        message.content = content
+        message.is_edited = True
+        message.edited_at = timezone.now()
+        message.save()
+        
+        serializer = self.get_serializer(message)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        message = self.get_object()
+        if message.sender != request.user:
+            return Response({"error": "Only the sender can delete this message"}, status=403)
+        message.is_deleted = True
+        message.content = "This message was deleted"
+        message.save()
+        return Response({"status": "success", "message": "Message deleted"})
 
 from api.models import LibraryEntry
 from .serializers import LibraryEntrySerializer
@@ -2206,7 +2463,6 @@ class FeedViewSet(viewsets.ViewSet):
         results = [item[1] for item in merged_items[:50]]
         return Response(results)
 
-
 class OrganisationViewSet(viewsets.ModelViewSet):
     queryset = Organisation.objects.all().order_by('-created_at')
     serializer_class = OrganisationSerializer
@@ -2447,3 +2703,57 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
         )
         serializer = self.get_serializer(obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ExplorePostsViewSet(viewsets.ViewSet):
+    """Explore posts with category filtering and trending sorting."""
+    permission_classes = [permissions.AllowAny]
+    
+    def list(self, request):
+        from core.models import Post
+        from api.serializers import PostSerializer
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        category = request.query_params.get('category', 'all')
+        hashtag = request.query_params.get('hashtag', '').strip()
+        ordering = request.query_params.get('ordering', 'popular')
+        page = int(request.query_params.get('page', 1))
+        page_size = min(int(request.query_params.get('page_size', 20)), 50)
+        
+        posts = Post.objects.filter(
+            parent__isnull=True,
+            review_parent__isnull=True,
+            news_parent__isnull=True
+        ).select_related('user').prefetch_related('likes', 'replies', 'reposts', 'bookmarks', 'media')
+        
+        if ordering == 'popular' or not ordering:
+            cutoff = timezone.now() - timedelta(days=7)
+            posts = posts.filter(timestamp__gte=cutoff)
+            
+        if category and category != 'all':
+            posts = posts.filter(category=category)
+            
+        if hashtag:
+            if hashtag.startswith('#'):
+                hashtag = hashtag[1:]
+            # PostgreSQL case-insensitive regex word boundary match for hashtag
+            posts = posts.filter(content__iregex=rf'#{hashtag}\b')
+            
+        if ordering == 'newest':
+            posts = posts.order_by('-timestamp')
+        elif ordering == 'oldest':
+            posts = posts.order_by('timestamp')
+        else: # popular
+            posts = posts.order_by('-trending_score', '-timestamp')
+            
+        # Pagination
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated = posts[start:end]
+        
+        serializer = PostSerializer(paginated, many=True, context={'request': request})
+        return Response({
+            'results': serializer.data,
+            'has_next': posts.count() > end,
+            'page': page,
+        })
