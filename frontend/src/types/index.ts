@@ -72,6 +72,14 @@ export interface Review {
 export interface Project {
     id: number;
     owner: User;
+    organisation?: number | null;
+    organisation_details?: {
+        id: number;
+        name: string;
+        slug: string;
+        logo: string | null;
+        is_verified?: boolean;
+    } | null;
     title: string;
     description: string;
     cover_image: string | null;
@@ -117,6 +125,14 @@ export interface Post {
     gif_url?: string | null;
     poll_options?: string[] | null;
     timestamp: string;
+    author_identity?: 'user' | 'organisation' | 'project';
+    author_details?: {
+        type: 'user' | 'organisation' | 'project';
+        name: string;
+        slug: string | number;
+        avatar: string | null;
+        is_verified?: boolean;
+    };
     likes?: number;
     likes_count?: number;
     comments?: number;
@@ -282,4 +298,47 @@ export interface CompanyGame {
     is_developer: boolean;
     is_publisher: boolean;
     local_id: number | null;
+}
+
+export interface Organisation {
+    id: number;
+    name: string;
+    slug: string;
+    description: string;
+    logo: string | null;
+    banner: string | null;
+    website?: string;
+    twitter?: string;
+    youtube?: string;
+    is_verified?: boolean;
+    members?: OrganisationMember[];
+    followers_count?: number;
+    is_following?: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface OrganisationMember {
+    id: number;
+    organisation: number;
+    user: User;
+    role: 'owner' | 'admin' | 'member';
+    joined_at: string;
+}
+
+export interface OrganisationInvitation {
+    id: number;
+    organisation: number;
+    organisation_details: {
+        id: number;
+        name: string;
+        slug: string;
+        logo: string | null;
+    };
+    user: User;
+    role: 'owner' | 'admin' | 'member';
+    invited_by: number;
+    invited_by_details: User;
+    created_at: string;
+    is_active: boolean;
 }

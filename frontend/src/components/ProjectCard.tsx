@@ -110,16 +110,38 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 
                 {/* Developer Info */}
                 <div className="flex items-center gap-2 mb-4">
-                    <img
-                        src={getImageUrl(project.owner.avatar, project.owner.username)}
-                        alt={project.owner.username}
-                        className="h-6 w-6 rounded-full object-cover border border-zinc-700"
-                    />
-                    <span className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
-                        {project.owner.username}
-                    </span>
+                    {project.organisation_details ? (
+                        <>
+                            <img
+                                src={getImageUrl(project.organisation_details.logo)}
+                                alt={project.organisation_details.name}
+                                className="h-6 w-6 rounded object-cover border border-zinc-750"
+                            />
+                            <span className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors font-bold flex items-center gap-1">
+                                {project.organisation_details.name}
+                                {project.organisation_details.is_verified && (
+                                    <span className="inline-flex items-center justify-center bg-blue-500 text-white rounded-full w-3.5 h-3.5" title="Verified Brand">
+                                        <svg className="w-2 h-2" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                        </svg>
+                                    </span>
+                                )}
+                            </span>
+                        </>
+                    ) : (
+                        <>
+                            <img
+                                src={getImageUrl(project.owner.avatar, project.owner.username)}
+                                alt={project.owner.username}
+                                className="h-6 w-6 rounded-full object-cover border border-zinc-700"
+                            />
+                            <span className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
+                                {project.owner.username}
+                            </span>
+                        </>
+                    )}
                     {followersCount > 0 && (
-                        <span className="text-xs text-zinc-600 ml-auto">
+                        <span className="text-xs text-zinc-550 ml-auto">
                             {followersCount} {t('followers').toLowerCase()}
                         </span>
                     )}

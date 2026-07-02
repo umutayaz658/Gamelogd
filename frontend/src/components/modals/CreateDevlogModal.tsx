@@ -32,12 +32,14 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const [authorIdentity, setAuthorIdentity] = useState<'user' | 'organisation' | 'project'>('user');
+
     // Fetch user's projects
     useEffect(() => {
         if (isOpen) {
             const fetchProjects = async () => {
                 try {
-                    const res = await api.get('/projects/');
+                    const res = await api.get('/projects/?manageable=true');
                     const results = res.data.results || res.data;
                     setProjects(results);
                     if (defaultProjectId) {
@@ -54,6 +56,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
             setContent('');
             setSelectedProject('');
             setMediaItems([]);
+            setAuthorIdentity('user');
         }
     }, [isOpen, defaultProjectId]);
 
@@ -99,6 +102,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
             formData.append('project_parent', selectedProject.toString());
             formData.append('title', title);
             formData.append('content', content);
+            formData.append('author_identity', authorIdentity);
 
             // Append each file as 'uploaded_media' (DRF ListField handles multiple values for same key)
             mediaItems.forEach(item => {
@@ -238,7 +242,11 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                     required
                                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all font-medium text-lg"
                                     value={selectedProject}
-                                    onChange={e => setSelectedProject(Number(e.target.value))}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setSelectedProject(val ? Number(val) : '');
+                                        setAuthorIdentity('user');
+                                    }}
                                 >
                                     <option value="">{t('chooseProjectPlaceholder')}</option>
                                     {projects.map(p => (
@@ -250,6 +258,48 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                 </div>
                             </div>
                         </div>
+
+                        {/* Author Identity Selector */}
+                        {currentProject?.organisation_details && (
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Publish As</label>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAuthorIdentity('user')}
+                                        className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
+                                            authorIdentity === 'user'
+                                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20'
+                                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                                        }`}
+                                    >
+                                        Bireysel (Individual)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAuthorIdentity('organisation')}
+                                        className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
+                                            authorIdentity === 'organisation'
+                                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20'
+                                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                                        }`}
+                                    >
+                                        Organisation: {currentProject.organisation_details.name}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAuthorIdentity('project')}
+                                        className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
+                                            authorIdentity === 'project'
+                                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20'
+                                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                                        }`}
+                                    >
+                                        Project: {currentProject.title}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Title Input */}
                         <div className="space-y-2">

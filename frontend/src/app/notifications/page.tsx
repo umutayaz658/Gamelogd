@@ -118,22 +118,30 @@ export default function NotificationsPage() {
         fetchFollowRequests();
     }, []);
 
-    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined) => {
+    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined, verb: string) => {
         e.preventDefault();
         if (!targetId) return;
         try {
-            await api.post(`/project-members/${targetId}/accept/`);
+            if (verb.toLowerCase().includes('join the project')) {
+                await api.post(`/project-members/${targetId}/accept/`);
+            } else {
+                await api.post(`/organisation-invitations/${targetId}/accept/`);
+            }
             setNotifications(prev => prev.filter(n => n.target_id !== targetId));
         } catch (error) {
             console.error('Failed to accept invite:', error);
         }
     };
 
-    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined) => {
+    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined, verb: string) => {
         e.preventDefault();
         if (!targetId) return;
         try {
-            await api.delete(`/project-members/${targetId}/`);
+            if (verb.toLowerCase().includes('join the project')) {
+                await api.delete(`/project-members/${targetId}/`);
+            } else {
+                await api.post(`/organisation-invitations/${targetId}/decline/`);
+            }
             setNotifications(prev => prev.filter(n => n.target_id !== targetId));
         } catch (error) {
             console.error('Failed to decline invite:', error);
@@ -352,17 +360,17 @@ export default function NotificationsPage() {
                                                             </div>
                                                         </div>
 
-                                                        {/* Action Buttons for Project Invites */}
+                                                        {/* Action Buttons for Project & Organisation Invites */}
                                                         {notif.verb.toLowerCase().includes('invited') && (
                                                             <div className="mt-3 flex gap-2 pl-10 mb-2">
                                                                 <button
-                                                                    onClick={(e) => handleAcceptInvite(e, notif.target_id)}
+                                                                    onClick={(e) => handleAcceptInvite(e, notif.target_id, notif.verb)}
                                                                     className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
                                                                 >
                                                                     {t('accept')}
                                                                 </button>
                                                                 <button
-                                                                    onClick={(e) => handleDeclineInvite(e, notif.target_id)}
+                                                                    onClick={(e) => handleDeclineInvite(e, notif.target_id, notif.verb)}
                                                                     className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700"
                                                                 >
                                                                     {t('decline')}

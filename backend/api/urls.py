@@ -16,18 +16,22 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'conversations', ConversationViewSet, basename='conversation')
 router.register(r'messages', MessageViewSet, basename='message')
 router.register(r'library', LibraryViewSet, basename='library')
-from .views import NewsViewSet, LikeViewSet, BookmarkViewSet, ProjectViewSet, JobPostingViewSet, ProjectMemberViewSet
+from .views import NewsViewSet, LikeViewSet, BookmarkViewSet, ProjectViewSet, JobPostingViewSet, ProjectMemberViewSet, OrganisationViewSet, OrganisationMemberViewSet, OrganisationInvitationViewSet
 router.register(r'news', NewsViewSet, basename='news')
 router.register(r'likes', LikeViewSet, basename='like')
 router.register(r'bookmarks', BookmarkViewSet, basename='bookmark')
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'project-members', ProjectMemberViewSet, basename='project-member')
 router.register(r'job-postings', JobPostingViewSet, basename='job-posting')
-from .views import PitchViewSet, InvestorCallViewSet, SupportTicketViewSet, FeedViewSet
+router.register(r'organisations', OrganisationViewSet, basename='organisation')
+router.register(r'organisation-members', OrganisationMemberViewSet, basename='organisation-member')
+router.register(r'organisation-invitations', OrganisationInvitationViewSet, basename='organisation-invitation')
+from .views import PitchViewSet, InvestorCallViewSet, SupportTicketViewSet, FeedViewSet, WorkspaceStateViewSet
 router.register(r'pitches', PitchViewSet, basename='pitch')
 router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call')
 router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 router.register(r'feed', FeedViewSet, basename='feed')
+router.register(r'workspace-state', WorkspaceStateViewSet, basename='workspace-state')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),
