@@ -14,23 +14,43 @@ import { useTranslation } from '@/lib/useTranslation';
 const renderContentWithLinks = (content: string | undefined) => {
     if (!content) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = content.split(urlRegex);
-    return parts.map((part, index) => {
-        if (part.match(urlRegex)) {
+    const hashtagRegex = /(#[a-zA-Z0-9_]+)/g;
+    
+    const urlParts = content.split(urlRegex);
+    
+    return urlParts.map((urlPart, urlIndex) => {
+        if (urlPart.match(urlRegex)) {
             return (
                 <a
-                    key={index}
-                    href={part}
+                    key={`url-${urlIndex}`}
+                    href={urlPart}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
                     className="text-emerald-500 hover:text-emerald-400 hover:underline break-all font-medium"
                 >
-                    {part}
+                    {urlPart}
                 </a>
             );
         }
-        return part;
+        
+        const hashtagParts = urlPart.split(hashtagRegex);
+        return hashtagParts.map((hashtagPart, hashtagIndex) => {
+            if (hashtagPart.match(hashtagRegex)) {
+                const cleanTag = hashtagPart.slice(1);
+                return (
+                    <Link
+                        key={`tag-${urlIndex}-${hashtagIndex}`}
+                        href={`/explore?hashtag=${cleanTag}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-emerald-500 hover:text-emerald-400 font-bold hover:underline"
+                    >
+                        {hashtagPart}
+                    </Link>
+                );
+            }
+            return hashtagPart;
+        });
     });
 };
 
