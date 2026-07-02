@@ -2417,8 +2417,10 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         if hashtag:
             if hashtag.startswith('#'):
                 hashtag = hashtag[1:]
-            # PostgreSQL case-insensitive regex word boundary match for hashtag
-            posts = posts.filter(content__iregex=rf'#{hashtag}\b')
+            from django.db import connection
+            # PostgreSQL case-insensitive regex word boundary matches with \y, others with \b
+            boundary = '\\y' if connection.vendor == 'postgresql' else '\\b'
+            posts = posts.filter(content__iregex=rf'#{hashtag}{boundary}')
             
         if ordering == 'newest':
             posts = posts.order_by('-timestamp')
