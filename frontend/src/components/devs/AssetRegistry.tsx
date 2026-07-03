@@ -762,7 +762,7 @@ export default function AssetRegistry() {
                             <div key={cat.id} className="space-y-4">
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">{cat.emoji || '📌'}</span>
-                                    <h3 className={cn("text-xs font-extrabold uppercase tracking-widest font-sans", cat.color)}>
+                                    <h3 className={cn("text-sm font-extrabold font-sans", cat.color)}>
                                         {cat.label}
                                     </h3>
                                     <span className="text-[10px] font-bold text-zinc-500 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">
@@ -844,11 +844,9 @@ export default function AssetRegistry() {
                     {/* Uncategorized assets fallback section */}
                     {uncategorizedAssets.length > 0 && (
                         <div className="space-y-4">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-1.5 rounded-lg border text-zinc-400 bg-zinc-850 border-zinc-800 flex-shrink-0 flex items-center justify-center">
-                                    📌
-                                </div>
-                                <h3 className="text-xs font-extrabold text-zinc-350 uppercase tracking-widest font-sans">
+                            <div className="flex items-center gap-2">
+                                <span className="text-lg">📌</span>
+                                <h3 className="text-sm font-extrabold text-zinc-400 font-sans">
                                     Uncategorized
                                 </h3>
                                 <span className="text-[10px] font-bold text-zinc-555 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">
