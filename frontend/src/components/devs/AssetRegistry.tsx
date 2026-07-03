@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-    Plus, ExternalLink, X, Image, Box, Music, Video, Code, FileText,
-    Pencil, Trash2, Tag, Link2, StickyNote, ChevronDown, FolderOpen,
-    AlertTriangle, Settings, PlusCircle, Trash, Check,
+    Plus, ExternalLink, X, Pencil, Trash2, Tag, Link2, StickyNote, ChevronDown, Check, FileText
 } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
@@ -15,32 +13,16 @@ import { getImageUrl } from '@/lib/utils';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 const COLOR_PRESETS = [
-    { label: 'Purple', class: 'text-violet-400 bg-violet-500/10 border-violet-500/25' },
-    { label: 'Blue', class: 'text-blue-400 bg-blue-500/10 border-blue-500/25' },
-    { label: 'Green', class: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25' },
-    { label: 'Amber', class: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
-    { label: 'Cyan', class: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/25' },
-    { label: 'Gray', class: 'text-zinc-400 bg-zinc-800 border-zinc-700' },
-    { label: 'Red', class: 'text-red-400 bg-red-500/10 border-red-500/25' },
+    { name: 'Blue',     color: 'text-blue-400',    bg: 'bg-blue-500/10 border-blue-500/20' },
+    { name: 'Violet',   color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
+    { name: 'Amber',    color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
+    { name: 'Pink',     color: 'text-pink-400',    bg: 'bg-pink-500/10 border-pink-500/20' },
+    { name: 'Emerald',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+    { name: 'Cyan',     color: 'text-cyan-400',    bg: 'bg-cyan-500/10 border-cyan-500/20' },
+    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-700/20 border-zinc-700/30' },
+    { name: 'Red',      color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/20' },
+    { name: 'Orange',   color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/20' },
 ];
-
-const ICON_OPTIONS = [
-    { name: 'image', label: 'Image', icon: Image },
-    { name: 'box', label: '3D Box', icon: Box },
-    { name: 'music', label: 'Audio', icon: Music },
-    { name: 'video', label: 'Video', icon: Video },
-    { name: 'code', label: 'Code', icon: Code },
-    { name: 'file-text', label: 'Document', icon: FileText },
-];
-
-const ICON_MAP: Record<string, React.ElementType> = {
-    image: Image,
-    box: Box,
-    music: Music,
-    video: Video,
-    code: Code,
-    'file-text': FileText,
-};
 
 type FormState = {
     name: string;
@@ -105,21 +87,18 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                                 onClick={onManageCategories}
                                 className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
                             >
-                                <Settings className="w-3 h-3" /> Customize
+                                <ChevronDown className="w-3 h-3 inline rotate-185" /> Customize
                             </button>
                         </div>
                         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1 scrollbar-thin-dark">
-                            {categories.map((cat) => {
-                                const Icon = ICON_MAP[cat.iconName] || FileText;
-                                return (
-                                    <button key={cat.id} type="button" onClick={() => setForm((f) => ({ ...f, category: cat.id }))}
-                                        className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5',
-                                            form.category === cat.id ? cat.color : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:border-zinc-600')}>
-                                        <Icon className="w-3.5 h-3.5" />
-                                        {cat.label}
-                                    </button>
-                                );
-                            })}
+                            {categories.map((cat) => (
+                                <button key={cat.id} type="button" onClick={() => setForm((f) => ({ ...f, category: cat.id }))}
+                                    className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5',
+                                        form.category === cat.id ? `${cat.color} ${cat.bg}` : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:border-zinc-600')}>
+                                    <span>{cat.emoji || '📌'}</span>
+                                    <span>{cat.label}</span>
+                                </button>
+                            ))}
                         </div>
                     </div>
                     {/* Link */}
@@ -182,145 +161,208 @@ interface CategoryManagerModalProps {
 
 function CategoryManagerModal({ categories: initialCategories, onSave, onClose }: CategoryManagerModalProps) {
     const [cats, setCats] = useState<AssetCategoryItem[]>(initialCategories);
-    const [newLabel, setNewLabel] = useState('');
-    const [newIcon, setNewIcon] = useState('file-text');
-    const [newColor, setNewColor] = useState('text-zinc-400 bg-zinc-800 border-zinc-700');
+    const [view, setView] = useState<'manage' | 'add_category' | 'edit_category'>('manage');
+    
+    // Subform states
+    const [catName, setCatName] = useState('');
+    const [catEmoji, setCatEmoji] = useState('📌');
+    const [catColorIdx, setCatColorIdx] = useState(0);
+    const [editingCatId, setEditingCatId] = useState<string | null>(null);
 
-    const handleAdd = () => {
-        if (!newLabel.trim()) return;
-        const id = `cat-${Date.now()}`;
-        const newCat: AssetCategoryItem = {
-            id,
-            label: newLabel.trim(),
-            iconName: newIcon,
-            color: newColor,
-        };
-        setCats([...cats, newCat]);
-        setNewLabel('');
+    const handleOpenAdd = () => {
+        setCatName('');
+        setCatEmoji('📌');
+        setCatColorIdx(0);
+        setEditingCatId(null);
+        setView('add_category');
     };
 
-    const handleDelete = (id: string) => {
+    const handleOpenEdit = (cat: AssetCategoryItem) => {
+        setCatName(cat.label);
+        setCatEmoji(cat.emoji || '📌');
+        
+        const idx = COLOR_PRESETS.findIndex(p => p.color === cat.color);
+        setCatColorIdx(idx >= 0 ? idx : 0);
+        
+        setEditingCatId(cat.id);
+        setView('edit_category');
+    };
+
+    const handleSaveCategory = () => {
+        if (!catName.trim()) return;
+        const colorPreset = COLOR_PRESETS[catColorIdx] || COLOR_PRESETS[0];
+        
+        if (view === 'add_category') {
+            const newCat: AssetCategoryItem = {
+                id: `cat-${Date.now()}`,
+                label: catName.trim(),
+                color: colorPreset.color,
+                bg: colorPreset.bg,
+                emoji: catEmoji.trim() || '📌',
+            };
+            setCats([...cats, newCat]);
+        } else if (view === 'edit_category' && editingCatId) {
+            setCats(cats.map(c => c.id === editingCatId ? {
+                ...c,
+                label: catName.trim(),
+                color: colorPreset.color,
+                bg: colorPreset.bg,
+                emoji: catEmoji.trim() || '📌',
+            } : c));
+        }
+        setView('manage');
+    };
+
+    const handleDeleteCategory = (id: string) => {
         if (cats.length <= 1) return;
-        setCats(cats.filter((c) => c.id !== id));
+        setCats(cats.filter(c => c.id !== id));
     };
 
     return (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
-             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]">
-                <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
-                    <h2 className="text-lg font-bold text-white">Customize Categories</h2>
-                    <button onClick={onClose} className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all">
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
+             onClick={(e) => { if (e.target === e.currentTarget && view === 'manage') onClose(); }}>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]">
                 
-                {/* Scrollable list of categories */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
-                    <div className="space-y-2">
-                        {cats.map((cat) => {
-                            const Icon = ICON_MAP[cat.iconName] || FileText;
-                            return (
-                                <div key={cat.id} className="flex items-center gap-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
-                                    <div className={cn("p-2 rounded-lg border flex-shrink-0", cat.color)}>
-                                        <Icon className="w-4 h-4" />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={cat.label}
-                                        onChange={(e) => {
-                                            setCats(cats.map(c => c.id === cat.id ? { ...c, label: e.target.value } : c));
-                                        }}
-                                        className="flex-1 bg-zinc-905 border border-zinc-800 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-all font-semibold"
-                                    />
-                                    {cats.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDelete(cat.id)}
-                                            className="p-2 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                    
-                    {/* Add Category Subform */}
-                    <div className="border-t border-zinc-800 pt-4 space-y-3">
-                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Create New Category</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[10px] text-zinc-500 uppercase font-bold block mb-1">Category Label</label>
-                                <input
-                                    type="text"
-                                    value={newLabel}
-                                    onChange={(e) => setNewLabel(e.target.value)}
-                                    placeholder="e.g. UI Art, Prototypes"
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs placeholder:text-zinc-650 focus:outline-none focus:border-blue-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-zinc-500 uppercase font-bold block mb-1">Select Icon</label>
-                                <div className="flex gap-1 flex-wrap">
-                                    {ICON_OPTIONS.map((opt) => {
-                                        const OptIcon = opt.icon;
-                                        return (
-                                            <button
-                                                key={opt.name}
-                                                type="button"
-                                                onClick={() => setNewIcon(opt.name)}
-                                                className={cn("p-1.5 rounded-lg border transition-all cursor-pointer",
-                                                    newIcon === opt.name ? "bg-blue-600/20 border-blue-500 text-blue-400 font-bold" : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-600"
-                                                )}
-                                                title={opt.label}
-                                            >
-                                                <OptIcon className="w-3.5 h-3.5" />
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                {/* ── Manage Categories View ── */}
+                {view === 'manage' && (
+                    <>
+                        <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
+                            <h2 className="text-lg font-bold text-white">Customize Categories</h2>
+                            <button onClick={onClose} className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all">
+                                <X className="w-4 h-4" />
+                            </button>
                         </div>
                         
-                        <div>
-                            <label className="text-[10px] text-zinc-500 uppercase font-bold block mb-1.5">Color Palette</label>
-                            <div className="flex gap-1.5 flex-wrap">
-                                {COLOR_PRESETS.map((p) => (
-                                    <button
-                                        key={p.class}
-                                        type="button"
-                                        onClick={() => setNewColor(p.class)}
-                                        className={cn("px-2.5 py-1 text-[10px] font-semibold border rounded-lg transition-all cursor-pointer",
-                                            newColor === p.class ? p.class + " ring-1 ring-blue-500 border-blue-450" : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                                        )}
-                                    >
-                                        {p.label}
-                                    </button>
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
+                            <div className="space-y-2">
+                                {cats.map((cat) => (
+                                    <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
+                                        <div className="flex items-center gap-3">
+                                            <span className={cn("w-8 h-8 rounded-lg border flex items-center justify-center text-lg", cat.bg)}>
+                                                {cat.emoji || '📌'}
+                                            </span>
+                                            <span className="text-sm font-bold text-white">{cat.label}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenEdit(cat)}
+                                                className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-all cursor-pointer"
+                                                title="Edit category"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteCategory(cat.id)}
+                                                className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                                title="Delete category"
+                                                disabled={cats.length <= 1}
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
                                 ))}
                             </div>
+                            
+                            <button
+                                type="button"
+                                onClick={handleOpenAdd}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all cursor-pointer"
+                            >
+                                <Plus className="w-4 h-4" /> Add Custom Category
+                            </button>
                         </div>
                         
-                        <button
-                            type="button"
-                            onClick={handleAdd}
-                            disabled={!newLabel.trim()}
-                            className="w-full py-2 bg-blue-600/25 border border-blue-500/30 text-blue-400 hover:bg-blue-600/40 rounded-xl text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                            + Add New Category
-                        </button>
-                    </div>
-                </div>
-                
-                <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
-                    <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-800 transition-all">
-                        Cancel
-                    </button>
-                    <button onClick={() => { onSave(cats); onClose(); }} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-900/20">
-                        Save Changes
-                    </button>
-                </div>
+                        <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
+                            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-800 transition-all">
+                                Cancel
+                            </button>
+                            <button onClick={() => { onSave(cats); onClose(); }} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-900/20">
+                                Save Changes
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {/* ── Add / Edit Category Subform ── */}
+                {(view === 'add_category' || view === 'edit_category') && (
+                    <>
+                        <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Tag className="w-4 h-4 text-blue-400" /> {view === 'add_category' ? 'Add Category' : 'Edit Category'}
+                            </h2>
+                            <button onClick={() => setView('manage')} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={(e) => { e.preventDefault(); handleSaveCategory(); }} className="p-5 space-y-4 flex-1 overflow-y-auto">
+                            <div className="flex gap-3">
+                                <div className="w-16">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Emoji</label>
+                                    <input
+                                        value={catEmoji}
+                                        onChange={(e) => setCatEmoji(e.target.value)}
+                                        placeholder="📌"
+                                        maxLength={2}
+                                        className="w-full text-center bg-zinc-900 border border-zinc-700 rounded-xl px-2 py-2.5 text-xl focus:outline-none focus:border-blue-500 transition-all text-white"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Category Name *</label>
+                                    <input
+                                        autoFocus
+                                        value={catName}
+                                        onChange={(e) => setCatName(e.target.value)}
+                                        placeholder="e.g. Combat"
+                                        required
+                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">Color Theme</label>
+                                <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5">
+                                    {COLOR_PRESETS.map((preset, idx) => (
+                                        <button
+                                            key={preset.name}
+                                            type="button"
+                                            onClick={() => setCatColorIdx(idx)}
+                                            className={cn(
+                                                'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer',
+                                                preset.bg,
+                                                catColorIdx === idx ? 'border-white scale-110' : 'border-transparent'
+                                            )}
+                                            title={preset.name}
+                                        >
+                                            <span className={cn('w-3.5 h-3.5 rounded-full bg-current', preset.color)} />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div className="flex gap-3 pt-4 border-t border-zinc-850">
+                                <button
+                                    type="button"
+                                    onClick={() => setView('manage')}
+                                    className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!catName.trim()}
+                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40"
+                                >
+                                    {view === 'add_category' ? 'Add Category' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -333,8 +375,7 @@ interface AssetDetailModalProps {
 }
 
 function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
-    const Icon = category ? (ICON_MAP[category.iconName] || FileText) : FileText;
-    const catColor = category ? category.color : 'text-zinc-400 bg-zinc-850 border-zinc-800';
+    const catColor = category ? `${category.color} ${category.bg}` : 'text-zinc-400 bg-zinc-850 border-zinc-800';
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
              onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -351,7 +392,8 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
                     {/* Category and Title */}
                     <div className="space-y-2">
                         <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border", catColor)}>
-                            <Icon className="w-3 h-3" /> {category?.label || 'Uncategorized'}
+                            <span>{category?.emoji || '📌'}</span>
+                            <span>{category?.label || 'Uncategorized'}</span>
                         </span>
                         <h2 className="text-xl font-extrabold text-white leading-snug break-words pr-6">{asset.name}</h2>
                     </div>
@@ -622,7 +664,7 @@ export default function AssetRegistry() {
                                 </>
                             )}
                         </div>
-                        <span className="text-zinc-650 text-lg font-light">/</span>
+                        <span className="text-zinc-655 text-lg font-light">/</span>
                         <h2 className="text-xl font-bold text-white">Assets</h2>
                     </div>
                     <p className="text-xs text-zinc-550 mt-1.5">{assets.length} asset{assets.length !== 1 ? 's' : ''} catalogued · External links, no storage costs</p>
@@ -681,29 +723,26 @@ export default function AssetRegistry() {
                                     {filterCat === 'all' && <Check className="w-3.5 h-3.5" />}
                                 </button>
                                 <div className="border-t border-zinc-850 my-1" />
-                                {categories.map((cat) => {
-                                    const CatIcon = ICON_MAP[cat.iconName] || FileText;
-                                    return (
-                                        <button
-                                            key={cat.id}
-                                            onClick={() => { setFilterCat(cat.id); setShowFilterDropdown(false); }}
-                                            className={cn(
-                                                "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-left transition-all cursor-pointer",
-                                                filterCat === cat.id
-                                                    ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                    : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                                            )}
-                                        >
-                                            <span className="flex items-center gap-2">
-                                                <span className={cn("p-0.5 rounded border text-[10px]", cat.color)}>
-                                                    <CatIcon className="w-3 h-3 animate-none" />
-                                                </span>
-                                                {cat.label}
+                                {categories.map((cat) => (
+                                    <button
+                                        key={cat.id}
+                                        onClick={() => { setFilterCat(cat.id); setShowFilterDropdown(false); }}
+                                        className={cn(
+                                            "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-left transition-all cursor-pointer",
+                                            filterCat === cat.id
+                                                ? "bg-blue-600/10 text-blue-400 font-bold"
+                                                : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                                        )}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <span className={cn("w-5 h-5 rounded border flex items-center justify-center text-xs", cat.bg)}>
+                                                {cat.emoji || '📌'}
                                             </span>
-                                            {filterCat === cat.id && <Check className="w-3.5 h-3.5" />}
-                                        </button>
-                                    );
-                                })}
+                                            {cat.label}
+                                        </span>
+                                        {filterCat === cat.id && <Check className="w-3.5 h-3.5" />}
+                                    </button>
+                                ))}
                             </div>
                         </>
                     )}
@@ -722,14 +761,13 @@ export default function AssetRegistry() {
                     {categories.map((cat) => {
                         const catAssets = grouped[cat.id] || [];
                         if (catAssets.length === 0) return null;
-                        const CatIcon = ICON_MAP[cat.iconName] || FileText;
                         
                         return (
                             <div key={cat.id} className="space-y-4">
-                                <div className="flex items-center gap-2.5 pb-2.5 border-b border-zinc-850">
-                                    <div className={cn("p-1.5 rounded-lg border", cat.color)}>
-                                        <CatIcon className="w-4 h-4" />
-                                    </div>
+                                <div className="flex items-center gap-2.5">
+                                    <span className={cn("w-8 h-8 rounded-lg border flex items-center justify-center text-lg", cat.bg)}>
+                                        {cat.emoji || '📌'}
+                                    </span>
                                     <h3 className="text-xs font-extrabold text-zinc-350 uppercase tracking-widest font-sans">
                                         {cat.label}
                                     </h3>
@@ -812,9 +850,9 @@ export default function AssetRegistry() {
                     {/* Uncategorized assets fallback section */}
                     {uncategorizedAssets.length > 0 && (
                         <div className="space-y-4">
-                            <div className="flex items-center gap-2.5 pb-2.5 border-b border-zinc-850">
-                                <div className="p-1.5 rounded-lg border text-zinc-400 bg-zinc-850 border-zinc-800 flex-shrink-0">
-                                    <FileText className="w-4 h-4" />
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-1.5 rounded-lg border text-zinc-400 bg-zinc-850 border-zinc-800 flex-shrink-0 flex items-center justify-center">
+                                    📌
                                 </div>
                                 <h3 className="text-xs font-extrabold text-zinc-350 uppercase tracking-widest font-sans">
                                     Uncategorized
@@ -873,7 +911,7 @@ export default function AssetRegistry() {
                                         </div>
 
                                         <div className="flex items-center justify-between pt-3 border-t border-zinc-800/40 mt-1">
-                                            <span className="text-[9px] text-zinc-650">Added {asset.addedAt} by @{asset.addedBy}</span>
+                                            <span className="text-[9px] text-zinc-655">Added {asset.addedAt} by @{asset.addedBy}</span>
                                             <a
                                                 href={asset.link}
                                                 target="_blank"
