@@ -2702,8 +2702,10 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
         if key.startswith('workspace__org_'):
             try:
                 # Key format: workspace__org_<org_id>_board_<board_name>...
-                parts = key.split('_')
-                org_id = int(parts[2])
+                prefix = 'workspace__org_'
+                rest = key[len(prefix):]
+                org_id_str = rest.split('_')[0]
+                org_id = int(org_id_str)
                 from core.models import Organisation
                 from django.shortcuts import get_object_or_404
                 from rest_framework.exceptions import PermissionDenied
@@ -2740,8 +2742,10 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
         user = request.user
         if key.startswith('workspace__org_'):
             try:
-                parts = key.split('_')
-                org_id = int(parts[2])
+                prefix = 'workspace__org_'
+                rest = key[len(prefix):]
+                org_id_str = rest.split('_')[0]
+                org_id = int(org_id_str)
                 from core.models import Organisation
                 from django.shortcuts import get_object_or_404
                 
