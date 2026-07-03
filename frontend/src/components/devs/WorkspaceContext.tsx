@@ -24,6 +24,8 @@ import {
     ActivityType,
     GDDCategory,
     DEFAULT_GDD_CATEGORIES,
+    AssetCategoryItem,
+    DEFAULT_ASSET_CATEGORIES,
 } from './WorkspaceTypes';
 
 export type WorkspaceTool =
@@ -212,6 +214,7 @@ function buildDefaultData(): WorkspaceData {
             { id: 'act3', type: 'gdd_edited', text: 'GDD document "Game Overview" updated.', time: '2h ago', icon: '📝' },
         ],
         gddCategories: DEFAULT_GDD_CATEGORIES,
+        assetCategories: DEFAULT_ASSET_CATEGORIES,
     };
 }
 
@@ -243,6 +246,7 @@ interface WorkspaceContextType {
     setPlaytestFeedback: (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) => void;
     setCategories: (categories: string[] | ((prev: string[]) => string[])) => void;
     setGDDCategories: (categories: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => void;
+    setAssetCategories: (categories: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => void;
     logActivity: (type: ActivityType, text: string, icon: string, actor?: string) => void;
 }
 
@@ -343,6 +347,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 if (!parsed.columns?.length) parsed.columns = DEFAULT_COLUMNS;
                 if (!parsed.categories?.length) parsed.categories = ['code', 'art', 'audio', 'qa', 'other'];
                 if (!parsed.gddCategories?.length) parsed.gddCategories = DEFAULT_GDD_CATEGORIES;
+                if (!parsed.assetCategories?.length) parsed.assetCategories = DEFAULT_ASSET_CATEGORIES;
                 setData(parsed);
             } else {
                 if (activeBoard.startsWith('project_')) {
@@ -354,11 +359,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     emptyData.assets = [];
                     emptyData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     emptyData.gddCategories = DEFAULT_GDD_CATEGORIES;
+                    emptyData.assetCategories = DEFAULT_ASSET_CATEGORIES;
                     setData(emptyData);
                 } else {
                     const defaultData = buildDefaultData();
                     defaultData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     defaultData.gddCategories = DEFAULT_GDD_CATEGORIES;
+                    defaultData.assetCategories = DEFAULT_ASSET_CATEGORIES;
                     setData(defaultData);
                 }
             }
@@ -366,6 +373,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const defaultData = buildDefaultData();
             defaultData.categories = ['code', 'art', 'audio', 'qa', 'other'];
             defaultData.gddCategories = DEFAULT_GDD_CATEGORIES;
+            defaultData.assetCategories = DEFAULT_ASSET_CATEGORIES;
             setData(defaultData);
         }
 
@@ -380,6 +388,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 if (backendData && backendData.columns?.length) {
                     if (!backendData.categories?.length) backendData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
+                    if (!backendData.assetCategories?.length) backendData.assetCategories = DEFAULT_ASSET_CATEGORIES;
                     setData(backendData);
                     try { localStorage.setItem(key, JSON.stringify(backendData)); } catch {}
                 }
@@ -467,6 +476,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) =>
         setData((d) => ({ ...d, gddCategories: typeof cats === 'function' ? cats(d.gddCategories ?? DEFAULT_GDD_CATEGORIES) : cats }));
 
+    const setAssetCategories = (cats: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) =>
+        setData((d) => ({ ...d, assetCategories: typeof cats === 'function' ? cats(d.assetCategories ?? DEFAULT_ASSET_CATEGORIES) : cats }));
+
     const logActivity = useCallback((type: ActivityType, text: string, icon: string, actor?: string) => {
         const item: ActivityItem = {
             id: `act-${Date.now()}`,
@@ -503,6 +515,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 setPlaytestFeedback,
                 setCategories,
                 setGDDCategories,
+                setAssetCategories,
                 logActivity,
             }}
         >

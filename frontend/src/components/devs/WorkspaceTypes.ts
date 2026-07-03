@@ -101,12 +101,17 @@ export interface DialogueNode {
 
 // ─── Asset Types ──────────────────────────────────────────────────────────────
 
-export type AssetCategory = '2d' | '3d' | 'audio' | 'video' | 'code' | 'other';
+export interface AssetCategoryItem {
+    id: string;
+    label: string;
+    color: string;
+    iconName: string;
+}
 
 export interface Asset {
     id: string;
     name: string;
-    category: AssetCategory;
+    category: string;
     tags: string[];
     link: string;
     notes: string;
@@ -215,7 +220,17 @@ export interface WorkspaceData {
     activities: ActivityItem[];
     categories?: string[];
     gddCategories?: GDDCategory[];
+    assetCategories?: AssetCategoryItem[];
 }
+
+export const DEFAULT_ASSET_CATEGORIES: AssetCategoryItem[] = [
+    { id: '2d', label: '2D Art', color: 'text-violet-400 bg-violet-500/10 border-violet-500/25', iconName: 'image' },
+    { id: '3d', label: '3D Model', color: 'text-blue-400 bg-blue-500/10 border-blue-500/25', iconName: 'box' },
+    { id: 'audio', label: 'Audio', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25', iconName: 'music' },
+    { id: 'video', label: 'Video', color: 'text-amber-400 bg-amber-500/10 border-amber-500/25', iconName: 'video' },
+    { id: 'code', label: 'Code', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/25', iconName: 'code' },
+    { id: 'other', label: 'Other', color: 'text-zinc-400 bg-zinc-800 border-zinc-700', iconName: 'file-text' },
+];
 
 export const DEFAULT_COLUMNS: KanbanColumn[] = [
     { id: 'backlog', label: 'Backlog', color: 'border-zinc-700/50', dotColor: 'bg-zinc-500', isDefault: true },
