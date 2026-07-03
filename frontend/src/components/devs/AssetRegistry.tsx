@@ -24,6 +24,27 @@ const COLOR_PRESETS = [
     { name: 'Orange',   color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/20' },
 ];
 
+const getTextColorOnly = (colorStr: string) => {
+    if (!colorStr) return '';
+    return colorStr.split(' ').filter(c => c.startsWith('text-')).join(' ');
+};
+
+const getCategoryBg = (cat: AssetCategoryItem) => {
+    if (cat.bg) return cat.bg;
+    const parts = (cat.color || '').split(' ');
+    const bgPart = parts.find(c => c.startsWith('bg-'));
+    const borderPart = parts.find(c => c.startsWith('border-'));
+    if (bgPart && borderPart) {
+        return `${bgPart} ${borderPart}`;
+    }
+    const textClr = getTextColorOnly(cat.color);
+    const colorName = textClr.replace('text-', '').replace('-400', '');
+    if (colorName && colorName !== 'zinc') {
+        return `bg-${colorName}-500/10 border-${colorName}-500/20`;
+    }
+    return 'bg-zinc-700/20 border-zinc-700/30';
+};
+
 type FormState = {
     name: string;
     category: string;
@@ -94,7 +115,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                             {categories.map((cat) => (
                                 <button key={cat.id} type="button" onClick={() => setForm((f) => ({ ...f, category: cat.id }))}
                                     className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5',
-                                        form.category === cat.id ? `${cat.color} ${cat.bg}` : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:border-zinc-600')}>
+                                        form.category === cat.id ? `${getTextColorOnly(cat.color)} ${getCategoryBg(cat)}` : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:border-zinc-600')}>
                                     <span>{cat.emoji || '📌'}</span>
                                     <span>{cat.label}</span>
                                 </button>
@@ -239,7 +260,7 @@ function CategoryManagerModal({ categories: initialCategories, onSave, onClose }
                                     <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
                                         <div className="flex items-center gap-3">
                                             <span className="text-lg">{cat.emoji || '📌'}</span>
-                                            <span className={cn("text-sm font-bold", cat.color)}>{cat.label}</span>
+                                            <span className={cn("text-sm font-bold", getTextColorOnly(cat.color))}>{cat.label}</span>
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <button
@@ -734,7 +755,7 @@ export default function AssetRegistry() {
                                     >
                                         <span className="flex items-center gap-2">
                                             <span className="text-sm">{cat.emoji || '📌'}</span>
-                                            <span className={cat.color}>{cat.label}</span>
+                                            <span className={getTextColorOnly(cat.color)}>{cat.label}</span>
                                         </span>
                                         {filterCat === cat.id && <Check className="w-3.5 h-3.5" />}
                                     </button>
@@ -762,7 +783,7 @@ export default function AssetRegistry() {
                             <div key={cat.id} className="space-y-4">
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">{cat.emoji || '📌'}</span>
-                                    <h3 className={cn("text-sm font-extrabold font-sans", cat.color)}>
+                                    <h3 className={cn("text-sm font-extrabold font-sans", getTextColorOnly(cat.color))}>
                                         {cat.label}
                                     </h3>
                                     <span className="text-[10px] font-bold text-zinc-500 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">
