@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import Switch from "@/components/Switch";
@@ -11,8 +11,89 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import { 
     User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe, 
     FileText, HelpCircle, ChevronRight, ExternalLink, MessageCircle, Bug, Zap, Play, 
-    Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX
+    Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX, ChevronDown
 } from 'lucide-react';
+
+interface CustomSelectOption {
+    value: string;
+    label: string;
+}
+
+interface CustomSelectProps {
+    value: string;
+    onChange: (val: string) => void;
+    options: CustomSelectOption[];
+    activeColor: any;
+    placeholder?: string;
+}
+
+function CustomSelect({
+    value,
+    onChange,
+    options,
+    activeColor,
+    placeholder = "Select..."
+}: CustomSelectProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    return (
+        <div className="relative w-full" ref={dropdownRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between bg-zinc-950 border border-zinc-800 rounded-lg py-3 px-4 text-sm font-semibold transition-all duration-200 focus:outline-none ${
+                    isOpen
+                        ? `border-zinc-700 ring-1 ${activeColor?.ring || 'ring-emerald-500/50'}`
+                        : 'border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                }`}
+            >
+                <span className="text-zinc-200 font-semibold">
+                    {selectedOption ? selectedOption.label : placeholder}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-full bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl shadow-black/80 overflow-hidden z-50 p-1">
+                    {options.map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                                onChange(option.value);
+                                setIsOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between text-left px-3 py-2.5 rounded-md text-sm transition-colors ${
+                                value === option.value
+                                    ? `bg-zinc-900 ${activeColor?.text || 'text-emerald-400'} font-bold`
+                                    : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                            }`}
+                        >
+                            {option.label}
+                            {value === option.value && <Check className={`h-4 w-4 ${activeColor?.text || 'text-emerald-400'}`} />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 const colors = {
     Emerald: {
@@ -186,6 +267,11 @@ const translations = {
         location: "Location",
         phoneNumber: "Phone Number",
         gender: "Gender",
+        genderMale: "Male",
+        genderFemale: "Female",
+        genderNonBinary: "Non-binary",
+        genderPreferNotToSay: "Prefer not to say",
+        selectGender: "Select Gender",
         birthDate: "Birth Date",
         showBirthDate: "Show Birth Date on Profile",
         roles: "Roles",
@@ -335,6 +421,11 @@ const translations = {
         location: "Konum",
         phoneNumber: "Telefon Numarası",
         gender: "Cinsiyet",
+        genderMale: "Erkek",
+        genderFemale: "Kadın",
+        genderNonBinary: "Non-binary",
+        genderPreferNotToSay: "Belirtmek istemiyorum",
+        selectGender: "Cinsiyet Seçin",
         birthDate: "Doğum Tarihi",
         showBirthDate: "Doğum Tarihini Göster",
         roles: "Roller",
@@ -1507,16 +1598,18 @@ function SettingsContent() {
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('gender')}</label>
-                                            <select
-                                                value={gender}
-                                                onChange={(e) => setGender(e.target.value)}
-                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
-                                            >
-                                                <option value="Male">Male</option>
-                                                <option value="Female">Female</option>
-                                                <option value="Non-binary">Non-binary</option>
-                                                <option value="Prefer not to say">Prefer not to say</option>
-                                            </select>
+                                            <CustomSelect 
+                                                value={gender} 
+                                                onChange={setGender} 
+                                                options={[
+                                                    { value: 'Male', label: t('genderMale') || 'Male' },
+                                                    { value: 'Female', label: t('genderFemale') || 'Female' },
+                                                    { value: 'Non-binary', label: t('genderNonBinary') || 'Non-binary' },
+                                                    { value: 'Prefer not to say', label: t('genderPreferNotToSay') || 'Prefer not to say' }
+                                                ]}
+                                                activeColor={activeColor}
+                                                placeholder={t('selectGender') || 'Select Gender'}
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('birthDate')}</label>
@@ -1541,31 +1634,52 @@ function SettingsContent() {
                                         <div className="space-y-3 py-2">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider block">{t('roles')}</label>
                                             <div className="grid grid-cols-3 gap-2">
-                                                <label className="flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors">
+                                                <label className="flex items-center gap-3 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors select-none">
                                                     <input 
                                                         type="checkbox" 
                                                         checked={isGamer} 
                                                         onChange={(e) => setIsGamer(e.target.checked)} 
-                                                        className={`rounded ${activeColor.accentRange} bg-zinc-950 border-zinc-800 h-4 w-4`}
+                                                        className="sr-only"
                                                     />
+                                                    <div className={`h-5 w-5 rounded border flex items-center justify-center transition-all ${
+                                                        isGamer 
+                                                            ? `${activeColor.bg} border-transparent text-white` 
+                                                            : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
+                                                    }`}>
+                                                        {isGamer && <Check className="h-3 w-3 stroke-[3]" />}
+                                                    </div>
                                                     <span className="text-sm font-medium">{t('gamer')}</span>
                                                 </label>
-                                                <label className="flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors">
+                                                <label className="flex items-center gap-3 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors select-none">
                                                     <input 
                                                         type="checkbox" 
                                                         checked={isDeveloper} 
                                                         onChange={(e) => setIsDeveloper(e.target.checked)} 
-                                                        className={`rounded ${activeColor.accentRange} bg-zinc-950 border-zinc-800 h-4 w-4`}
+                                                        className="sr-only"
                                                     />
+                                                    <div className={`h-5 w-5 rounded border flex items-center justify-center transition-all ${
+                                                        isDeveloper 
+                                                            ? `${activeColor.bg} border-transparent text-white` 
+                                                            : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
+                                                    }`}>
+                                                        {isDeveloper && <Check className="h-3 w-3 stroke-[3]" />}
+                                                    </div>
                                                     <span className="text-sm font-medium">{t('developer')}</span>
                                                 </label>
-                                                <label className="flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors">
+                                                <label className="flex items-center gap-3 p-3 bg-zinc-950 border border-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-900 transition-colors select-none">
                                                     <input 
                                                         type="checkbox" 
                                                         checked={isInvestor} 
                                                         onChange={(e) => setIsInvestor(e.target.checked)} 
-                                                        className={`rounded ${activeColor.accentRange} bg-zinc-950 border-zinc-800 h-4 w-4`}
+                                                        className="sr-only"
                                                     />
+                                                    <div className={`h-5 w-5 rounded border flex items-center justify-center transition-all ${
+                                                        isInvestor 
+                                                            ? `${activeColor.bg} border-transparent text-white` 
+                                                            : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
+                                                    }`}>
+                                                        {isInvestor && <Check className="h-3 w-3 stroke-[3]" />}
+                                                    </div>
                                                     <span className="text-sm font-medium">{t('investor')}</span>
                                                 </label>
                                             </div>
@@ -1846,17 +1960,19 @@ function SettingsContent() {
                                         {/* Language */}
                                         <div className="space-y-3">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('language')}</label>
-                                            <select
-                                                value={displaySettings.language}
-                                                onChange={(e) => handleDisplaySettingsChange('language', e.target.value)}
-                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all appearance-none cursor-pointer`}
-                                            >
-                                                <option value="English">English</option>
-                                                <option value="Turkish">Türkçe</option>
-                                                <option value="Spanish">Español</option>
-                                                <option value="French">Français</option>
-                                                <option value="German">Deutsch</option>
-                                            </select>
+                                            <CustomSelect 
+                                                value={displaySettings.language} 
+                                                onChange={(val) => handleDisplaySettingsChange('language', val)} 
+                                                options={[
+                                                    { value: 'English', label: 'English' },
+                                                    { value: 'Turkish', label: 'Türkçe' },
+                                                    { value: 'Spanish', label: 'Español' },
+                                                    { value: 'French', label: 'Français' },
+                                                    { value: 'German', label: 'Deutsch' }
+                                                ]}
+                                                activeColor={activeColor}
+                                                placeholder={t('language') || 'Language'}
+                                            />
                                         </div>
 
                                         {/* Font Size */}
@@ -2362,17 +2478,19 @@ function SettingsContent() {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-zinc-300">{t('categoryLabel')}</label>
-                                            <select 
-                                                value={supportCategory}
-                                                onChange={(e) => setSupportCategory(e.target.value)}
-                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
-                                            >
-                                                <option value="General" className="bg-zinc-950">{t('categoryGeneral')}</option>
-                                                <option value="Account" className="bg-zinc-950">{t('categoryAccount')}</option>
-                                                <option value="Billing" className="bg-zinc-950">{t('categoryBilling')}</option>
-                                                <option value="Partnership" className="bg-zinc-950">{t('categoryPartnership')}</option>
-                                                <option value="Feedback" className="bg-zinc-950">{t('categoryFeedback')}</option>
-                                            </select>
+                                            <CustomSelect 
+                                                value={supportCategory} 
+                                                onChange={setSupportCategory} 
+                                                options={[
+                                                    { value: 'General', label: t('categoryGeneral') },
+                                                    { value: 'Account', label: t('categoryAccount') },
+                                                    { value: 'Billing', label: t('categoryBilling') },
+                                                    { value: 'Partnership', label: t('categoryPartnership') },
+                                                    { value: 'Feedback', label: t('categoryFeedback') }
+                                                ]}
+                                                activeColor={activeColor}
+                                                placeholder={t('categoryLabel') || 'Category'}
+                                            />
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-zinc-300">{t('subjectLabel')}</label>
@@ -2490,16 +2608,18 @@ function SettingsContent() {
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-zinc-300">{t('severityLabel')}</label>
-                                            <select 
-                                                value={bugSeverity}
-                                                onChange={(e) => setBugSeverity(e.target.value)}
-                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
-                                            >
-                                                <option value="Low" className="bg-zinc-950">{t('severityLow')}</option>
-                                                <option value="Medium" className="bg-zinc-950">{t('severityMedium')}</option>
-                                                <option value="High" className="bg-zinc-950">{t('severityHigh')}</option>
-                                                <option value="Critical" className="bg-zinc-950">{t('severityCritical')}</option>
-                                            </select>
+                                            <CustomSelect 
+                                                value={bugSeverity} 
+                                                onChange={setBugSeverity} 
+                                                options={[
+                                                    { value: 'Low', label: t('severityLow') },
+                                                    { value: 'Medium', label: t('severityMedium') },
+                                                    { value: 'High', label: t('severityHigh') },
+                                                    { value: 'Critical', label: t('severityCritical') }
+                                                ]}
+                                                activeColor={activeColor}
+                                                placeholder={t('severityLabel') || 'Severity'}
+                                            />
                                         </div>
                                     </div>
 

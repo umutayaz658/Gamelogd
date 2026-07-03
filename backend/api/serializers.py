@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember
+from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 RESERVED_USERNAMES = [
@@ -81,6 +81,8 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This username is reserved.")
         if '/' in value or '?' in value or '&' in value or '%' in value:
              raise serializers.ValidationError("Username contains invalid characters.")
+        if Organisation.objects.filter(slug__iexact=value).exists():
+            raise serializers.ValidationError("This username is taken by an organisation.")
         return value
     
     followers_count = serializers.IntegerField(source='followers.count', read_only=True)
@@ -114,6 +116,13 @@ class UserSerializer(serializers.ModelSerializer):
             from api.models import FollowRequest
             return FollowRequest.objects.filter(sender=obj, receiver=request.user).exists()
         return False
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Check if request.user has blocked obj
+            from api.models import Block
+            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
 
     def get_is_blocked(self, obj):
         request = self.context.get('request')
@@ -228,6 +237,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User.objects.filter(username=value).first()
         if user and user.is_active:
             raise serializers.ValidationError("A user with that username already exists.")
+        
+        if Organisation.objects.filter(slug__iexact=value).exists():
+            raise serializers.ValidationError("This username is taken by an organisation.")
         return value
 
     def validate_password(self, value):
@@ -466,6 +478,7 @@ class PostMediaSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    author_details = serializers.SerializerMethodField()
     reply_to_username = serializers.SerializerMethodField()
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
     likes_count = serializers.IntegerField(source='likes.count', read_only=True)
@@ -493,14 +506,14 @@ class PostSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = [
-            'id', 'user', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
+            'id', 'user', 'author_identity', 'author_details', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
             'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
             'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted',
             'repost_parent_review', 'repost_review_details', 'category', 'trending_score'
         ]
-        read_only_fields = ['id', 'user', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details', 'trending_score']
+        read_only_fields = ['id', 'user', 'author_details', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details', 'trending_score']
 
     def create(self, validated_data):
         uploaded_media = validated_data.pop('uploaded_media', [])
@@ -523,6 +536,35 @@ class PostSerializer(serializers.ModelSerializer):
                  post.save()
         
         return post
+
+    def get_author_details(self, obj):
+        if obj.author_identity == 'organisation' and obj.project_parent and obj.project_parent.organisation:
+            org = obj.project_parent.organisation
+            return {
+                'type': 'organisation',
+                'name': org.name,
+                'slug': org.slug,
+                'avatar': org.logo.url if org.logo else None,
+                'is_verified': org.is_verified,
+            }
+        elif obj.author_identity == 'project' and obj.project_parent:
+            proj = obj.project_parent
+            return {
+                'type': 'project',
+                'name': proj.title,
+                'slug': proj.id,
+                'avatar': proj.cover_image.url if proj.cover_image else None,
+                'is_verified': False,
+            }
+        else:
+            user = obj.user
+            return {
+                'type': 'user',
+                'name': f"{user.first_name} {user.last_name}".strip() or user.username,
+                'slug': user.username,
+                'avatar': user.avatar.url if user.avatar else None,
+                'is_verified': False,
+            }
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
@@ -885,14 +927,15 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
 
 class ProjectSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
+    organisation_details = serializers.SerializerMethodField()
     members = ProjectMemberSerializer(many=True, read_only=True)
     followers_count = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
-        fields = ['id', 'owner', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+        fields = ['id', 'owner', 'organisation', 'organisation_details', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at', 'organisation_details']
 
     def get_followers_count(self, obj):
         return obj.followers.count()
@@ -902,6 +945,17 @@ class ProjectSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.followers.filter(user=request.user).exists()
         return False
+
+    def get_organisation_details(self, obj):
+        if obj.organisation:
+            return {
+                'id': obj.organisation.id,
+                'name': obj.organisation.name,
+                'slug': obj.organisation.slug,
+                'logo': obj.organisation.logo.url if obj.organisation.logo else None,
+                'is_verified': obj.organisation.is_verified
+            }
+        return None
 
 class JobPostingSerializer(serializers.ModelSerializer):
     recruiter = UserSerializer(read_only=True)
@@ -942,6 +996,92 @@ class SupportTicketSerializer(serializers.ModelSerializer):
         model = SupportTicket
         fields = ['id', 'user', 'ticket_type', 'subject', 'category', 'description', 'steps_to_reproduce', 'severity', 'is_resolved', 'created_at']
         read_only_fields = ['id', 'user', 'is_resolved', 'created_at']
+
+class OrganisationMemberSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), source='user', write_only=True
+    )
+    
+    class Meta:
+        model = OrganisationMember
+        fields = ['id', 'organisation', 'user', 'user_id', 'role', 'joined_at']
+        read_only_fields = ['id', 'joined_at']
+
+
+class OrganisationSerializer(serializers.ModelSerializer):
+    members = OrganisationMemberSerializer(many=True, read_only=True)
+    followers_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Organisation
+        fields = ['id', 'name', 'slug', 'description', 'logo', 'banner', 'website', 'twitter', 'youtube', 'is_verified', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
+        
+    def validate_slug(self, value):
+        slug = value.strip().lower()
+        if not slug:
+            raise serializers.ValidationError("Slug is required.")
+        
+        # If updating, make sure slug hasn't changed
+        if self.instance and self.instance.slug != slug:
+            raise serializers.ValidationError("Slug cannot be modified after creation.")
+            
+        if slug in RESERVED_USERNAMES:
+            raise serializers.ValidationError("This slug is reserved.")
+            
+        from api.models import User
+        if User.objects.filter(username__iexact=slug).exists():
+            raise serializers.ValidationError("This name is taken by a user account.")
+            
+        # Check unique constraint manually
+        qs = Organisation.objects.filter(slug__iexact=slug)
+        if self.instance:
+            qs = qs.exclude(id=self.instance.id)
+        if qs.exists():
+            raise serializers.ValidationError("An organisation with this slug already exists.")
+            
+        return slug
+
+    def get_followers_count(self, obj):
+        return obj.followers.count()
+        
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.followers.filter(user=request.user).exists()
+        return False
+
+
+class OrganisationInvitationSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), source='user', write_only=True
+    )
+    organisation_details = serializers.SerializerMethodField()
+    invited_by_details = UserSerializer(source='invited_by', read_only=True)
+    
+    class Meta:
+        model = OrganisationInvitation
+        fields = ['id', 'organisation', 'organisation_details', 'user', 'user_id', 'role', 'invited_by', 'invited_by_details', 'created_at', 'is_active']
+        read_only_fields = ['id', 'invited_by', 'created_at', 'is_active']
+        
+    def get_organisation_details(self, obj):
+        return {
+            'id': obj.organisation.id,
+            'name': obj.organisation.name,
+            'slug': obj.organisation.slug,
+            'logo': obj.organisation.logo.url if obj.organisation.logo else None
+        }
+
+
+from core.models import WorkspaceState
+
+class WorkspaceStateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkspaceState
+        fields = ['key', 'data', 'updated_at']
 
 class BlockedUserSerializer(serializers.ModelSerializer):
     blocker = UserSerializer(read_only=True)

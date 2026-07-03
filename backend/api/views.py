@@ -7,9 +7,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
-from core.models import Game, Review, Post
+from core.models import Game, Review, Post, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
 from api.models import User, Notification, SupportTicket, Interest, PendingRegistration
-from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer
+from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer, OrganisationSerializer, OrganisationMemberSerializer, OrganisationInvitationSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.core.mail import EmailMultiAlternatives
@@ -1147,12 +1147,12 @@ class PostViewSet(viewsets.ModelViewSet):
             private_ids = User.objects.filter(
                 settings__privateProfile=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
-            queryset = queryset.exclude(user_id__in=private_ids)
+            queryset = queryset.exclude(Q(user_id__in=private_ids) & Q(project_parent__isnull=True))
         else:
             private_ids = User.objects.filter(
                 settings__privateProfile=True
             ).values_list('id', flat=True)
-            queryset = queryset.exclude(user_id__in=private_ids)
+            queryset = queryset.exclude(Q(user_id__in=private_ids) & Q(project_parent__isnull=True))
             
         username = self.request.query_params.get('username', None)
         parent_id = self.request.query_params.get('parent', None)
@@ -1185,6 +1185,19 @@ class PostViewSet(viewsets.ModelViewSet):
         if is_following_project == 'true' and self.request.user.is_authenticated:
             queryset = queryset.filter(project_parent__followers__user=self.request.user)
 
+        organisation_slug = self.request.query_params.get('organisation_slug', None)
+        if organisation_slug:
+            queryset = queryset.filter(project_parent__organisation__slug=organisation_slug)
+
+        manageable = self.request.query_params.get('manageable', None)
+        if manageable == 'true' and self.request.user.is_authenticated:
+            user = self.request.user
+            queryset = queryset.filter(
+                Q(project_parent__owner=user) |
+                Q(project_parent__members__user=user, project_parent__members__status='active') |
+                Q(project_parent__organisation__members__user=user, project_parent__organisation__members__role__in=['owner', 'admin'])
+            ).distinct()
+
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -1204,13 +1217,46 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         project_parent = serializer.validated_data.get('project_parent')
+        author_identity = serializer.validated_data.get('author_identity', 'user')
+        user = self.request.user
+
         if project_parent:
-            user = self.request.user
-            if project_parent.owner != user:
-                is_authorized = project_parent.members.filter(user=user, role__in=['editor', 'admin']).exists()
-                if not is_authorized:
+            # Check if authorized to post a devlog under this project
+            is_authorized = (project_parent.owner == user or 
+                             project_parent.members.filter(user=user, role__in=['editor', 'admin']).exists())
+            
+            if not is_authorized and project_parent.organisation:
+                is_authorized = project_parent.organisation.members.filter(user=user).exists()
+                
+            if not is_authorized:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to post a devlog for this project.")
+                
+            # Check author identity constraints
+            if author_identity == 'organisation':
+                if not project_parent.organisation:
+                    from rest_framework.exceptions import ValidationError
+                    raise ValidationError({"author_identity": "This project does not belong to an organisation."})
+                
+                # Must be owner/admin of the organisation to post as organisation
+                is_org_admin = project_parent.organisation.members.filter(user=user, role__in=['owner', 'admin']).exists()
+                if not is_org_admin:
                     from rest_framework.exceptions import PermissionDenied
-                    raise PermissionDenied("You do not have permission to post a devlog for this project.")
+                    raise PermissionDenied("Only organisation owners or admins can post as the organisation.")
+                    
+            elif author_identity == 'project':
+                # Must be project owner/admin or org owner/admin to post as project
+                is_proj_admin = (project_parent.owner == user or 
+                                 project_parent.members.filter(user=user, role='admin').exists() or 
+                                 (project_parent.organisation and 
+                                  project_parent.organisation.members.filter(user=user, role__in=['owner', 'admin']).exists()))
+                if not is_proj_admin:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("Only project admins or organisation admins can post as the project.")
+        else:
+            if author_identity != 'user':
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({"author_identity": "Can only post as user when not linking to a project parent."})
         # Check block restrictions for interactions (reply, quote repost, comments)
         repost_parent = serializer.validated_data.get('repost_parent')
         parent = serializer.validated_data.get('parent')
@@ -2095,7 +2141,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, ProjectAccessPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'description', 'tech_stack']
-    filterset_fields = ['status']
+    filterset_fields = ['status', 'organisation']
     ordering_fields = ['created_at']
     ordering = ['-created_at']
 
@@ -2112,10 +2158,42 @@ class ProjectViewSet(viewsets.ModelViewSet):
         if is_following == 'true' and self.request.user.is_authenticated:
             queryset = queryset.filter(followers__user=self.request.user)
             
+        organisation_slug = self.request.query_params.get('organisation_slug', None)
+        if organisation_slug:
+            queryset = queryset.filter(organisation__slug=organisation_slug)
+            
+        manageable = self.request.query_params.get('manageable', None)
+        if manageable == 'true' and self.request.user.is_authenticated:
+            from django.db.models import Q
+            user = self.request.user
+            queryset = queryset.filter(
+                Q(owner=user) |
+                Q(members__user=user, members__status='active') |
+                Q(organisation__members__user=user, organisation__members__role__in=['owner', 'admin'])
+            ).distinct()
+
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        organisation_id = self.request.data.get('organisation')
+        if organisation_id:
+            org = get_object_or_404(Organisation, id=organisation_id)
+            if not org.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to create projects for this organisation.")
+            serializer.save(owner=self.request.user, organisation=org)
+        else:
+            serializer.save(owner=self.request.user)
+
+    def perform_update(self, serializer):
+        if 'organisation' in self.request.data:
+            org_id = self.request.data.get('organisation')
+            if org_id:
+                org = get_object_or_404(Organisation, id=org_id)
+                if not org.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("You do not have permission to assign projects to this organisation.")
+        serializer.save()
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, pk=None):
@@ -2384,6 +2462,247 @@ class FeedViewSet(viewsets.ViewSet):
         merged_items.sort(key=lambda x: x[0], reverse=True)
         results = [item[1] for item in merged_items[:50]]
         return Response(results)
+
+class OrganisationViewSet(viewsets.ModelViewSet):
+    queryset = Organisation.objects.all().order_by('-created_at')
+    serializer_class = OrganisationSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    lookup_field = 'slug'
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'slug', 'description']
+
+    def get_queryset(self):
+        queryset = Organisation.objects.all().order_by('-created_at')
+        member_only = self.request.query_params.get('member', None)
+        if member_only == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(members__user=self.request.user)
+        return queryset
+
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        try:
+            return get_object_or_404(queryset, **filter_kwargs)
+        except Exception:
+            if self.kwargs[lookup_url_kwarg].isdigit():
+                return get_object_or_404(queryset, id=int(self.kwargs[lookup_url_kwarg]))
+            raise
+
+    def perform_create(self, serializer):
+        from api.serializers import RESERVED_USERNAMES
+        name = self.request.data.get('name', '')
+        slug = self.request.data.get('slug', '').strip().lower()
+        
+        if not slug:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"slug": "Slug is required."})
+            
+        if slug in RESERVED_USERNAMES:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"slug": "This slug is reserved."})
+            
+        if User.objects.filter(username__iexact=slug).exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"slug": "This name is taken by a user account."})
+            
+        with transaction.atomic():
+            organisation = serializer.save()
+            OrganisationMember.objects.create(
+                organisation=organisation,
+                user=self.request.user,
+                role='owner'
+            )
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def follow(self, request, slug=None):
+        organisation = self.get_object()
+        follow_obj, created = OrganisationFollow.objects.get_or_create(user=request.user, organisation=organisation)
+        if not created:
+            return Response({"message": "Already following this organisation."}, status=status.HTTP_200_OK)
+        return Response({"message": f"Now following {organisation.name}"}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unfollow(self, request, slug=None):
+        organisation = self.get_object()
+        deleted_count, _ = OrganisationFollow.objects.filter(user=request.user, organisation=organisation).delete()
+        if deleted_count == 0:
+            return Response({"error": "You are not following this organisation."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Unfollowed {organisation.name}"}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def invite(self, request, slug=None):
+        organisation = self.get_object()
+        if not organisation.members.filter(user=request.user, role__in=['owner', 'admin']).exists():
+            return Response({"error": "You do not have permission to invite members."}, status=status.HTTP_403_FORBIDDEN)
+            
+        user_id = request.data.get('user_id')
+        role = request.data.get('role', 'member')
+        
+        if not user_id:
+            return Response({"error": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        target_user = get_object_or_404(User, id=user_id)
+        
+        if organisation.members.filter(user=target_user).exists():
+            return Response({"error": "User is already a member of this organisation."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if OrganisationInvitation.objects.filter(organisation=organisation, user=target_user, is_active=True).exists():
+            return Response({"error": "User has already been invited."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        invitation = OrganisationInvitation.objects.create(
+            organisation=organisation,
+            user=target_user,
+            role=role,
+            invited_by=request.user
+        )
+        
+        from django.contrib.contenttypes.models import ContentType
+        content_type = ContentType.objects.get_for_model(invitation.__class__)
+        Notification.objects.create(
+            recipient=target_user,
+            actor=request.user,
+            verb=f'invited you to join {organisation.name}',
+            target_type=content_type,
+            target_id=invitation.id
+        )
+        
+        return Response(OrganisationInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def projects(self, request, slug=None):
+        organisation = self.get_object()
+        projects = organisation.projects.all().order_by('-created_at')
+        from .serializers import ProjectSerializer
+        serializer = ProjectSerializer(projects, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def devlogs(self, request, slug=None):
+        organisation = self.get_object()
+        from core.models import Post
+        from .serializers import PostSerializer
+        posts = Post.objects.filter(project_parent__organisation=organisation, parent__isnull=True).order_by('-timestamp')
+        serializer = PostSerializer(posts, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class OrganisationMemberViewSet(viewsets.ModelViewSet):
+    queryset = OrganisationMember.objects.all()
+    serializer_class = OrganisationMemberSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def update(self, request, *args, **kwargs):
+        member = self.get_object()
+        requesting_member = member.organisation.members.filter(user=request.user).first()
+        if not requesting_member or requesting_member.role not in ['owner', 'admin']:
+            return Response({"error": "Only admins and owners can modify member roles."}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        member = self.get_object()
+        if member.role == 'owner':
+            return Response({"error": "Cannot delete the owner of an organisation. Transfer ownership first."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        requesting_member = member.organisation.members.filter(user=request.user).first()
+        if not requesting_member:
+            return Response({"error": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+            
+        if member.user != request.user and requesting_member.role not in ['owner', 'admin']:
+            return Response({"error": "Only admins and owners can remove members."}, status=status.HTTP_403_FORBIDDEN)
+            
+        return super().destroy(request, *args, **kwargs)
+
+
+class OrganisationInvitationViewSet(viewsets.ModelViewSet):
+    queryset = OrganisationInvitation.objects.all()
+    serializer_class = OrganisationInvitationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = OrganisationInvitation.objects.all()
+        organisation_slug = self.request.query_params.get('organisation_slug', None)
+        if organisation_slug:
+            from django.shortcuts import get_object_or_404
+            from core.models import Organisation
+            from rest_framework.exceptions import PermissionDenied
+            org = get_object_or_404(Organisation, slug=organisation_slug)
+            if org.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+                return queryset.filter(organisation=org, is_active=True).order_by('-created_at')
+            else:
+                raise PermissionDenied("You do not have permission to view invitations for this organisation.")
+        return queryset.filter(user=self.request.user, is_active=True).order_by('-created_at')
+
+    @action(detail=True, methods=['post'])
+    def accept(self, request, pk=None):
+        invitation = self.get_object()
+        if invitation.user != request.user:
+            return Response({"error": "This invitation was not sent to you."}, status=status.HTTP_403_FORBIDDEN)
+            
+        with transaction.atomic():
+            member, created = OrganisationMember.objects.get_or_create(
+                organisation=invitation.organisation,
+                user=request.user,
+                defaults={'role': invitation.role}
+            )
+            invitation.is_active = False
+            invitation.save()
+            
+            OrganisationFollow.objects.get_or_create(user=request.user, organisation=invitation.organisation)
+            
+            Notification.objects.create(
+                recipient=invitation.invited_by,
+                actor=request.user,
+                verb=f'accepted your invitation to join {invitation.organisation.name}'
+            )
+            
+        return Response({"message": f"Successfully joined {invitation.organisation.name}."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def decline(self, request, pk=None):
+        invitation = self.get_object()
+        if invitation.user != request.user:
+            return Response({"error": "This invitation was not sent to you."}, status=status.HTTP_403_FORBIDDEN)
+            
+        invitation.is_active = False
+        invitation.save()
+        return Response({"message": "Invitation declined."}, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        invitation = self.get_object()
+        is_invitee = invitation.user == request.user
+        is_org_admin = invitation.organisation.members.filter(user=request.user, role__in=['owner', 'admin']).exists()
+        if not is_invitee and not is_org_admin:
+            return Response({"error": "You do not have permission to delete this invitation."}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+
+from core.models import WorkspaceState
+from .serializers import WorkspaceStateSerializer
+
+class WorkspaceStateViewSet(viewsets.ModelViewSet):
+    queryset = WorkspaceState.objects.all()
+    serializer_class = WorkspaceStateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'key'
+    lookup_value_regex = '[^/]+'
+
+    def get_object(self):
+        key = self.kwargs.get('key')
+        obj, created = WorkspaceState.objects.get_or_create(key=key, defaults={'data': {}})
+        return obj
+
+    def create(self, request, *args, **kwargs):
+        key = request.data.get('key')
+        data = request.data.get('data')
+        if not key:
+            return Response({"error": "key is required"}, status=status.HTTP_400_BAD_REQUEST)
+        obj, created = WorkspaceState.objects.update_or_create(
+            key=key,
+            defaults={'data': data}
+        )
+        serializer = self.get_serializer(obj)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ExplorePostsViewSet(viewsets.ViewSet):
     """Explore posts with category filtering and trending sorting."""

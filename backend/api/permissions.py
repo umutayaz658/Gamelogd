@@ -29,6 +29,11 @@ class ProjectAccessPermission(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
             
+        # Check if user is owner or admin of the project's organisation
+        if hasattr(obj, 'organisation') and obj.organisation:
+            if obj.organisation.members.filter(user=request.user, role__in=['owner', 'admin']).exists():
+                return True
+            
         if hasattr(obj, 'owner') and hasattr(obj, 'members'):
             if obj.owner == request.user:
                 return True
