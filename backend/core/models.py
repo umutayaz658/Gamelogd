@@ -54,6 +54,64 @@ class Review(models.Model):
         return f"{self.user.username} - {self.game.title} ({self.rating})"
 
 
+class Organisation(models.Model):
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    description = models.TextField(blank=True, default='')
+    logo = models.ImageField(upload_to='organisations/logos/', blank=True, null=True)
+    banner = models.ImageField(upload_to='organisations/banners/', blank=True, null=True)
+    
+    # Social Links
+    website = models.URLField(blank=True, default='')
+    twitter = models.URLField(blank=True, default='')
+    youtube = models.URLField(blank=True, default='')
+    
+    # Verification
+    is_verified = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+class OrganisationMember(models.Model):
+    ROLE_CHOICES = [
+        ('owner', 'Owner'),
+        ('admin', 'Admin'),
+        ('member', 'Developer'),
+    ]
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='members')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organisation_memberships')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('organisation', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} ({self.role}) at {self.organisation.name}"
+
+class OrganisationFollow(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='followed_organisations')
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='followers')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'organisation')
+
+class OrganisationInvitation(models.Model):
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='invitations')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organisation_invitations')
+    role = models.CharField(max_length=20, choices=OrganisationMember.ROLE_CHOICES, default='member')
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_organisation_invitations')
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('organisation', 'user')
+
+
 class Project(models.Model):
     STATUS_CHOICES = [
         ('in_dev', 'In Development'),
@@ -62,6 +120,7 @@ class Project(models.Model):
         ('released', 'Released'),
     ]
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='projects')
+    organisation = models.ForeignKey(Organisation, on_delete=models.SET_NULL, null=True, blank=True, related_name='projects')
     title = models.CharField(max_length=255)
     description = models.TextField()
     cover_image = models.ImageField(upload_to='projects/', blank=True, null=True)
@@ -161,6 +220,11 @@ POST_CATEGORIES = [
 
 class Post(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
+    author_identity = models.CharField(
+        max_length=20, 
+        choices=[('user', 'User'), ('organisation', 'Organisation'), ('project', 'Project')], 
+        default='user'
+    )
     title = models.CharField(max_length=255, blank=True, null=True) # For Devlogs
     content = models.TextField(blank=True)
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
@@ -327,3 +391,12 @@ class InvestorCall(models.Model):
 
     def __str__(self):
         return f"{self.organization_name} ({self.get_investor_type_display()})"
+
+
+class WorkspaceState(models.Model):
+    key = models.CharField(max_length=255, unique=True)
+    data = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"State: {self.key}"
