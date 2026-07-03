@@ -77,7 +77,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-zinc-955 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
                 <div className="flex items-center justify-between p-5 border-b border-zinc-800">
                     <h2 className="text-lg font-bold text-white">{title}</h2>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all">
@@ -257,7 +257,7 @@ function CategoryManagerModal({ categories: initialCategories, onSave, onClose }
                         <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
                             <div className="space-y-2">
                                 {cats.map((cat) => (
-                                    <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
+                                    <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-805 rounded-xl p-3">
                                         <div className="flex items-center gap-3">
                                             <span className="text-lg">{cat.emoji || '📌'}</span>
                                             <span className={cn("text-sm font-bold", getTextColorOnly(cat.color))}>{cat.label}</span>
@@ -394,7 +394,7 @@ interface AssetDetailModalProps {
 }
 
 function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
-    const catColor = category ? `${category.color} ${category.bg}` : 'text-zinc-400 bg-zinc-850 border-zinc-800';
+    const catColor = category ? `${getTextColorOnly(category.color)} ${getCategoryBg(category)}` : 'text-zinc-400 bg-zinc-850 border-zinc-800';
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
              onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -402,7 +402,7 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
                  onClick={(e) => e.stopPropagation()}>
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-900 transition-all cursor-pointer"
+                    className="absolute top-4 right-4 text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-905 transition-all cursor-pointer"
                 >
                     <X className="w-4 h-4" />
                 </button>
@@ -420,8 +420,8 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
                     {/* External Link */}
                     <div className="bg-zinc-900/60 border border-zinc-800/85 rounded-xl p-3 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
-                            <Link2 className="w-4 h-4 text-zinc-500 flex-shrink-0" />
-                            <span className="text-xs text-zinc-400 truncate">{asset.link}</span>
+                            <Link2 className="w-4 h-4 text-zinc-550 flex-shrink-0" />
+                            <span className="text-xs text-zinc-405 truncate">{asset.link}</span>
                         </div>
                         <a
                             href={asset.link}
@@ -619,24 +619,30 @@ export default function AssetRegistry() {
 
                             {showBoardDropdown && (
                                 <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setShowBoardDropdown(false)} />
-                                    <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
-                                        <p className="text-[10px] font-bold text-zinc-550 px-3 py-1.5 uppercase tracking-wider">Workspace Boards</p>
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setShowBoardDropdown(false)}
+                                    />
+                                    <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-955 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
+                                            Switch Workspace Board
+                                        </p>
                                         
                                         {/* Solo/Org Root Board */}
                                         <button
+                                            type="button"
                                             onClick={() => {
                                                 setActiveBoard(activeWorkspace.type === 'solo' ? 'solo' : 'org');
                                                 setShowBoardDropdown(false);
                                             }}
                                             className={cn(
-                                                "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left transition-all cursor-pointer",
+                                                "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
                                                 (activeBoard === 'solo' || activeBoard === 'org')
                                                     ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                    : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                                                    : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
                                             )}
                                         >
-                                            <div className="w-5 h-5 rounded overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                                            <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
                                                 <img
                                                     src={getImageUrl(activeWorkspace.type === 'solo' ? user?.avatar : activeWorkspace.org?.logo, activeWorkspace.type === 'solo' ? user?.real_name || user?.username : activeWorkspace.org?.name)}
                                                     alt=""
@@ -644,30 +650,32 @@ export default function AssetRegistry() {
                                                 />
                                             </div>
                                             <span className="truncate">
-                                                {activeWorkspace.type === 'solo' ? 'Personal Board' : 'General Board'}
+                                                {activeWorkspace.type === 'solo' ? 'Personal' : activeWorkspace.org?.name}
                                             </span>
                                         </button>
 
                                         {/* Projects list */}
                                         {projects.length > 0 && (
-                                            <>
-                                                <div className="border-t border-zinc-850 my-1" />
-                                                <p className="text-[10px] font-bold text-zinc-550 px-3 py-1 uppercase tracking-wider">Projects</p>
+                                            <div className="pt-1.5 border-t border-zinc-900/60 mt-1">
+                                                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2.5 py-1">
+                                                    Projects
+                                                </p>
                                                 {projects.map((p) => (
                                                     <button
                                                         key={p.id}
+                                                        type="button"
                                                         onClick={() => {
                                                             setActiveBoard(`project_${p.id}`);
                                                             setShowBoardDropdown(false);
                                                         }}
                                                         className={cn(
-                                                            "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left transition-all cursor-pointer",
+                                                            "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
                                                             activeBoard === `project_${p.id}`
                                                                 ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                                : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                                                                : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
                                                         )}
                                                     >
-                                                        <div className="w-5 h-5 rounded overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                        <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
                                                             <img
                                                                 src={getImageUrl(p.cover_image, p.title)}
                                                                 alt=""
@@ -677,7 +685,7 @@ export default function AssetRegistry() {
                                                         <span className="truncate">{p.title}</span>
                                                     </button>
                                                 ))}
-                                            </>
+                                            </div>
                                         )}
                                     </div>
                                 </>
@@ -726,22 +734,22 @@ export default function AssetRegistry() {
                     {showFilterDropdown && (
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setShowFilterDropdown(false)} />
-                            <div className="absolute right-0 mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-2 w-60 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                            <div className="absolute right-0 mt-2 z-50 bg-zinc-955 border border-zinc-800 rounded-xl shadow-2xl p-2 w-60 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
                                 <button
                                     onClick={() => { setFilterCat('all'); setShowFilterDropdown(false); }}
                                     className={cn(
                                         "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-left transition-all cursor-pointer",
                                         filterCat === 'all'
                                             ? "bg-blue-600/10 text-blue-400 font-bold"
-                                            : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                                            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
                                     )}
                                 >
                                     <span className="flex items-center gap-2">
-                                        <FileText className="w-3.5 h-3.5" /> All Assets
+                                        <FileText className="w-3.5 h-3.5 text-zinc-500" /> All Assets
                                     </span>
                                     {filterCat === 'all' && <Check className="w-3.5 h-3.5" />}
                                 </button>
-                                <div className="border-t border-zinc-850 my-1" />
+                                <div className="border-t border-zinc-900/60 my-1" />
                                 {categories.map((cat) => (
                                     <button
                                         key={cat.id}
@@ -750,7 +758,7 @@ export default function AssetRegistry() {
                                             "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-left transition-all cursor-pointer",
                                             filterCat === cat.id
                                                 ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                                                : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
                                         )}
                                     >
                                         <span className="flex items-center gap-2">
@@ -836,7 +844,7 @@ export default function AssetRegistry() {
 
                                                 {/* Notes */}
                                                 {asset.notes && (
-                                                    <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed">
+                                                    <p className="text-xs text-zinc-550 line-clamp-2 leading-relaxed">
                                                         {asset.notes}
                                                     </p>
                                                 )}
