@@ -175,7 +175,7 @@ export default function DevsPageClient() {
                 </div>
             ) : (
                 /* Other tools: scrollable with padding */
-                <div className="flex-1 overflow-y-auto scrollbar-thin-dark">
+                <div className="flex-1 overflow-y-auto scrollbar-thin-dark" style={{ scrollbarGutter: 'stable' }}>
                     <div className="p-6 xl:p-8 max-w-7xl">
                         {renderContent()}
                     </div>

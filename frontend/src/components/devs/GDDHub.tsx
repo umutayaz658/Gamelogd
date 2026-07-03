@@ -2015,7 +2015,7 @@ export default function GDDHub() {
             </div>
 
             {/* Right: Dashboard / Welcome */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin-dark p-8">
+            <div className="flex-1 overflow-y-auto scrollbar-thin-dark p-8" style={{ scrollbarGutter: 'stable' }}>
                 {resolvedDocs.filter(d => !d.parentId).length === 0 ? (
                     /* Empty state */
                     <div className="max-w-2xl mx-auto text-center py-20">
@@ -2058,17 +2058,19 @@ export default function GDDHub() {
                                         <button
                                             type="button"
                                             onClick={() => setShowBoardDropdown(!showBoardDropdown)}
-                                            className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 transition-all rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-md cursor-pointer"
+                                            className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 transition-all rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-md cursor-pointer min-w-[200px] justify-between"
                                         >
-                                            <div className="w-6 h-6 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                <img
-                                                    src={getImageUrl(activeBoardInfo.avatar, activeBoardInfo.name)}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                />
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="w-6 h-6 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                    <img
+                                                        src={getImageUrl(activeBoardInfo.avatar, activeBoardInfo.name)}
+                                                        alt=""
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                </div>
+                                                <span className="truncate max-w-[120px]">{activeBoardInfo.name}</span>
                                             </div>
-                                            <span className="truncate max-w-[150px]">{activeBoardInfo.name}</span>
-                                            <ChevronDown className="w-4 h-4 text-zinc-400" />
+                                            <ChevronDown className="w-4 h-4 text-zinc-400 flex-shrink-0" />
                                         </button>
 
                                         {showBoardDropdown && (
