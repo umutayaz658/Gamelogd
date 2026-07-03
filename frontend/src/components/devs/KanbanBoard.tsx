@@ -433,7 +433,7 @@ export default function KanbanBoard() {
                                         className="fixed inset-0 z-40"
                                         onClick={() => setShowBoardDropdown(false)}
                                     />
-                                    <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-955 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                                    <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
                                         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
                                             Switch Workspace Board
                                         </p>
@@ -852,7 +852,7 @@ export default function KanbanBoard() {
                             const laneSP = laneTasks.reduce((sum, t) => sum + (t.storyPoints || 0), 0);
 
                             return (
-                                <div key={lane.id} className="space-y-3 border border-zinc-800/40 bg-zinc-955/20 p-2.5 rounded-2xl">
+                                <div key={lane.id} className="space-y-3 border border-zinc-800/40 bg-zinc-950/20 p-2.5 rounded-2xl">
                                     {/* Collapsible Lane Header (Sticky on scroll) */}
                                     <div className="sticky left-0 z-10 w-fit">
                                         <button
@@ -1113,7 +1113,7 @@ export default function KanbanBoard() {
                                                         if (e.key === 'Escape') setActiveInlineColId(null);
                                                     }}
                                                     placeholder="What needs to be done?"
-                                                    className="w-full bg-zinc-955 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-zinc-650 focus:outline-none focus:border-blue-500 transition-all font-sans"
+                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-zinc-650 focus:outline-none focus:border-blue-500 transition-all font-sans"
                                                 />
                                                 <div className="flex gap-2">
                                                     <button onClick={() => handleCreateInlineTask(col.id)}
