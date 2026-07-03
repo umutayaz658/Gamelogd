@@ -250,10 +250,11 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 // ─── Storage Key Helper ───────────────────────────────────────────────────────
 
-function storageKey(ws: ActiveWorkspace, board: string): string {
+function storageKey(ws: ActiveWorkspace, board: string, userId?: number): string {
+    const suffix = userId ? `_u_${userId}` : '';
     if (ws.type === 'solo') {
-        if (board === 'solo') return 'workspace__solo';
-        return `workspace__solo_board_${board}`;
+        if (board === 'solo') return `workspace__solo${suffix}`;
+        return `workspace__solo_board_${board}${suffix}`;
     }
     return `workspace__org_${ws.org?.id ?? 'unknown'}_board_${board}`;
 }
@@ -332,7 +333,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     // ── Load workspace data from localStorage & backend when workspace or board changes ─
     useEffect(() => {
-        const key = storageKey(activeWorkspace, activeBoard);
+        const key = storageKey(activeWorkspace, activeBoard, user?.id);
         
         // 1. Load from localStorage cache first for instant render
         try {
@@ -397,7 +398,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (persistTimer.current) clearTimeout(persistTimer.current);
         persistTimer.current = setTimeout(() => {
-            const key = storageKey(activeWorkspace, activeBoard);
+            const key = storageKey(activeWorkspace, activeBoard, user?.id);
             try {
                 localStorage.setItem(key, JSON.stringify(data));
                 if (user) {

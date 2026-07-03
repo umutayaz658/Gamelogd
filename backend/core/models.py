@@ -394,9 +394,38 @@ class InvestorCall(models.Model):
 
 
 class WorkspaceState(models.Model):
-    key = models.CharField(max_length=255, unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='workspace_states'
+    )
+    organisation = models.ForeignKey(
+        'core.Organisation',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='workspace_states'
+    )
+    key = models.CharField(max_length=255)
     data = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['key', 'user'],
+                name='unique_user_workspace_state',
+                condition=models.Q(user__isnull=False)
+            ),
+            models.UniqueConstraint(
+                fields=['key', 'organisation'],
+                name='unique_organisation_workspace_state',
+                condition=models.Q(organisation__isnull=False)
+            ),
+        ]
+
     def __str__(self):
-        return f"State: {self.key}"
+        owner = f"User: {self.user.username}" if self.user else f"Org: {self.organisation.name}" if self.organisation else "System"
+        return f"State: {self.key} ({owner})"

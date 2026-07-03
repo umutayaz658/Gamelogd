@@ -2687,20 +2687,90 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
     lookup_field = 'key'
     lookup_value_regex = '[^/]+'
 
+    def get_queryset(self):
+        user = self.request.user
+        from django.db.models import Q
+        return WorkspaceState.objects.filter(
+            Q(user=user) | 
+            Q(organisation__members__user=user)
+        ).distinct()
+
     def get_object(self):
         key = self.kwargs.get('key')
-        obj, created = WorkspaceState.objects.get_or_create(key=key, defaults={'data': {}})
-        return obj
+        user = self.request.user
+        
+        if key.startswith('workspace__org_'):
+            try:
+                # Key format: workspace__org_<org_id>_board_<board_name>...
+                parts = key.split('_')
+                org_id = int(parts[2])
+                from core.models import Organisation
+                from django.shortcuts import get_object_or_404
+                from rest_framework.exceptions import PermissionDenied
+                
+                org = get_object_or_404(Organisation, id=org_id)
+                if not org.members.filter(user=user).exists():
+                    raise PermissionDenied("You do not have access to this organization's workspace.")
+                
+                obj, created = WorkspaceState.objects.get_or_create(
+                    key=key,
+                    organisation=org,
+                    user=None,
+                    defaults={'data': {}}
+                )
+                return obj
+            except (ValueError, IndexError):
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("Invalid workspace key format.")
+        else:
+            obj, created = WorkspaceState.objects.get_or_create(
+                key=key,
+                user=user,
+                organisation=None,
+                defaults={'data': {}}
+            )
+            return obj
 
     def create(self, request, *args, **kwargs):
         key = request.data.get('key')
         data = request.data.get('data')
         if not key:
             return Response({"error": "key is required"}, status=status.HTTP_400_BAD_REQUEST)
-        obj, created = WorkspaceState.objects.update_or_create(
-            key=key,
-            defaults={'data': data}
-        )
+        
+        user = request.user
+        if key.startswith('workspace__org_'):
+            try:
+                parts = key.split('_')
+                org_id = int(parts[2])
+                from core.models import Organisation
+                from django.shortcuts import get_object_or_404
+                
+                org = get_object_or_404(Organisation, id=org_id)
+                if not org.members.filter(user=user).exists():
+                    return Response({"error": "You do not have access to this organization's workspace."}, status=status.HTTP_403_FORBIDDEN)
+                
+                obj, created = WorkspaceState.objects.update_or_create(
+                    key=key,
+                    organisation=org,
+                    user=None,
+                    defaults={'data': data}
+                )
+                if not created:
+                    obj.data = data
+                    obj.save()
+            except (ValueError, IndexError):
+                return Response({"error": "Invalid workspace key format."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            obj, created = WorkspaceState.objects.update_or_create(
+                key=key,
+                user=user,
+                organisation=None,
+                defaults={'data': data}
+            )
+            if not created:
+                obj.data = data
+                obj.save()
+                
         serializer = self.get_serializer(obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
