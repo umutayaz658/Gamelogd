@@ -238,10 +238,8 @@ function CategoryManagerModal({ categories: initialCategories, onSave, onClose }
                                 {cats.map((cat) => (
                                     <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
                                         <div className="flex items-center gap-3">
-                                            <span className={cn("w-8 h-8 rounded-lg border flex items-center justify-center text-lg", cat.bg)}>
-                                                {cat.emoji || '📌'}
-                                            </span>
-                                            <span className="text-sm font-bold text-white">{cat.label}</span>
+                                            <span className="text-lg">{cat.emoji || '📌'}</span>
+                                            <span className={cn("text-sm font-bold", cat.color)}>{cat.label}</span>
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <button
@@ -735,10 +733,8 @@ export default function AssetRegistry() {
                                         )}
                                     >
                                         <span className="flex items-center gap-2">
-                                            <span className={cn("w-5 h-5 rounded border flex items-center justify-center text-xs", cat.bg)}>
-                                                {cat.emoji || '📌'}
-                                            </span>
-                                            {cat.label}
+                                            <span className="text-sm">{cat.emoji || '📌'}</span>
+                                            <span className={cat.color}>{cat.label}</span>
                                         </span>
                                         {filterCat === cat.id && <Check className="w-3.5 h-3.5" />}
                                     </button>
@@ -764,11 +760,9 @@ export default function AssetRegistry() {
                         
                         return (
                             <div key={cat.id} className="space-y-4">
-                                <div className="flex items-center gap-2.5">
-                                    <span className={cn("w-8 h-8 rounded-lg border flex items-center justify-center text-lg", cat.bg)}>
-                                        {cat.emoji || '📌'}
-                                    </span>
-                                    <h3 className="text-xs font-extrabold text-zinc-350 uppercase tracking-widest font-sans">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">{cat.emoji || '📌'}</span>
+                                    <h3 className={cn("text-xs font-extrabold uppercase tracking-widest font-sans", cat.color)}>
                                         {cat.label}
                                     </h3>
                                     <span className="text-[10px] font-bold text-zinc-500 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">
