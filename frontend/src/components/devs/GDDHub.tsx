@@ -30,8 +30,9 @@ import {
     BalancingTable, BalancingRow, DialogueNode, Task,
     GDDCategory, DEFAULT_GDD_CATEGORIES,
 } from './WorkspaceTypes';
-
-import { cn } from '@/lib/utils';
+import api from '@/lib/api';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
+import { cn, getImageUrl } from '@/lib/utils';
 
 // Helper to format ISO timestamp as relative time
 function formatRelativeTime(isoString: string): string {
@@ -1597,8 +1598,22 @@ function useGDDToKanban(setTasks: (fn: (prev: Task[]) => Task[]) => void, column
 // ─── Main GDD Hub ─────────────────────────────────────────────────────────────
 
 export default function GDDHub() {
-    const { data, setGDDDocs, setBalancingTables, setTasks, logActivity } = useWorkspace();
+    const { data, setGDDDocs, setBalancingTables, setTasks, logActivity, activeWorkspace, activeBoard, setActiveBoard } = useWorkspace();
     const { user } = useAuth();
+    const [projects, setProjects] = useState<any[]>([]);
+
+    useEffect(() => {
+        api.get('/projects/?manageable=true')
+            .then((res) => {
+                const all = res.data.results ?? res.data;
+                if (activeWorkspace.type === 'org' && activeWorkspace.org) {
+                    setProjects(all.filter((p: any) => p.organisation === activeWorkspace.org?.id));
+                } else {
+                    setProjects(all.filter((p: any) => !p.organisation));
+                }
+            })
+            .catch((err) => console.error('Failed to load projects:', err));
+    }, [activeWorkspace]);
     const { gddDocs, balancingTables, dialogueTrees, tasks, columns, gddCategories } = data;
     const categories = gddCategories ?? DEFAULT_GDD_CATEGORIES;
 
@@ -1630,8 +1645,37 @@ export default function GDDHub() {
     const [scrollTarget, setScrollTarget] = useState<{ text: string; timestamp: number } | null>(null);
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
+    const [showBoardDropdown, setShowBoardDropdown] = useState(false);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const currentUser = user?.username ?? 'You';
+
+    const activeBoardInfo = useMemo(() => {
+        if (activeBoard === 'solo') {
+            return {
+                name: user?.real_name || user?.username || 'Personal Workspace',
+                avatar: user?.avatar,
+            };
+        }
+        if (activeBoard === 'org') {
+            return {
+                name: activeWorkspace.org?.name || 'Organisation',
+                avatar: activeWorkspace.org?.logo,
+            };
+        }
+        if (activeBoard.startsWith('project_')) {
+            const pid = parseInt(activeBoard.replace('project_', ''), 10);
+            const p = projects.find((proj) => proj.id === pid);
+            return {
+                name: p?.title || 'Project Board',
+                avatar: p?.cover_image,
+            };
+        }
+        return {
+            name: 'Board',
+            avatar: undefined,
+        };
+    }, [activeBoard, user, activeWorkspace, projects]);
 
     // Derived active document directly from URL parameter
     const urlDocId = searchParams.get('gddDocId');
@@ -1721,11 +1765,18 @@ export default function GDDHub() {
     }, [setGDDDocs, logActivity]);
 
     const handleDeleteDoc = useCallback((id: string) => {
-        const doc = resolvedDocs.find(d => d.id === id);
-        setGDDDocs(prev => prev.filter(d => d.id !== id));
-        if (doc) logActivity('gdd_edited', `GDD page "${doc.title}" deleted.`, '🗑️');
-        if (editingDoc?.id === id) setEditingDoc(null);
-    }, [resolvedDocs, setGDDDocs, logActivity, editingDoc, setEditingDoc]);
+        setConfirmDeleteId(id);
+    }, []);
+
+    const confirmDeleteDoc = useCallback(() => {
+        if (confirmDeleteId) {
+            const doc = resolvedDocs.find(d => d.id === confirmDeleteId);
+            setGDDDocs(prev => prev.filter(d => d.id !== confirmDeleteId));
+            if (doc) logActivity('gdd_edited', `GDD page "${doc.title}" deleted.`, '🗑️');
+            if (editingDoc?.id === confirmDeleteId) setEditingDoc(null);
+        }
+        setConfirmDeleteId(null);
+    }, [confirmDeleteId, resolvedDocs, setGDDDocs, logActivity, editingDoc, setEditingDoc]);
 
     // ── Toggle panel (accordion: only one open) ──────────────────────────────
     const togglePanel = (panel: 'outline' | 'comments') => {
@@ -2002,7 +2053,104 @@ export default function GDDHub() {
                     <div className="max-w-5xl mx-auto space-y-8">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="text-xl font-bold text-white">GDD Hub</h2>
+                                <div className="flex items-center gap-3">
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowBoardDropdown(!showBoardDropdown)}
+                                            className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 transition-all rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-md cursor-pointer"
+                                        >
+                                            <div className="w-6 h-6 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                <img
+                                                    src={getImageUrl(activeBoardInfo.avatar, activeBoardInfo.name)}
+                                                    alt=""
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            </div>
+                                            <span className="truncate max-w-[150px]">{activeBoardInfo.name}</span>
+                                            <ChevronDown className="w-4 h-4 text-zinc-400" />
+                                        </button>
+
+                                        {showBoardDropdown && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={() => setShowBoardDropdown(false)}
+                                                />
+                                                <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                                                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
+                                                        Switch Workspace Board
+                                                    </p>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setActiveBoard(activeWorkspace.type === 'solo' ? 'solo' : 'org');
+                                                            setShowBoardDropdown(false);
+                                                        }}
+                                                        className={cn(
+                                                            "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
+                                                            (activeBoard === 'solo' || activeBoard === 'org')
+                                                                ? "bg-blue-600/10 text-blue-400 font-bold"
+                                                                : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                                                        )}
+                                                    >
+                                                        <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                            <img
+                                                                src={getImageUrl(
+                                                                    activeWorkspace.type === 'solo' ? user?.avatar : activeWorkspace.org?.logo,
+                                                                    activeWorkspace.type === 'solo' ? (user?.real_name || user?.username) : activeWorkspace.org?.name
+                                                                )}
+                                                                alt=""
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        </div>
+                                                        <span className="truncate">
+                                                            {activeWorkspace.type === 'solo' ? 'Personal' : activeWorkspace.org?.name}
+                                                        </span>
+                                                    </button>
+
+                                                    {projects.length > 0 && (
+                                                        <div className="pt-1.5 border-t border-zinc-900/60 mt-1">
+                                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2.5 py-1">
+                                                                Projects
+                                                            </p>
+                                                            {projects.map((p) => (
+                                                                <button
+                                                                    key={p.id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setActiveBoard(`project_${p.id}`);
+                                                                        setShowBoardDropdown(false);
+                                                                    }}
+                                                                    className={cn(
+                                                                        "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
+                                                                        activeBoard === `project_${p.id}`
+                                                                            ? "bg-blue-600/10 text-blue-400 font-bold"
+                                                                            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                                                                    )}
+                                                                >
+                                                                    <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-805 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                                        <img
+                                                                            src={getImageUrl(p.cover_image, p.title)}
+                                                                            alt=""
+                                                                            className="w-full h-full object-cover"
+                                                                        />
+                                                                    </div>
+                                                                    <span className="truncate">{p.title}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    <span className="text-zinc-700 text-lg font-light">/</span>
+
+                                    <h2 className="text-xl font-bold text-white">GDD Hub</h2>
+                                </div>
                                 <p className="text-sm text-zinc-500 mt-0.5">
                                     {resolvedDocs.filter(d => !d.parentId).length} documents · {resolvedDocs.filter(d => d.isPublic && !d.parentId).length} public
                                 </p>
@@ -2102,6 +2250,13 @@ export default function GDDHub() {
                     onSubmit={handleCreateDoc}
                 />
             )}
+            <ConfirmDeleteModal
+                isOpen={confirmDeleteId !== null}
+                title="Delete Document"
+                description="Are you sure you want to delete this document? This action is permanent and will delete all subpages inside it."
+                onConfirm={confirmDeleteDoc}
+                onCancel={() => setConfirmDeleteId(null)}
+            />
         </div>
     );
 }
