@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
     X, Flag, User, Tag, Calendar, CheckSquare, Square, Plus,
-    Trash2, MessageSquare, Clock, ChevronDown, UserPlus, Search,
+    Trash2, MessageSquare, Clock, ChevronDown, UserPlus, Search, Check,
 } from 'lucide-react';
 import { Task, KanbanColumn, TaskSubtask, TaskComment, TaskPriority, TaskCategory, CATEGORY_EMOJI, PRIORITY_COLOR } from './WorkspaceTypes';
 import { useWorkspace } from './WorkspaceContext';
@@ -28,25 +28,46 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
 };
 
 const getCategoryStyles = (cat: string) => {
-    const styles: Record<string, { label: string; emoji: string }> = {
-        code: { label: 'Code', emoji: '💻' },
-        art: { label: 'Art', emoji: '🎨' },
-        audio: { label: 'Audio', emoji: '🎵' },
-        qa: { label: 'QA', emoji: '🧪' },
-        other: { label: 'Other', emoji: '📌' },
+    const styles: Record<string, { label: string; emoji: string; color: string }> = {
+        code: { label: 'Code', emoji: '💻', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
+        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30' },
     };
     if (styles[cat] !== undefined) return styles[cat];
 
+    let colorName = 'zinc';
+    let baseCat = cat;
+    if (cat.includes('|')) {
+        const parts = cat.split('|');
+        baseCat = parts[0];
+        colorName = parts[1] || 'zinc';
+    }
+
     const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u;
-    const match = cat.match(emojiRegex);
+    const match = baseCat.match(emojiRegex);
     const emoji = match ? match[0] : '';
 
     const labelRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
-    const label = cat.replace(labelRegex, '');
+    const label = baseCat.replace(labelRegex, '');
+
+    const colorMap: Record<string, string> = {
+        blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+        violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+        amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+        pink: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
+        emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+        cyan: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+        zinc: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30',
+        red: 'text-red-400 bg-red-500/10 border-red-500/20',
+        orange: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+    };
 
     return {
         label: label.charAt(0).toUpperCase() + label.slice(1),
-        emoji: emoji || '',
+        emoji: emoji || '📌',
+        color: colorMap[colorName.toLowerCase()] || colorMap.zinc,
     };
 };
 
@@ -58,6 +79,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
     const [title, setTitle] = useState(task.title);
     const [description, setDescription] = useState(task.description);
     const [editingDesc, setEditingDesc] = useState(false);
+    const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
     // Subtask
     const [newSubtask, setNewSubtask] = useState('');
@@ -239,16 +261,52 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                     <div className="flex items-center gap-3">
                         <span className="text-[11px] text-zinc-650 font-mono tracking-wider font-semibold">TASK-{task.id.slice(-4).toUpperCase()}</span>
                         {/* Status dropdown styled dynamically */}
-                        <select
-                            value={task.columnId}
-                            onChange={(e) => update({ columnId: e.target.value })}
-                            className={cn("text-xs font-bold border rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer transition-all", getStatusStyle(task.columnId))}
-                            style={{ colorScheme: 'dark' }}
-                        >
-                            {columns.map((col) => (
-                                <option key={col.id} value={col.id} className="bg-zinc-950 text-white">{col.label}</option>
-                            ))}
-                        </select>
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                                className={cn(
+                                    "text-xs font-bold border rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 cursor-pointer transition-all focus:outline-none hover:brightness-110",
+                                    getStatusStyle(task.columnId)
+                                )}
+                            >
+                                <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', columns.find(c => c.id === task.columnId)?.dotColor || 'bg-blue-500')} />
+                                <span>{columns.find(c => c.id === task.columnId)?.label || 'Status'}</span>
+                                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                            </button>
+                            {showStatusDropdown && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowStatusDropdown(false)} />
+                                    <div className="absolute left-0 mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-2 w-48 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                                        {columns.map((col) => {
+                                            const isActive = task.columnId === col.id;
+                                            return (
+                                                <button
+                                                    key={col.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        update({ columnId: col.id });
+                                                        setShowStatusDropdown(false);
+                                                    }}
+                                                    className={cn(
+                                                        "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-left transition-all cursor-pointer",
+                                                        isActive
+                                                            ? "bg-blue-600/10 text-blue-400 font-bold"
+                                                            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                                                    )}
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', col.dotColor)} />
+                                                        <span>{col.label}</span>
+                                                    </span>
+                                                    {isActive && <Check className="w-3.5 h-3.5" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <button
@@ -533,14 +591,15 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                 <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">Category</p>
                                 <div className="grid grid-cols-2 gap-1.5">
                                     {(data?.categories ?? ['code', 'art', 'audio', 'qa', 'other']).map((cat) => {
-                                        const { label, emoji } = getCategoryStyles(cat);
+                                        const { label, emoji, color } = getCategoryStyles(cat);
                                         return (
                                             <button
                                                 key={cat}
+                                                type="button"
                                                 onClick={() => update({ category: cat })}
                                                 className={cn(
-                                                    'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition-all',
-                                                    task.category === cat ? 'text-zinc-300 bg-zinc-800 border-zinc-700 shadow-inner' : 'text-zinc-500 border-zinc-805 bg-zinc-900/20 hover:border-zinc-700'
+                                                    'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer',
+                                                    task.category === cat ? color : 'text-zinc-500 border-zinc-805 bg-zinc-900/20 hover:border-zinc-700'
                                                 )}
                                             >
                                                 {emoji && <span className="text-xs">{emoji}</span>}
