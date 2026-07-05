@@ -508,46 +508,52 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                                     <div className="space-y-2">
                                         {(data?.categories ?? ['code', 'art', 'audio', 'qa', 'other']).map((cat) => {
                                             const { label, emoji, color } = getCategoryStyles(cat);
-                                            const isDefault = ['code', 'art', 'audio', 'qa', 'other'].includes(cat);
                                             return (
-                                                <div key={cat} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-805 rounded-xl p-3">
+                                                <div key={cat} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
                                                     <div className="flex items-center gap-3 font-sans">
                                                         <span className="text-lg">{emoji}</span>
                                                         <span className={cn("text-sm font-bold", color.split(' ').find(c => c.startsWith('text-')))}>{label}</span>
                                                     </div>
-                                                    {!isDefault && (
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setEditingCatId(cat);
-                                                                    setCatName(label);
-                                                                    setCatEmoji(emoji);
-                                                                    
-                                                                    let colorName = 'zinc';
-                                                                    if (cat.includes('|')) {
-                                                                        colorName = cat.split('|')[1] || 'zinc';
-                                                                    }
-                                                                    const idx = COLOR_PRESETS.findIndex(p => p.name.toLowerCase() === colorName.toLowerCase());
-                                                                    setCatColorIdx(idx >= 0 ? idx : 6);
-                                                                    
-                                                                    setCatManagerView('edit');
-                                                                }}
-                                                                className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
-                                                                title="Edit category"
-                                                            >
-                                                                <Pencil className="w-3.5 h-3.5" />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleDeleteCategory(cat)}
-                                                                className="p-1.5 text-zinc-550 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
-                                                                title="Delete category"
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingCatId(cat);
+                                                                setCatName(label);
+                                                                setCatEmoji(emoji);
+                                                                
+                                                                let colorName = 'zinc';
+                                                                if (cat.includes('|')) {
+                                                                    colorName = cat.split('|')[1] || 'zinc';
+                                                                } else {
+                                                                    const defaultColors: Record<string, string> = {
+                                                                        code: 'blue',
+                                                                        art: 'violet',
+                                                                        audio: 'emerald',
+                                                                        qa: 'orange',
+                                                                        other: 'zinc'
+                                                                    };
+                                                                    colorName = defaultColors[cat] || 'zinc';
+                                                                }
+                                                                const idx = COLOR_PRESETS.findIndex(p => p.name.toLowerCase() === colorName.toLowerCase());
+                                                                setCatColorIdx(idx >= 0 ? idx : 6);
+                                                                
+                                                                setCatManagerView('edit');
+                                                            }}
+                                                            className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
+                                                            title="Edit category"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5 text-zinc-500" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteCategory(cat)}
+                                                            className="p-1.5 text-zinc-550 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                                            title="Delete category"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5 text-zinc-500" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
@@ -612,21 +618,21 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                                     
                                     {/* Color Preset Pick */}
                                     <div>
-                                        <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider block mb-2 font-sans">Theme Color</label>
-                                        <div className="grid grid-cols-3 gap-2">
+                                        <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-2 font-sans">Color Theme</label>
+                                        <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5 justify-center">
                                             {COLOR_PRESETS.map((preset, idx) => (
                                                 <button
                                                     key={preset.name}
                                                     type="button"
                                                     onClick={() => setCatColorIdx(idx)}
                                                     className={cn(
-                                                        "flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold text-left transition-all cursor-pointer",
+                                                        'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer',
                                                         preset.bg,
-                                                        catColorIdx === idx ? "ring-2 ring-blue-500/80 font-bold" : "opacity-70 hover:opacity-100"
+                                                        catColorIdx === idx ? 'border-white scale-110' : 'border-transparent'
                                                     )}
+                                                    title={preset.name}
                                                 >
-                                                    <span className={preset.color}>{preset.name}</span>
-                                                    {catColorIdx === idx && <Check className={cn("w-3 h-3", preset.color)} />}
+                                                    <span className={cn('w-3.5 h-3.5 rounded-full bg-current', preset.color)} />
                                                 </button>
                                             ))}
                                         </div>

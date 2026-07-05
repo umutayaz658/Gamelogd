@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, PlusCircle, X, Check, Search, Filter, GripVertical, Edit2, Trash2, ChevronDown, Tag, Settings } from 'lucide-react';
+import { Plus, PlusCircle, X, Check, Search, Filter, GripVertical, Edit2, Trash2, ChevronDown, Tag, Settings, Pencil } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { Task, KanbanColumn, TaskPriority, TaskCategory, CATEGORY_EMOJI } from './WorkspaceTypes';
@@ -50,6 +50,62 @@ const getCategoryLabel = (cat: string) => {
     const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
     const label = clean.replace(emojiRegex, '');
     return label.charAt(0).toUpperCase() + label.slice(1);
+};
+
+const COLOR_PRESETS = [
+    { name: 'Blue',     color: 'text-blue-405',    bg: 'bg-blue-650/10 border-blue-500/20' },
+    { name: 'Violet',   color: 'text-violet-405',  bg: 'bg-violet-650/10 border-violet-500/20' },
+    { name: 'Amber',    color: 'text-amber-455',   bg: 'bg-amber-650/10 border-amber-500/20' },
+    { name: 'Pink',     color: 'text-pink-450',    bg: 'bg-pink-650/10 border-pink-500/20' },
+    { name: 'Emerald',  color: 'text-emerald-450', bg: 'bg-emerald-650/10 border-emerald-500/20' },
+    { name: 'Cyan',     color: 'text-cyan-405',    bg: 'bg-cyan-650/10 border-cyan-500/20' },
+    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-800/60 border-zinc-700/60' },
+    { name: 'Red',      color: 'text-red-405',     bg: 'bg-red-650/10 border-red-500/20' },
+    { name: 'Orange',   color: 'text-orange-450',  bg: 'bg-orange-650/10 border-orange-500/20' },
+];
+
+const getCategoryStyles = (cat: string) => {
+    const styles: Record<string, { label: string; emoji: string; color: string }> = {
+        code: { label: 'Code', emoji: '💻', color: 'text-blue-400/90 bg-blue-600/10 border-blue-500/30' },
+        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400/90 bg-violet-600/10 border-violet-500/30' },
+        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400/90 bg-emerald-600/10 border-emerald-500/30' },
+        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400/90 bg-orange-600/10 border-orange-500/30' },
+        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-800 border-zinc-700' },
+    };
+    if (styles[cat] !== undefined) return styles[cat];
+
+    let colorName = 'zinc';
+    let baseCat = cat;
+    if (cat.includes('|')) {
+        const parts = cat.split('|');
+        baseCat = parts[0];
+        colorName = parts[1] || 'zinc';
+    }
+
+    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u;
+    const match = baseCat.match(emojiRegex);
+    const emoji = match ? match[0] : '';
+
+    const labelRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
+    const label = baseCat.replace(labelRegex, '');
+
+    const colorMap: Record<string, string> = {
+        blue: 'text-blue-405 bg-blue-650/10 border-blue-500/20',
+        violet: 'text-violet-405 bg-violet-650/10 border-violet-500/20',
+        amber: 'text-amber-455 bg-amber-650/10 border-amber-500/20',
+        pink: 'text-pink-450 bg-pink-650/10 border-pink-500/20',
+        emerald: 'text-emerald-450 bg-emerald-650/10 border-emerald-500/20',
+        cyan: 'text-cyan-405 bg-cyan-650/10 border-cyan-500/20',
+        zinc: 'text-zinc-350 bg-zinc-800/60 border-zinc-700/60',
+        red: 'text-red-405 bg-red-650/10 border-red-500/20',
+        orange: 'text-orange-450 bg-orange-650/10 border-orange-500/20',
+    };
+
+    return {
+        label: label.charAt(0).toUpperCase() + label.slice(1),
+        emoji: emoji || '📌',
+        color: colorMap[colorName.toLowerCase()] || colorMap.zinc,
+    };
 };
 
 export default function KanbanBoard() {
@@ -144,6 +200,46 @@ export default function KanbanBoard() {
     const [laneSearchQuery, setLaneSearchQuery] = useState('');
     const [editingCat, setEditingCat] = useState<string | null>(null);
     const [editCatValue, setEditCatValue] = useState<string>('');
+
+    const [showCategoryManager, setShowCategoryManager] = useState(false);
+    const [catManagerView, setCatManagerView] = useState<'list' | 'add' | 'edit'>('list');
+    const [catName, setCatName] = useState('');
+    const [catEmoji, setCatEmoji] = useState('📌');
+    const [catColorIdx, setCatColorIdx] = useState(6);
+    const [editingCatId, setEditingCatId] = useState<string | null>(null);
+
+    const handleSaveCategory = () => {
+        if (!catName.trim()) return;
+        const colorPreset = COLOR_PRESETS[catColorIdx] || COLOR_PRESETS[0];
+        const colorName = colorPreset.name.toLowerCase();
+        const formatted = `${catEmoji.trim() || '📌'} ${catName.trim()}|${colorName}`;
+        
+        const currentCats = data.categories ?? ['code', 'art', 'audio', 'qa', 'other'];
+        if (catManagerView === 'add') {
+            setCategories([...currentCats, formatted]);
+        } else if (catManagerView === 'edit' && editingCatId) {
+            setCategories(currentCats.map(c => c === editingCatId ? formatted : c));
+            setTasks((prevTasks) =>
+                prevTasks.map((t) => (t.category === editingCatId ? { ...t, category: formatted as TaskCategory } : t))
+            );
+            if (filterCats.includes(editingCatId as TaskCategory)) {
+                setFilterCats(filterCats.map(c => c === editingCatId ? (formatted as TaskCategory) : c));
+            }
+        }
+        setCatManagerView('list');
+    };
+
+    const handleDeleteCategory = (catToDelete: string) => {
+        const currentCats = data.categories ?? ['code', 'art', 'audio', 'qa', 'other'];
+        if (currentCats.length <= 1) return;
+        const updatedCats = currentCats.filter(c => c !== catToDelete);
+        setCategories(updatedCats);
+        setFilterCats(filterCats.filter(c => c !== catToDelete));
+        const fallbackCat = updatedCats[0];
+        setTasks((prevTasks) =>
+            prevTasks.map((t) => (t.category === catToDelete ? { ...t, category: fallbackCat as TaskCategory } : t))
+        );
+    };
 
     const handleRenameCategory = (oldCat: string, newCat: string) => {
         const cleanNew = newCat.trim();
@@ -566,9 +662,22 @@ export default function KanbanBoard() {
                             <>
                                 <div className="fixed inset-0 z-40" onClick={() => setShowCategoriesDropdown(false)} />
                                 <div className="absolute left-0 mt-2 z-50 bg-zinc-950/95 backdrop-blur border border-zinc-800 rounded-xl shadow-2xl w-60 p-2.5 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                                    <p className="text-[10px] font-bold text-zinc-550 uppercase tracking-widest px-1 pb-1.5 border-b border-zinc-900/60 font-sans">
-                                        Filter by Category
-                                    </p>
+                                    <div className="flex items-center justify-between px-1 pb-1.5 border-b border-zinc-900/60 font-sans">
+                                        <span className="text-[10px] font-bold text-zinc-555 uppercase tracking-widest">
+                                            Filter by Category
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowCategoriesDropdown(false);
+                                                setCatManagerView('list');
+                                                setShowCategoryManager(true);
+                                            }}
+                                            className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer transition-all hover:underline"
+                                        >
+                                            <Settings className="w-3 h-3" /> Manage
+                                        </button>
+                                    </div>
                                     <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin-dark pr-1">
                                         {categories.map((cat) => {
                                             const isSelected = filterCats.includes(cat);
@@ -1161,6 +1270,192 @@ export default function KanbanBoard() {
                 }}
                 onCancel={() => setConfirmDeleteColId(null)}
             />
+
+            {showCategoryManager && (
+                <div 
+                    className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+                    onClick={(e) => { if (e.target === e.currentTarget && catManagerView === 'list') setShowCategoryManager(false); }}
+                >
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh] overflow-hidden">
+                        
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
+                            <h3 className="text-sm font-extrabold text-white uppercase tracking-wider font-sans">
+                                {catManagerView === 'list' && 'Manage Categories'}
+                                {catManagerView === 'add' && 'Add Category'}
+                                {catManagerView === 'edit' && 'Edit Category'}
+                            </h3>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    if (catManagerView !== 'list') setCatManagerView('list');
+                                    else setShowCategoryManager(false);
+                                }}
+                                className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        
+                        {/* List View */}
+                        {catManagerView === 'list' && (
+                            <>
+                                <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
+                                    <div className="space-y-2">
+                                        {categories.map((cat) => {
+                                            const { label, emoji, color } = getCategoryStyles(cat);
+                                            return (
+                                                <div key={cat} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
+                                                    <div className="flex items-center gap-3 font-sans">
+                                                        <span className="text-lg">{emoji}</span>
+                                                        <span className={cn("text-sm font-bold", color.split(' ').find(c => c.startsWith('text-')))}>{label}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingCatId(cat);
+                                                                setCatName(label);
+                                                                setCatEmoji(emoji);
+                                                                
+                                                                let colorName = 'zinc';
+                                                                if (cat.includes('|')) {
+                                                                    colorName = cat.split('|')[1] || 'zinc';
+                                                                } else {
+                                                                    const defaultColors: Record<string, string> = {
+                                                                        code: 'blue',
+                                                                        art: 'violet',
+                                                                        audio: 'emerald',
+                                                                        qa: 'orange',
+                                                                        other: 'zinc'
+                                                                    };
+                                                                    colorName = defaultColors[cat] || 'zinc';
+                                                                }
+                                                                const idx = COLOR_PRESETS.findIndex(p => p.name.toLowerCase() === colorName.toLowerCase());
+                                                                setCatColorIdx(idx >= 0 ? idx : 6);
+                                                                
+                                                                setCatManagerView('edit');
+                                                            }}
+                                                            className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
+                                                            title="Edit category"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5 text-zinc-500" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteCategory(cat)}
+                                                            className="p-1.5 text-zinc-550 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                                            title="Delete category"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5 text-zinc-500" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCatName('');
+                                            setCatEmoji('📌');
+                                            setCatColorIdx(6); // default to Zinc
+                                            setEditingCatId(null);
+                                            setCatManagerView('add');
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all cursor-pointer"
+                                    >
+                                        <Plus className="w-4 h-4" /> Add Custom Category
+                                    </button>
+                                </div>
+                                <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowCategoryManager(false)} 
+                                        className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-850 transition-all cursor-pointer"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                        
+                        {/* Form View (Add / Edit) */}
+                        {(catManagerView === 'add' || catManagerView === 'edit') && (
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
+                                    {/* Name & Emoji input */}
+                                    <div className="flex gap-3">
+                                        <div className="w-20">
+                                            <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-1.5 font-sans">Emoji</label>
+                                            <input
+                                                type="text"
+                                                maxLength={4}
+                                                value={catEmoji}
+                                                onChange={(e) => setCatEmoji(e.target.value)}
+                                                placeholder="📌"
+                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-center text-white text-sm placeholder:text-zinc-655 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-sans font-semibold"
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-1.5 font-sans">Category Name</label>
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                value={catName}
+                                                onChange={(e) => setCatName(e.target.value)}
+                                                placeholder="e.g. Physics"
+                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-white text-sm placeholder:text-zinc-655 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-sans font-semibold"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Color Preset Pick */}
+                                    <div>
+                                        <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-2 font-sans">Color Theme</label>
+                                        <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5 justify-center">
+                                            {COLOR_PRESETS.map((preset, idx) => (
+                                                <button
+                                                    key={preset.name}
+                                                    type="button"
+                                                    onClick={() => setCatColorIdx(idx)}
+                                                    className={cn(
+                                                        'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer',
+                                                        preset.bg,
+                                                        catColorIdx === idx ? 'border-white scale-110' : 'border-transparent'
+                                                    )}
+                                                    title={preset.name}
+                                                >
+                                                    <span className={cn('w-3.5 h-3.5 rounded-full bg-current', preset.color)} />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setCatManagerView('list')} 
+                                        className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-850 transition-all cursor-pointer"
+                                    >
+                                        Back
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={handleSaveCategory}
+                                        className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-all shadow-lg shadow-blue-650/10 cursor-pointer"
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

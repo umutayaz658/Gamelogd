@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-    Plus, ExternalLink, X, Pencil, Trash2, Tag, Link2, StickyNote, ChevronDown, Check, FileText
+    Plus, ExternalLink, X, Pencil, Trash2, Tag, Link2, StickyNote, ChevronDown, Check, FileText, Settings
 } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
@@ -108,7 +108,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                                 onClick={onManageCategories}
                                 className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
                             >
-                                <ChevronDown className="w-3 h-3 inline rotate-185" /> Customize
+                                <Settings className="w-3.5 h-3.5" /> Manage
                             </button>
                         </div>
                         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1 scrollbar-thin-dark">
@@ -363,18 +363,18 @@ function CategoryManagerModal({ categories: initialCategories, onSave, onClose }
                                 </div>
                             </div>
                             
-                            <div className="flex gap-3 pt-4 border-t border-zinc-850">
+                            <div className="flex gap-3 pt-4 border-t border-zinc-800">
                                 <button
                                     type="button"
                                     onClick={() => setView('manage')}
-                                    className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all"
+                                    className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={!catName.trim()}
-                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40"
+                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40 cursor-pointer"
                                 >
                                     {view === 'add_category' ? 'Add Category' : 'Save Changes'}
                                 </button>
