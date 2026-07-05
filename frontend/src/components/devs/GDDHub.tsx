@@ -2188,7 +2188,7 @@ export default function GDDHub() {
                                     <div className="flex items-center gap-2 mb-3">
                                         <span className="text-base">{cat.emoji}</span>
                                         <h3 className={cn('text-sm font-bold', cat.color)}>{cat.label}</h3>
-                                        <span className="text-[10px] font-bold text-zinc-550 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">{sectionDocs.length}</span>
+                                        <span className="text-[10px] font-bold text-zinc-500 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">{sectionDocs.length}</span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                                         {sectionDocs.map(doc => {
