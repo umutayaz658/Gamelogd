@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, PlusCircle, X, Check, Search, Filter, GripVertical, Edit2, Trash2, ChevronDown, Tag, Settings } from 'lucide-react';
+import { Plus, PlusCircle, X, Check, Search, Filter, GripVertical, Edit2, Trash2, ChevronDown, Tag, Settings, Pencil } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { Task, KanbanColumn, TaskPriority, TaskCategory, CATEGORY_EMOJI } from './WorkspaceTypes';
@@ -42,9 +42,70 @@ const getCategoryLabel = (cat: string) => {
         code: 'Code', art: 'Art', audio: 'Audio', qa: 'QA', other: 'Other'
     };
     if (labels[cat] !== undefined) return labels[cat];
+    
+    let clean = cat;
+    if (cat.includes('|')) {
+        clean = cat.split('|')[0];
+    }
     const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
-    const label = cat.replace(emojiRegex, '');
+    const label = clean.replace(emojiRegex, '');
     return label.charAt(0).toUpperCase() + label.slice(1);
+};
+
+const COLOR_PRESETS = [
+    { name: 'Blue',     color: 'text-blue-400',    bg: 'bg-blue-500/10 border-blue-500/20' },
+    { name: 'Violet',   color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
+    { name: 'Amber',    color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
+    { name: 'Pink',     color: 'text-pink-400',    bg: 'bg-pink-500/10 border-pink-500/20' },
+    { name: 'Emerald',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+    { name: 'Cyan',     color: 'text-cyan-400',    bg: 'bg-cyan-500/10 border-cyan-500/20' },
+    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-700/20 border-zinc-700/30' },
+    { name: 'Red',      color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/20' },
+    { name: 'Orange',   color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/20' },
+];
+
+const getCategoryStyles = (cat: string) => {
+    const styles: Record<string, { label: string; emoji: string; color: string }> = {
+        code: { label: 'Code', emoji: '💻', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
+        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30' },
+    };
+    if (styles[cat] !== undefined) return styles[cat];
+
+    let colorName = 'zinc';
+    let baseCat = cat;
+    if (cat.includes('|')) {
+        const parts = cat.split('|');
+        baseCat = parts[0];
+        colorName = parts[1] || 'zinc';
+    }
+
+    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u;
+    const match = baseCat.match(emojiRegex);
+    const emoji = match ? match[0] : '';
+
+    const labelRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
+    const label = baseCat.replace(labelRegex, '');
+
+    const colorMap: Record<string, string> = {
+        blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+        violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+        amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+        pink: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
+        emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+        cyan: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+        zinc: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30',
+        red: 'text-red-400 bg-red-500/10 border-red-500/20',
+        orange: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+    };
+
+    return {
+        label: label.charAt(0).toUpperCase() + label.slice(1),
+        emoji: emoji || '📌',
+        color: colorMap[colorName.toLowerCase()] || colorMap.zinc,
+    };
 };
 
 export default function KanbanBoard() {
@@ -139,6 +200,46 @@ export default function KanbanBoard() {
     const [laneSearchQuery, setLaneSearchQuery] = useState('');
     const [editingCat, setEditingCat] = useState<string | null>(null);
     const [editCatValue, setEditCatValue] = useState<string>('');
+
+    const [showCategoryManager, setShowCategoryManager] = useState(false);
+    const [catManagerView, setCatManagerView] = useState<'list' | 'add' | 'edit'>('list');
+    const [catName, setCatName] = useState('');
+    const [catEmoji, setCatEmoji] = useState('📌');
+    const [catColorIdx, setCatColorIdx] = useState(6);
+    const [editingCatId, setEditingCatId] = useState<string | null>(null);
+
+    const handleSaveCategory = () => {
+        if (!catName.trim()) return;
+        const colorPreset = COLOR_PRESETS[catColorIdx] || COLOR_PRESETS[0];
+        const colorName = colorPreset.name.toLowerCase();
+        const formatted = `${catEmoji.trim() || '📌'} ${catName.trim()}|${colorName}`;
+        
+        const currentCats = data.categories ?? ['code', 'art', 'audio', 'qa', 'other'];
+        if (catManagerView === 'add') {
+            setCategories([...currentCats, formatted]);
+        } else if (catManagerView === 'edit' && editingCatId) {
+            setCategories(currentCats.map(c => c === editingCatId ? formatted : c));
+            setTasks((prevTasks) =>
+                prevTasks.map((t) => (t.category === editingCatId ? { ...t, category: formatted as TaskCategory } : t))
+            );
+            if (filterCats.includes(editingCatId as TaskCategory)) {
+                setFilterCats(filterCats.map(c => c === editingCatId ? (formatted as TaskCategory) : c));
+            }
+        }
+        setCatManagerView('list');
+    };
+
+    const handleDeleteCategory = (catToDelete: string) => {
+        const currentCats = data.categories ?? ['code', 'art', 'audio', 'qa', 'other'];
+        if (currentCats.length <= 1) return;
+        const updatedCats = currentCats.filter(c => c !== catToDelete);
+        setCategories(updatedCats);
+        setFilterCats(filterCats.filter(c => c !== catToDelete));
+        const fallbackCat = updatedCats[0];
+        setTasks((prevTasks) =>
+            prevTasks.map((t) => (t.category === catToDelete ? { ...t, category: fallbackCat as TaskCategory } : t))
+        );
+    };
 
     const handleRenameCategory = (oldCat: string, newCat: string) => {
         const cleanNew = newCat.trim();
@@ -560,121 +661,53 @@ export default function KanbanBoard() {
                         {showCategoriesDropdown && (
                             <>
                                 <div className="fixed inset-0 z-40" onClick={() => setShowCategoriesDropdown(false)} />
-                                <div className="absolute left-0 mt-2 z-50 bg-zinc-950/95 backdrop-blur border border-zinc-800 rounded-xl shadow-2xl w-64 p-3 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                                    <p className="text-[10px] font-bold text-zinc-550 uppercase tracking-widest px-1 pb-1.5 border-b border-zinc-900/60 font-sans">
-                                        Filter by Category
-                                    </p>
-                                    <div className="space-y-1.5 max-h-44 overflow-y-auto scrollbar-thin-dark pr-1">
+                                <div className="absolute left-0 mt-2 z-50 bg-zinc-950/95 backdrop-blur border border-zinc-800 rounded-xl shadow-2xl w-60 p-2.5 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                                    <div className="flex items-center justify-between px-1 pb-1.5 border-b border-zinc-900/60 font-sans">
+                                        <span className="text-[10px] font-bold text-zinc-555 uppercase tracking-widest">
+                                            Filter by Category
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowCategoriesDropdown(false);
+                                                setCatManagerView('list');
+                                                setShowCategoryManager(true);
+                                            }}
+                                            className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer transition-all hover:underline"
+                                        >
+                                            <Settings className="w-3 h-3" /> Manage
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin-dark pr-1">
                                         {categories.map((cat) => {
                                             const isSelected = filterCats.includes(cat);
-                                            const isDefault = ['code', 'art', 'audio', 'qa', 'other'].includes(cat);
                                             const label = getCategoryLabel(cat);
                                             const emoji = getCategoryEmoji(cat);
                                             
-                                            if (editingCat === cat) {
-                                                return (
-                                                    <div key={cat} className="flex items-center gap-1.5 py-0.5 w-full">
-                                                        <input
-                                                            autoFocus
-                                                            value={editCatValue}
-                                                            onChange={(e) => setEditCatValue(e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    handleRenameCategory(cat, editCatValue);
-                                                                    setEditingCat(null);
-                                                                }
-                                                                if (e.key === 'Escape') setEditingCat(null);
-                                                            }}
-                                                            onBlur={() => {
-                                                                handleRenameCategory(cat, editCatValue);
-                                                                setEditingCat(null);
-                                                            }}
-                                                            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500 font-sans font-semibold"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                handleRenameCategory(cat, editCatValue);
-                                                                setEditingCat(null);
-                                                            }}
-                                                            className="text-blue-400 hover:text-blue-300 p-0.5"
-                                                        >
-                                                            <Check className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                );
-                                            }
-
                                             return (
-                                                <div key={cat} className="flex items-center justify-between group/tag py-0.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setFilterCats(prev =>
-                                                                prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-                                                            );
-                                                        }}
-                                                        className="flex items-center gap-2 text-left text-xs text-zinc-300 hover:text-white flex-1 min-w-0 font-sans"
-                                                    >
-                                                        <div className={cn(
-                                                            "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors",
-                                                            isSelected ? "bg-blue-650 border-blue-500" : "border-zinc-700 bg-zinc-900"
-                                                        )}>
-                                                            {isSelected && <Check className="w-2.5 h-2.5 text-white stroke-[3px]" />}
-                                                        </div>
-                                                        <span className="truncate">
-                                                            {emoji ? `${emoji} ` : ''}{label}
-                                                        </span>
-                                                    </button>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover/tag:opacity-100 transition-opacity">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setEditingCat(cat);
-                                                                setEditCatValue(cat);
-                                                            }}
-                                                            className="text-zinc-550 hover:text-blue-450 p-0.5 rounded transition-all"
-                                                            title="Rename Category"
-                                                        >
-                                                            <Edit2 className="w-3 h-3" />
-                                                        </button>
-                                                        {!isDefault && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleDeleteCustomTag(cat)}
-                                                                className="text-zinc-655 hover:text-red-400 p-0.5 rounded transition-all"
-                                                                title="Delete Tag"
-                                                            >
-                                                                <Trash2 className="w-3 h-3" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                <button
+                                                    key={cat}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFilterCats(prev =>
+                                                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                                                        );
+                                                    }}
+                                                    className={cn(
+                                                        "w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold text-left transition-all cursor-pointer",
+                                                        isSelected
+                                                            ? "bg-blue-600/10 text-blue-400 font-bold"
+                                                            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                                                    )}
+                                                >
+                                                    <span className="flex items-center gap-2 font-sans">
+                                                        <span className="text-sm">{emoji || '📌'}</span>
+                                                        <span>{label}</span>
+                                                    </span>
+                                                    {isSelected && <Check className="w-3.5 h-3.5" />}
+                                                </button>
                                             );
                                         })}
-                                    </div>
-                                    {/* Add Custom Tag Input */}
-                                    <div className="pt-2 border-t border-zinc-900/60 flex items-center gap-1.5">
-                                        <input
-                                            type="text"
-                                            placeholder="Add tag..."
-                                            value={newTagInput}
-                                            onChange={(e) => setNewTagInput(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    handleAddCustomTag();
-                                                }
-                                            }}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/50 font-sans"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleAddCustomTag}
-                                            className="bg-blue-600 hover:bg-blue-500 text-white p-1 rounded-lg transition-colors flex items-center justify-center"
-                                        >
-                                            <Plus className="w-3.5 h-3.5" />
-                                        </button>
                                     </div>
                                 </div>
                             </>
@@ -954,120 +987,126 @@ export default function KanbanBoard() {
                                 >
                                     {/* Column Header (Draggable for reordering) */}
                                     <div
-                                        draggable
+                                        draggable={renamingColId !== col.id}
                                         onDragStart={(e) => handleColDragStart(e, col.id)}
                                         className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800/60 flex-shrink-0 cursor-grab active:cursor-grabbing bg-zinc-900/60 hover:bg-zinc-900 transition-colors"
                                     >
-                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                            <GripVertical className="w-3 h-3 text-zinc-655 flex-shrink-0" />
-                                            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', col.dotColor)} />
-                                            {renamingColId === col.id ? (
-                                                <div className="flex items-center gap-1 flex-1">
-                                                    <input
-                                                        autoFocus
-                                                        value={renameValue}
-                                                        onChange={(e) => setRenameValue(e.target.value)}
-                                                        onBlur={() => handleRenameColumn(col.id)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') handleRenameColumn(col.id);
-                                                            if (e.key === 'Escape') setRenamingColId(null);
-                                                        }}
-                                                        className="flex-1 min-w-0 bg-zinc-800 border border-zinc-600 rounded-lg px-2 py-0.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                                                    />
-                                                    <button onClick={() => handleRenameColumn(col.id)}
-                                                        className="text-blue-400 hover:text-blue-300 p-0.5">
-                                                        <Check className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <button
-                                                    onDoubleClick={() => {
-                                                        setRenamingColId(col.id);
-                                                        setRenameValue(col.label);
-                                                    }}
-                                                    className="text-sm font-bold text-zinc-300 truncate text-left flex items-center gap-1.5 group/title"
-                                                    title="Double-click to rename"
-                                                >
-                                                    <span>{col.label}</span>
-                                                    <Edit2 className="w-3 h-3 text-zinc-605 opacity-0 group-hover/title:opacity-100 transition-opacity" />
-                                                </button>
-                                            )}
-                                            
-                                            {/* WIP Limit Display and Editing */}
-                                            {editingWipColId === col.id ? (
+                                        {renamingColId === col.id ? (
+                                            <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
                                                 <input
                                                     autoFocus
-                                                    type="text"
-                                                    value={wipLimitValue}
-                                                    placeholder="Limit"
-                                                    onChange={(e) => setWipLimitValue(e.target.value.replace(/\D/g, ''))}
-                                                    onBlur={() => {
-                                                        const limit = parseInt(wipLimitValue, 10);
-                                                        setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
-                                                        setEditingWipColId(null);
-                                                    }}
+                                                    value={renameValue}
+                                                    onChange={(e) => setRenameValue(e.target.value)}
+                                                    onBlur={() => handleRenameColumn(col.id)}
                                                     onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const limit = parseInt(wipLimitValue, 10);
-                                                            setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
-                                                            setEditingWipColId(null);
-                                                        }
-                                                        if (e.key === 'Escape') setEditingWipColId(null);
+                                                        if (e.key === 'Enter') handleRenameColumn(col.id);
+                                                        if (e.key === 'Escape') setRenamingColId(null);
                                                     }}
-                                                    className="w-14 bg-zinc-950 border border-zinc-750 focus:border-blue-500/80 rounded-lg px-2 py-0.5 text-[10px] font-bold text-center text-white focus:outline-none focus:ring-1 focus:ring-blue-500/20 shadow-inner"
+                                                    className="flex-1 min-w-0 bg-zinc-800 border border-zinc-650 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 font-sans"
                                                 />
-                                            ) : (
-                                                <span
-                                                    onDoubleClick={() => {
-                                                        setEditingWipColId(col.id);
-                                                        setWipLimitValue(col.wipLimit?.toString() ?? '');
-                                                    }}
-                                                    className={cn(
-                                                        "text-[10px] px-1.5 py-0.5 rounded-full font-bold cursor-pointer hover:bg-zinc-700/80 transition-colors select-none",
-                                                        isWipExceeded
-                                                            ? "bg-red-500/25 text-red-400 font-extrabold ring-1 ring-red-500/40"
-                                                            : "bg-zinc-800 text-zinc-500"
-                                                    )}
-                                                    title="Double-click to set WIP limit"
-                                                >
-                                                    {colTasks.length}{col.wipLimit !== undefined ? `/${col.wipLimit}` : ''}
-                                                </span>
-                                            )}
-                                            {totalSP > 0 && (
-                                                <span className="text-[9px] bg-zinc-850/80 border border-zinc-800 text-zinc-550 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">
-                                                    {totalSP} SP
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-                                            {/* Column Limit Edit Trigger */}
-                                            <button
-                                                onClick={() => {
-                                                    setEditingWipColId(col.id);
-                                                    setWipLimitValue(col.wipLimit?.toString() ?? '');
-                                                }}
-                                                className="text-zinc-600 hover:text-amber-405 p-0.5 rounded hover:bg-amber-500/10 transition-all"
-                                                title="Set WIP Limit"
-                                            >
-                                                <Settings className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={() => { setCreateColumnId(col.id); setShowCreateModal(true); }}
-                                                className="text-zinc-655 hover:text-blue-400 p-1 rounded-lg hover:bg-blue-500/10 transition-all"
-                                                title="Add task to this column"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" />
-                                            </button>
-                                            {columns.length > 1 && (
-                                                <button
-                                                    onClick={() => handleDeleteColumn(col.id)}
-                                                    className="text-zinc-700 hover:text-red-400 p-1 rounded-lg hover:bg-red-500/10 transition-all"
-                                                    title="Delete column"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                <button onClick={() => handleRenameColumn(col.id)}
+                                                    className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-zinc-800/60">
+                                                    <Check className="w-3.5 h-3.5" />
                                                 </button>
-                                            )}
-                                        </div>
+                                                <button onClick={() => setRenamingColId(null)}
+                                                    className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800/60">
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                    <GripVertical className="w-3 h-3 text-zinc-655 flex-shrink-0" />
+                                                    <span className={cn('w-2 h-2 rounded-full flex-shrink-0', col.dotColor)} />
+                                                    <button
+                                                        onDoubleClick={() => {
+                                                            setRenamingColId(col.id);
+                                                            setRenameValue(col.label);
+                                                        }}
+                                                        className="text-sm font-bold text-zinc-300 truncate text-left flex items-center gap-1.5 group/title"
+                                                        title="Double-click to rename"
+                                                    >
+                                                        <span>{col.label}</span>
+                                                        <Edit2 className="w-3 h-3 text-zinc-605 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                                                    </button>
+                                                    
+                                                    {/* WIP Limit Display and Editing */}
+                                                    {editingWipColId === col.id ? (
+                                                        <input
+                                                            autoFocus
+                                                            type="text"
+                                                            value={wipLimitValue}
+                                                            placeholder="Limit"
+                                                            onChange={(e) => setWipLimitValue(e.target.value.replace(/\D/g, ''))}
+                                                            onBlur={() => {
+                                                                const limit = parseInt(wipLimitValue, 10);
+                                                                setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
+                                                                setEditingWipColId(null);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    const limit = parseInt(wipLimitValue, 10);
+                                                                    setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
+                                                                    setEditingWipColId(null);
+                                                                }
+                                                                if (e.key === 'Escape') setEditingWipColId(null);
+                                                            }}
+                                                            className="w-14 bg-zinc-950 border border-zinc-750 focus:border-blue-500/80 rounded-lg px-2 py-0.5 text-[10px] font-bold text-center text-white focus:outline-none focus:ring-1 focus:ring-blue-500/20 shadow-inner"
+                                                        />
+                                                    ) : (
+                                                        <span
+                                                            onDoubleClick={() => {
+                                                                setEditingWipColId(col.id);
+                                                                setWipLimitValue(col.wipLimit?.toString() ?? '');
+                                                            }}
+                                                            className={cn(
+                                                                "text-[10px] px-1.5 py-0.5 rounded-full font-bold cursor-pointer hover:bg-zinc-700/80 transition-colors select-none",
+                                                                isWipExceeded
+                                                                    ? "bg-red-500/25 text-red-400 font-extrabold ring-1 ring-red-500/40"
+                                                                    : "bg-zinc-800 text-zinc-500"
+                                                            )}
+                                                            title="Double-click to set WIP limit"
+                                                        >
+                                                            {colTasks.length}{col.wipLimit !== undefined ? `/${col.wipLimit}` : ''}
+                                                        </span>
+                                                    )}
+                                                    {totalSP > 0 && (
+                                                        <span className="text-[9px] bg-zinc-850/80 border border-zinc-800 text-zinc-550 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">
+                                                            {totalSP} SP
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                                                    {/* Column Limit Edit Trigger */}
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingWipColId(col.id);
+                                                            setWipLimitValue(col.wipLimit?.toString() ?? '');
+                                                        }}
+                                                        className="text-zinc-600 hover:text-amber-405 p-0.5 rounded hover:bg-amber-500/10 transition-all"
+                                                        title="Set WIP Limit"
+                                                    >
+                                                        <Settings className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setCreateColumnId(col.id); setShowCreateModal(true); }}
+                                                        className="text-zinc-655 hover:text-blue-400 p-1 rounded-lg hover:bg-blue-500/10 transition-all"
+                                                        title="Add task to this column"
+                                                    >
+                                                        <Plus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    {columns.length > 1 && (
+                                                        <button
+                                                            onClick={() => handleDeleteColumn(col.id)}
+                                                            className="text-zinc-700 hover:text-red-400 p-1 rounded-lg hover:bg-red-500/10 transition-all"
+                                                            title="Delete column"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
                                     {/* Tasks List */}
@@ -1231,6 +1270,192 @@ export default function KanbanBoard() {
                 }}
                 onCancel={() => setConfirmDeleteColId(null)}
             />
+
+            {showCategoryManager && (
+                <div 
+                    className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+                    onClick={(e) => { if (e.target === e.currentTarget && catManagerView === 'list') setShowCategoryManager(false); }}
+                >
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh] overflow-hidden">
+                        
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
+                            <h3 className="text-sm font-extrabold text-white uppercase tracking-wider font-sans">
+                                {catManagerView === 'list' && 'Manage Categories'}
+                                {catManagerView === 'add' && 'Add Category'}
+                                {catManagerView === 'edit' && 'Edit Category'}
+                            </h3>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    if (catManagerView !== 'list') setCatManagerView('list');
+                                    else setShowCategoryManager(false);
+                                }}
+                                className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        
+                        {/* List View */}
+                        {catManagerView === 'list' && (
+                            <>
+                                <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
+                                    <div className="space-y-2">
+                                        {categories.map((cat) => {
+                                            const { label, emoji, color } = getCategoryStyles(cat);
+                                            return (
+                                                <div key={cat} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
+                                                    <div className="flex items-center gap-3 font-sans">
+                                                        <span className="text-lg">{emoji}</span>
+                                                        <span className={cn("text-sm font-bold", color.split(' ').find(c => c.startsWith('text-')))}>{label}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingCatId(cat);
+                                                                setCatName(label);
+                                                                setCatEmoji(emoji);
+                                                                
+                                                                let colorName = 'zinc';
+                                                                if (cat.includes('|')) {
+                                                                    colorName = cat.split('|')[1] || 'zinc';
+                                                                } else {
+                                                                    const defaultColors: Record<string, string> = {
+                                                                        code: 'blue',
+                                                                        art: 'violet',
+                                                                        audio: 'emerald',
+                                                                        qa: 'orange',
+                                                                        other: 'zinc'
+                                                                    };
+                                                                    colorName = defaultColors[cat] || 'zinc';
+                                                                }
+                                                                const idx = COLOR_PRESETS.findIndex(p => p.name.toLowerCase() === colorName.toLowerCase());
+                                                                setCatColorIdx(idx >= 0 ? idx : 6);
+                                                                
+                                                                setCatManagerView('edit');
+                                                            }}
+                                                            className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer"
+                                                            title="Edit category"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5 text-zinc-500" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteCategory(cat)}
+                                                            className="p-1.5 text-zinc-550 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                                            title="Delete category"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5 text-zinc-500" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCatName('');
+                                            setCatEmoji('📌');
+                                            setCatColorIdx(6); // default to Zinc
+                                            setEditingCatId(null);
+                                            setCatManagerView('add');
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all cursor-pointer"
+                                    >
+                                        <Plus className="w-4 h-4" /> Add Custom Category
+                                    </button>
+                                </div>
+                                <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowCategoryManager(false)} 
+                                        className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-850 transition-all cursor-pointer"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                        
+                        {/* Form View (Add / Edit) */}
+                        {(catManagerView === 'add' || catManagerView === 'edit') && (
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
+                                    {/* Name & Emoji input */}
+                                    <div className="flex gap-3">
+                                        <div className="w-20">
+                                            <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-1.5 font-sans">Emoji</label>
+                                            <input
+                                                type="text"
+                                                maxLength={4}
+                                                value={catEmoji}
+                                                onChange={(e) => setCatEmoji(e.target.value)}
+                                                placeholder="📌"
+                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-center text-white text-sm placeholder:text-zinc-655 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-sans font-semibold"
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-1.5 font-sans">Category Name</label>
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                value={catName}
+                                                onChange={(e) => setCatName(e.target.value)}
+                                                placeholder="e.g. Physics"
+                                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-white text-sm placeholder:text-zinc-655 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-sans font-semibold"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Color Preset Pick */}
+                                    <div>
+                                        <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-2 font-sans">Color Theme</label>
+                                        <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5 justify-center">
+                                            {COLOR_PRESETS.map((preset, idx) => (
+                                                <button
+                                                    key={preset.name}
+                                                    type="button"
+                                                    onClick={() => setCatColorIdx(idx)}
+                                                    className={cn(
+                                                        'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer',
+                                                        preset.bg,
+                                                        catColorIdx === idx ? 'border-white scale-110' : 'border-transparent'
+                                                    )}
+                                                    title={preset.name}
+                                                >
+                                                    <span className={cn('w-3.5 h-3.5 rounded-full bg-current', preset.color)} />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setCatManagerView('list')} 
+                                        className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-850 transition-all cursor-pointer"
+                                    >
+                                        Back
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={handleSaveCategory}
+                                        className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-all shadow-lg shadow-blue-650/10 cursor-pointer"
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
