@@ -42,8 +42,13 @@ const getCategoryLabel = (cat: string) => {
         code: 'Code', art: 'Art', audio: 'Audio', qa: 'QA', other: 'Other'
     };
     if (labels[cat] !== undefined) return labels[cat];
+    
+    let clean = cat;
+    if (cat.includes('|')) {
+        clean = cat.split('|')[0];
+    }
     const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
-    const label = cat.replace(emojiRegex, '');
+    const label = clean.replace(emojiRegex, '');
     return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
@@ -560,121 +565,40 @@ export default function KanbanBoard() {
                         {showCategoriesDropdown && (
                             <>
                                 <div className="fixed inset-0 z-40" onClick={() => setShowCategoriesDropdown(false)} />
-                                <div className="absolute left-0 mt-2 z-50 bg-zinc-950/95 backdrop-blur border border-zinc-800 rounded-xl shadow-2xl w-64 p-3 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                                <div className="absolute left-0 mt-2 z-50 bg-zinc-950/95 backdrop-blur border border-zinc-800 rounded-xl shadow-2xl w-60 p-2.5 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
                                     <p className="text-[10px] font-bold text-zinc-550 uppercase tracking-widest px-1 pb-1.5 border-b border-zinc-900/60 font-sans">
                                         Filter by Category
                                     </p>
-                                    <div className="space-y-1.5 max-h-44 overflow-y-auto scrollbar-thin-dark pr-1">
+                                    <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin-dark pr-1">
                                         {categories.map((cat) => {
                                             const isSelected = filterCats.includes(cat);
-                                            const isDefault = ['code', 'art', 'audio', 'qa', 'other'].includes(cat);
                                             const label = getCategoryLabel(cat);
                                             const emoji = getCategoryEmoji(cat);
                                             
-                                            if (editingCat === cat) {
-                                                return (
-                                                    <div key={cat} className="flex items-center gap-1.5 py-0.5 w-full">
-                                                        <input
-                                                            autoFocus
-                                                            value={editCatValue}
-                                                            onChange={(e) => setEditCatValue(e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    handleRenameCategory(cat, editCatValue);
-                                                                    setEditingCat(null);
-                                                                }
-                                                                if (e.key === 'Escape') setEditingCat(null);
-                                                            }}
-                                                            onBlur={() => {
-                                                                handleRenameCategory(cat, editCatValue);
-                                                                setEditingCat(null);
-                                                            }}
-                                                            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500 font-sans font-semibold"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                handleRenameCategory(cat, editCatValue);
-                                                                setEditingCat(null);
-                                                            }}
-                                                            className="text-blue-400 hover:text-blue-300 p-0.5"
-                                                        >
-                                                            <Check className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                );
-                                            }
-
                                             return (
-                                                <div key={cat} className="flex items-center justify-between group/tag py-0.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setFilterCats(prev =>
-                                                                prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-                                                            );
-                                                        }}
-                                                        className="flex items-center gap-2 text-left text-xs text-zinc-300 hover:text-white flex-1 min-w-0 font-sans"
-                                                    >
-                                                        <div className={cn(
-                                                            "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors",
-                                                            isSelected ? "bg-blue-650 border-blue-500" : "border-zinc-700 bg-zinc-900"
-                                                        )}>
-                                                            {isSelected && <Check className="w-2.5 h-2.5 text-white stroke-[3px]" />}
-                                                        </div>
-                                                        <span className="truncate">
-                                                            {emoji ? `${emoji} ` : ''}{label}
-                                                        </span>
-                                                    </button>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover/tag:opacity-100 transition-opacity">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setEditingCat(cat);
-                                                                setEditCatValue(cat);
-                                                            }}
-                                                            className="text-zinc-550 hover:text-blue-450 p-0.5 rounded transition-all"
-                                                            title="Rename Category"
-                                                        >
-                                                            <Edit2 className="w-3 h-3" />
-                                                        </button>
-                                                        {!isDefault && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleDeleteCustomTag(cat)}
-                                                                className="text-zinc-655 hover:text-red-400 p-0.5 rounded transition-all"
-                                                                title="Delete Tag"
-                                                            >
-                                                                <Trash2 className="w-3 h-3" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                <button
+                                                    key={cat}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFilterCats(prev =>
+                                                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                                                        );
+                                                    }}
+                                                    className={cn(
+                                                        "w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold text-left transition-all cursor-pointer",
+                                                        isSelected
+                                                            ? "bg-blue-600/10 text-blue-400 font-bold"
+                                                            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                                                    )}
+                                                >
+                                                    <span className="flex items-center gap-2 font-sans">
+                                                        <span className="text-sm">{emoji || '📌'}</span>
+                                                        <span>{label}</span>
+                                                    </span>
+                                                    {isSelected && <Check className="w-3.5 h-3.5" />}
+                                                </button>
                                             );
                                         })}
-                                    </div>
-                                    {/* Add Custom Tag Input */}
-                                    <div className="pt-2 border-t border-zinc-900/60 flex items-center gap-1.5">
-                                        <input
-                                            type="text"
-                                            placeholder="Add tag..."
-                                            value={newTagInput}
-                                            onChange={(e) => setNewTagInput(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    handleAddCustomTag();
-                                                }
-                                            }}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/50 font-sans"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleAddCustomTag}
-                                            className="bg-blue-600 hover:bg-blue-500 text-white p-1 rounded-lg transition-colors flex items-center justify-center"
-                                        >
-                                            <Plus className="w-3.5 h-3.5" />
-                                        </button>
                                     </div>
                                 </div>
                             </>
