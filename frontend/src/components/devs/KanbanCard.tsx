@@ -29,20 +29,43 @@ const getCategoryLabel = (cat: string) => {
         code: 'Code', art: 'Art', audio: 'Audio', qa: 'QA', other: 'Other'
     };
     if (labels[cat] !== undefined) return labels[cat];
+    
+    let clean = cat;
+    if (cat.includes('|')) {
+        clean = cat.split('|')[0];
+    }
     const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
-    const label = cat.replace(emojiRegex, '');
+    const label = clean.replace(emojiRegex, '');
     return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
 const getCategoryColor = (cat: string) => {
     const colors: Record<string, string> = {
-        code: 'text-blue-400',
-        art: 'text-violet-400',
-        audio: 'text-emerald-400',
-        qa: 'text-orange-400',
+        code: 'text-blue-450',
+        art: 'text-violet-450',
+        audio: 'text-emerald-450',
+        qa: 'text-orange-405',
         other: 'text-zinc-400',
     };
-    return colors[cat] || 'text-zinc-400';
+    if (colors[cat] !== undefined) return colors[cat];
+    
+    if (cat.includes('|')) {
+        const parts = cat.split('|');
+        const colorName = parts[1];
+        const colorMap: Record<string, string> = {
+            blue: 'text-blue-405',
+            violet: 'text-violet-405',
+            amber: 'text-amber-455',
+            pink: 'text-pink-405',
+            emerald: 'text-emerald-450',
+            cyan: 'text-cyan-405',
+            zinc: 'text-zinc-400',
+            red: 'text-red-405',
+            orange: 'text-orange-405',
+        };
+        if (colorMap[colorName]) return colorMap[colorName];
+    }
+    return 'text-zinc-400';
 };
 
 export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps) {
