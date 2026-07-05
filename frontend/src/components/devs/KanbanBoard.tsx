@@ -954,120 +954,126 @@ export default function KanbanBoard() {
                                 >
                                     {/* Column Header (Draggable for reordering) */}
                                     <div
-                                        draggable
+                                        draggable={renamingColId !== col.id}
                                         onDragStart={(e) => handleColDragStart(e, col.id)}
                                         className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800/60 flex-shrink-0 cursor-grab active:cursor-grabbing bg-zinc-900/60 hover:bg-zinc-900 transition-colors"
                                     >
-                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                            <GripVertical className="w-3 h-3 text-zinc-655 flex-shrink-0" />
-                                            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', col.dotColor)} />
-                                            {renamingColId === col.id ? (
-                                                <div className="flex items-center gap-1 flex-1">
-                                                    <input
-                                                        autoFocus
-                                                        value={renameValue}
-                                                        onChange={(e) => setRenameValue(e.target.value)}
-                                                        onBlur={() => handleRenameColumn(col.id)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') handleRenameColumn(col.id);
-                                                            if (e.key === 'Escape') setRenamingColId(null);
-                                                        }}
-                                                        className="flex-1 min-w-0 bg-zinc-800 border border-zinc-600 rounded-lg px-2 py-0.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                                                    />
-                                                    <button onClick={() => handleRenameColumn(col.id)}
-                                                        className="text-blue-400 hover:text-blue-300 p-0.5">
-                                                        <Check className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <button
-                                                    onDoubleClick={() => {
-                                                        setRenamingColId(col.id);
-                                                        setRenameValue(col.label);
-                                                    }}
-                                                    className="text-sm font-bold text-zinc-300 truncate text-left flex items-center gap-1.5 group/title"
-                                                    title="Double-click to rename"
-                                                >
-                                                    <span>{col.label}</span>
-                                                    <Edit2 className="w-3 h-3 text-zinc-605 opacity-0 group-hover/title:opacity-100 transition-opacity" />
-                                                </button>
-                                            )}
-                                            
-                                            {/* WIP Limit Display and Editing */}
-                                            {editingWipColId === col.id ? (
+                                        {renamingColId === col.id ? (
+                                            <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
                                                 <input
                                                     autoFocus
-                                                    type="text"
-                                                    value={wipLimitValue}
-                                                    placeholder="Limit"
-                                                    onChange={(e) => setWipLimitValue(e.target.value.replace(/\D/g, ''))}
-                                                    onBlur={() => {
-                                                        const limit = parseInt(wipLimitValue, 10);
-                                                        setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
-                                                        setEditingWipColId(null);
-                                                    }}
+                                                    value={renameValue}
+                                                    onChange={(e) => setRenameValue(e.target.value)}
+                                                    onBlur={() => handleRenameColumn(col.id)}
                                                     onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const limit = parseInt(wipLimitValue, 10);
-                                                            setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
-                                                            setEditingWipColId(null);
-                                                        }
-                                                        if (e.key === 'Escape') setEditingWipColId(null);
+                                                        if (e.key === 'Enter') handleRenameColumn(col.id);
+                                                        if (e.key === 'Escape') setRenamingColId(null);
                                                     }}
-                                                    className="w-14 bg-zinc-950 border border-zinc-750 focus:border-blue-500/80 rounded-lg px-2 py-0.5 text-[10px] font-bold text-center text-white focus:outline-none focus:ring-1 focus:ring-blue-500/20 shadow-inner"
+                                                    className="flex-1 min-w-0 bg-zinc-800 border border-zinc-650 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 font-sans"
                                                 />
-                                            ) : (
-                                                <span
-                                                    onDoubleClick={() => {
-                                                        setEditingWipColId(col.id);
-                                                        setWipLimitValue(col.wipLimit?.toString() ?? '');
-                                                    }}
-                                                    className={cn(
-                                                        "text-[10px] px-1.5 py-0.5 rounded-full font-bold cursor-pointer hover:bg-zinc-700/80 transition-colors select-none",
-                                                        isWipExceeded
-                                                            ? "bg-red-500/25 text-red-400 font-extrabold ring-1 ring-red-500/40"
-                                                            : "bg-zinc-800 text-zinc-500"
-                                                    )}
-                                                    title="Double-click to set WIP limit"
-                                                >
-                                                    {colTasks.length}{col.wipLimit !== undefined ? `/${col.wipLimit}` : ''}
-                                                </span>
-                                            )}
-                                            {totalSP > 0 && (
-                                                <span className="text-[9px] bg-zinc-850/80 border border-zinc-800 text-zinc-550 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">
-                                                    {totalSP} SP
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-                                            {/* Column Limit Edit Trigger */}
-                                            <button
-                                                onClick={() => {
-                                                    setEditingWipColId(col.id);
-                                                    setWipLimitValue(col.wipLimit?.toString() ?? '');
-                                                }}
-                                                className="text-zinc-600 hover:text-amber-405 p-0.5 rounded hover:bg-amber-500/10 transition-all"
-                                                title="Set WIP Limit"
-                                            >
-                                                <Settings className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={() => { setCreateColumnId(col.id); setShowCreateModal(true); }}
-                                                className="text-zinc-655 hover:text-blue-400 p-1 rounded-lg hover:bg-blue-500/10 transition-all"
-                                                title="Add task to this column"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" />
-                                            </button>
-                                            {columns.length > 1 && (
-                                                <button
-                                                    onClick={() => handleDeleteColumn(col.id)}
-                                                    className="text-zinc-700 hover:text-red-400 p-1 rounded-lg hover:bg-red-500/10 transition-all"
-                                                    title="Delete column"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                <button onClick={() => handleRenameColumn(col.id)}
+                                                    className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-zinc-800/60">
+                                                    <Check className="w-3.5 h-3.5" />
                                                 </button>
-                                            )}
-                                        </div>
+                                                <button onClick={() => setRenamingColId(null)}
+                                                    className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800/60">
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                    <GripVertical className="w-3 h-3 text-zinc-655 flex-shrink-0" />
+                                                    <span className={cn('w-2 h-2 rounded-full flex-shrink-0', col.dotColor)} />
+                                                    <button
+                                                        onDoubleClick={() => {
+                                                            setRenamingColId(col.id);
+                                                            setRenameValue(col.label);
+                                                        }}
+                                                        className="text-sm font-bold text-zinc-300 truncate text-left flex items-center gap-1.5 group/title"
+                                                        title="Double-click to rename"
+                                                    >
+                                                        <span>{col.label}</span>
+                                                        <Edit2 className="w-3 h-3 text-zinc-605 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                                                    </button>
+                                                    
+                                                    {/* WIP Limit Display and Editing */}
+                                                    {editingWipColId === col.id ? (
+                                                        <input
+                                                            autoFocus
+                                                            type="text"
+                                                            value={wipLimitValue}
+                                                            placeholder="Limit"
+                                                            onChange={(e) => setWipLimitValue(e.target.value.replace(/\D/g, ''))}
+                                                            onBlur={() => {
+                                                                const limit = parseInt(wipLimitValue, 10);
+                                                                setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
+                                                                setEditingWipColId(null);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    const limit = parseInt(wipLimitValue, 10);
+                                                                    setColumns(columns.map((c) => c.id === col.id ? { ...c, wipLimit: isNaN(limit) || limit <= 0 ? undefined : limit } : c));
+                                                                    setEditingWipColId(null);
+                                                                }
+                                                                if (e.key === 'Escape') setEditingWipColId(null);
+                                                            }}
+                                                            className="w-14 bg-zinc-950 border border-zinc-750 focus:border-blue-500/80 rounded-lg px-2 py-0.5 text-[10px] font-bold text-center text-white focus:outline-none focus:ring-1 focus:ring-blue-500/20 shadow-inner"
+                                                        />
+                                                    ) : (
+                                                        <span
+                                                            onDoubleClick={() => {
+                                                                setEditingWipColId(col.id);
+                                                                setWipLimitValue(col.wipLimit?.toString() ?? '');
+                                                            }}
+                                                            className={cn(
+                                                                "text-[10px] px-1.5 py-0.5 rounded-full font-bold cursor-pointer hover:bg-zinc-700/80 transition-colors select-none",
+                                                                isWipExceeded
+                                                                    ? "bg-red-500/25 text-red-400 font-extrabold ring-1 ring-red-500/40"
+                                                                    : "bg-zinc-800 text-zinc-500"
+                                                            )}
+                                                            title="Double-click to set WIP limit"
+                                                        >
+                                                            {colTasks.length}{col.wipLimit !== undefined ? `/${col.wipLimit}` : ''}
+                                                        </span>
+                                                    )}
+                                                    {totalSP > 0 && (
+                                                        <span className="text-[9px] bg-zinc-850/80 border border-zinc-800 text-zinc-550 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">
+                                                            {totalSP} SP
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                                                    {/* Column Limit Edit Trigger */}
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingWipColId(col.id);
+                                                            setWipLimitValue(col.wipLimit?.toString() ?? '');
+                                                        }}
+                                                        className="text-zinc-600 hover:text-amber-405 p-0.5 rounded hover:bg-amber-500/10 transition-all"
+                                                        title="Set WIP Limit"
+                                                    >
+                                                        <Settings className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setCreateColumnId(col.id); setShowCreateModal(true); }}
+                                                        className="text-zinc-655 hover:text-blue-400 p-1 rounded-lg hover:bg-blue-500/10 transition-all"
+                                                        title="Add task to this column"
+                                                    >
+                                                        <Plus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    {columns.length > 1 && (
+                                                        <button
+                                                            onClick={() => handleDeleteColumn(col.id)}
+                                                            className="text-zinc-700 hover:text-red-400 p-1 rounded-lg hover:bg-red-500/10 transition-all"
+                                                            title="Delete column"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
                                     {/* Tasks List */}
