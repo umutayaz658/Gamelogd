@@ -53,24 +53,24 @@ const getCategoryLabel = (cat: string) => {
 };
 
 const COLOR_PRESETS = [
-    { name: 'Blue',     color: 'text-blue-405',    bg: 'bg-blue-650/10 border-blue-500/20' },
-    { name: 'Violet',   color: 'text-violet-405',  bg: 'bg-violet-650/10 border-violet-500/20' },
-    { name: 'Amber',    color: 'text-amber-455',   bg: 'bg-amber-650/10 border-amber-500/20' },
-    { name: 'Pink',     color: 'text-pink-450',    bg: 'bg-pink-650/10 border-pink-500/20' },
-    { name: 'Emerald',  color: 'text-emerald-450', bg: 'bg-emerald-650/10 border-emerald-500/20' },
-    { name: 'Cyan',     color: 'text-cyan-405',    bg: 'bg-cyan-650/10 border-cyan-500/20' },
-    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-800/60 border-zinc-700/60' },
-    { name: 'Red',      color: 'text-red-405',     bg: 'bg-red-650/10 border-red-500/20' },
-    { name: 'Orange',   color: 'text-orange-450',  bg: 'bg-orange-650/10 border-orange-500/20' },
+    { name: 'Blue',     color: 'text-blue-400',    bg: 'bg-blue-500/10 border-blue-500/20' },
+    { name: 'Violet',   color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
+    { name: 'Amber',    color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
+    { name: 'Pink',     color: 'text-pink-400',    bg: 'bg-pink-500/10 border-pink-500/20' },
+    { name: 'Emerald',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+    { name: 'Cyan',     color: 'text-cyan-400',    bg: 'bg-cyan-500/10 border-cyan-500/20' },
+    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-700/20 border-zinc-700/30' },
+    { name: 'Red',      color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/20' },
+    { name: 'Orange',   color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/20' },
 ];
 
 const getCategoryStyles = (cat: string) => {
     const styles: Record<string, { label: string; emoji: string; color: string }> = {
-        code: { label: 'Code', emoji: '💻', color: 'text-blue-400/90 bg-blue-600/10 border-blue-500/30' },
-        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400/90 bg-violet-600/10 border-violet-500/30' },
-        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400/90 bg-emerald-600/10 border-emerald-500/30' },
-        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400/90 bg-orange-600/10 border-orange-500/30' },
-        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-800 border-zinc-700' },
+        code: { label: 'Code', emoji: '💻', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
+        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30' },
     };
     if (styles[cat] !== undefined) return styles[cat];
 
@@ -90,15 +90,15 @@ const getCategoryStyles = (cat: string) => {
     const label = baseCat.replace(labelRegex, '');
 
     const colorMap: Record<string, string> = {
-        blue: 'text-blue-405 bg-blue-650/10 border-blue-500/20',
-        violet: 'text-violet-405 bg-violet-650/10 border-violet-500/20',
-        amber: 'text-amber-455 bg-amber-650/10 border-amber-500/20',
-        pink: 'text-pink-450 bg-pink-650/10 border-pink-500/20',
-        emerald: 'text-emerald-450 bg-emerald-650/10 border-emerald-500/20',
-        cyan: 'text-cyan-405 bg-cyan-650/10 border-cyan-500/20',
-        zinc: 'text-zinc-350 bg-zinc-800/60 border-zinc-700/60',
-        red: 'text-red-405 bg-red-650/10 border-red-500/20',
-        orange: 'text-orange-450 bg-orange-650/10 border-orange-500/20',
+        blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+        violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+        amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+        pink: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
+        emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+        cyan: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+        zinc: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30',
+        red: 'text-red-400 bg-red-500/10 border-red-500/20',
+        orange: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
     };
 
     return {

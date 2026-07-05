@@ -29,11 +29,11 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
 
 const getCategoryStyles = (cat: string) => {
     const styles: Record<string, { label: string; emoji: string; color: string }> = {
-        code: { label: 'Code', emoji: '💻', color: 'text-blue-405 bg-blue-600/10 border-blue-500/30' },
-        art: { label: 'Art', emoji: '🎨', color: 'text-violet-405 bg-violet-600/10 border-violet-500/30' },
-        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-450 bg-emerald-600/10 border-emerald-500/30' },
-        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-405 bg-orange-600/10 border-orange-500/30' },
-        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-800 border-zinc-705' },
+        code: { label: 'Code', emoji: '💻', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
+        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30' },
     };
     if (styles[cat] !== undefined) return styles[cat];
 
@@ -53,21 +53,21 @@ const getCategoryStyles = (cat: string) => {
     const label = baseCat.replace(labelRegex, '');
 
     const colorMap: Record<string, string> = {
-        blue: 'text-blue-405 bg-blue-650/10 border-blue-500/30',
-        violet: 'text-violet-405 bg-violet-650/10 border-violet-500/30',
-        amber: 'text-amber-455 bg-amber-650/10 border-amber-500/30',
-        pink: 'text-pink-450 bg-pink-650/10 border-pink-500/30',
-        emerald: 'text-emerald-450 bg-emerald-650/10 border-emerald-500/30',
-        cyan: 'text-cyan-405 bg-cyan-650/10 border-cyan-500/30',
-        zinc: 'text-zinc-350 bg-zinc-800/60 border-zinc-700/60',
-        red: 'text-red-405 bg-red-650/10 border-red-500/30',
-        orange: 'text-orange-450 bg-orange-650/10 border-orange-500/30',
+        blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+        violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+        amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+        pink: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
+        emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+        cyan: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+        zinc: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30',
+        red: 'text-red-400 bg-red-500/10 border-red-500/20',
+        orange: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
     };
 
     return {
         label: label.charAt(0).toUpperCase() + label.slice(1),
         emoji: emoji || '📌',
-        color: colorMap[colorName] || colorMap['zinc'],
+        color: colorMap[colorName.toLowerCase()] || colorMap.zinc,
     };
 };
 
