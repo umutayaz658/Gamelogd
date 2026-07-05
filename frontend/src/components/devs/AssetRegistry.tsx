@@ -248,7 +248,7 @@ function CategoryManagerModal({ categories: initialCategories, onSave, onClose }
                 {view === 'manage' && (
                     <>
                         <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
-                            <h2 className="text-lg font-bold text-white">Customize Categories</h2>
+                            <h3 className="text-sm font-extrabold text-white uppercase tracking-wider font-sans">Manage Categories</h3>
                             <button onClick={onClose} className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all">
                                 <X className="w-4 h-4" />
                             </button>
@@ -257,7 +257,7 @@ function CategoryManagerModal({ categories: initialCategories, onSave, onClose }
                         <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
                             <div className="space-y-2">
                                 {cats.map((cat) => (
-                                    <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-805 rounded-xl p-3">
+                                    <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
                                         <div className="flex items-center gap-3">
                                             <span className="text-lg">{cat.emoji || '📌'}</span>
                                             <span className={cn("text-sm font-bold", getTextColorOnly(cat.color))}>{cat.label}</span>
@@ -987,7 +987,7 @@ export default function AssetRegistry() {
                 />
             )}
 
-            {/* Customize Categories Modal */}
+            {/* Manage Categories Modal */}
             {showCategoryManager && (
                 <CategoryManagerModal
                     categories={categories}
