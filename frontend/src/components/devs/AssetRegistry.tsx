@@ -852,7 +852,7 @@ export default function AssetRegistry() {
 
                                             {/* Footer */}
                                             <div className="flex items-center justify-between pt-3 border-t border-zinc-800/40 mt-1">
-                                                <span className="text-[9px] text-zinc-650">Added {asset.addedAt} by @{asset.addedBy}</span>
+                                                <span className="text-[9px] text-zinc-500">Added {asset.addedAt} by @{asset.addedBy}</span>
                                                 <a
                                                     href={asset.link}
                                                     target="_blank"
@@ -932,7 +932,7 @@ export default function AssetRegistry() {
                                         </div>
 
                                         <div className="flex items-center justify-between pt-3 border-t border-zinc-800/40 mt-1">
-                                            <span className="text-[9px] text-zinc-655">Added {asset.addedAt} by @{asset.addedBy}</span>
+                                            <span className="text-[9px] text-zinc-500">Added {asset.addedAt} by @{asset.addedBy}</span>
                                             <a
                                                 href={asset.link}
                                                 target="_blank"
