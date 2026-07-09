@@ -15,6 +15,7 @@ const renderContentWithLinks = (content: string | undefined) => {
     if (!content) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const hashtagRegex = /(#[a-zA-Z0-9_]+)/g;
+    const mentionRegex = /(@[a-zA-Z0-9_-]+)/g;
     
     const urlParts = content.split(urlRegex);
     
@@ -49,7 +50,24 @@ const renderContentWithLinks = (content: string | undefined) => {
                     </Link>
                 );
             }
-            return hashtagPart;
+            
+            const mentionParts = hashtagPart.split(mentionRegex);
+            return mentionParts.map((mentionPart, mentionIndex) => {
+                if (mentionPart.match(mentionRegex)) {
+                    const username = mentionPart.slice(1);
+                    return (
+                        <Link
+                            key={`mention-${urlIndex}-${hashtagIndex}-${mentionIndex}`}
+                            href={`/${username}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-emerald-500 hover:text-emerald-400 font-bold hover:underline"
+                        >
+                            {mentionPart}
+                        </Link>
+                    );
+                }
+                return mentionPart;
+            });
         });
     });
 };

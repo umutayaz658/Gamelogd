@@ -8,6 +8,43 @@ RESERVED_USERNAMES = [
     'static', 'home', 'news', 'devs', 'invest', 'u', 'user'
 ]
 
+def get_request_cache(request):
+    if not request:
+        return None
+    if not hasattr(request, '_user_relations_cache'):
+        cache = {
+            'following_ids': set(),
+            'requested_ids': set(),
+            'requested_me_ids': set(),
+            'blocked_ids': set(),
+            'blocked_me_ids': set(),
+            'liked_post_ids': set(),
+            'bookmarked_post_ids': set(),
+            'reposted_post_ids': set(),
+            'liked_review_ids': set(),
+            'bookmarked_review_ids': set(),
+            'liked_news_ids': set(),
+            'bookmarked_news_ids': set(),
+        }
+        if request.user.is_authenticated:
+            from api.models import Follow, FollowRequest, Block
+            from core.models import Like, Bookmark, Post
+            cache['following_ids'] = set(Follow.objects.filter(follower=request.user).values_list('following_id', flat=True))
+            cache['requested_ids'] = set(FollowRequest.objects.filter(sender=request.user).values_list('receiver_id', flat=True))
+            cache['requested_me_ids'] = set(FollowRequest.objects.filter(receiver=request.user).values_list('sender_id', flat=True))
+            cache['blocked_ids'] = set(Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True))
+            cache['blocked_me_ids'] = set(Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True))
+            
+            cache['liked_post_ids'] = set(Like.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
+            cache['bookmarked_post_ids'] = set(Bookmark.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
+            cache['reposted_post_ids'] = set(Post.objects.filter(user=request.user, repost_parent__isnull=False).values_list('repost_parent_id', flat=True))
+            cache['liked_review_ids'] = set(Like.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
+            cache['bookmarked_review_ids'] = set(Bookmark.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
+            cache['liked_news_ids'] = set(Like.objects.filter(user=request.user, news__isnull=False).values_list('news_id', flat=True))
+            cache['bookmarked_news_ids'] = set(Bookmark.objects.filter(user=request.user, news__isnull=False).values_list('news_id', flat=True))
+        request._user_relations_cache = cache
+    return request._user_relations_cache
+
 class InterestSerializer(serializers.ModelSerializer):
     class Meta:
         model = Interest
@@ -53,9 +90,9 @@ class UserSerializer(serializers.ModelSerializer):
         is_private = instance.settings.get('privateProfile', False)
         is_owner = request and request.user.is_authenticated and request.user.id == instance.id
         is_following = False
-        if request and request.user.is_authenticated:
-            from api.models import Follow
-            is_following = Follow.objects.filter(follower=request.user, following=instance).exists()
+        cache = get_request_cache(request)
+        if cache:
+            is_following = instance.id in cache['following_ids']
 
         if is_private and not is_owner and not is_following:
             sensitive_fields = [
@@ -83,52 +120,63 @@ class UserSerializer(serializers.ModelSerializer):
              raise serializers.ValidationError("Username contains invalid characters.")
         return value
     
-    followers_count = serializers.IntegerField(source='followers.count', read_only=True)
-    following_count = serializers.IntegerField(source='following.count', read_only=True)
-    reviews_count = serializers.IntegerField(source='reviews.count', read_only=True)
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
     is_requested = serializers.SerializerMethodField()
     has_requested_me = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
     has_blocked_me = serializers.SerializerMethodField()
 
+    def get_followers_count(self, obj):
+        if self.parent is not None:
+            return 0
+        return obj.followers.count()
+
+    def get_following_count(self, obj):
+        if self.parent is not None:
+            return 0
+        return obj.following.count()
+
+    def get_reviews_count(self, obj):
+        if self.parent is not None:
+            return 0
+        return obj.reviews.count()
+
     def get_is_following(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            # Check if request.user is following obj
-            # Follow model: follower=request.user, following=obj
-            from api.models import Follow
-            return Follow.objects.filter(follower=request.user, following=obj).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['following_ids']
         return False
 
     def get_is_requested(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            from api.models import FollowRequest
-            return FollowRequest.objects.filter(sender=request.user, receiver=obj).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['requested_ids']
         return False
 
     def get_has_requested_me(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            from api.models import FollowRequest
-            return FollowRequest.objects.filter(sender=obj, receiver=request.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['requested_me_ids']
         return False
 
     def get_is_blocked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            # Check if request.user has blocked obj
-            from api.models import Block
-            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['blocked_ids']
         return False
 
     def get_has_blocked_me(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            # Check if obj has blocked request.user
-            from api.models import Block
-            return Block.objects.filter(blocker=obj, blocked=request.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['blocked_me_ids']
         return False
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -351,14 +399,16 @@ class ReviewSerializer(serializers.ModelSerializer):
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Bookmark.objects.filter(user=request.user, review=obj).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['bookmarked_review_ids']
         return False
 
     def get_is_liked_by_user(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.likes.filter(user=request.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['liked_review_ids']
         return False
 
     def validate(self, data):
@@ -382,9 +432,9 @@ class ReviewSerializer(serializers.ModelSerializer):
         is_private = instance.user.settings.get('privateProfile', False)
         is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
         is_following = False
-        if request and request.user.is_authenticated:
-            from api.models import Follow
-            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            is_following = instance.user.id in cache['following_ids']
             
         if is_private and not is_owner and not is_following:
             representation['content'] = "This review is from a private account."
@@ -440,9 +490,9 @@ class SimplePostSerializer(serializers.ModelSerializer):
         is_private = instance.user.settings.get('privateProfile', False)
         is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
         is_following = False
-        if request and request.user.is_authenticated:
-            from api.models import Follow
-            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            is_following = instance.user.id in cache['following_ids']
             
         if is_private and not is_owner and not is_following:
             representation['content'] = "This post is from a private account."
@@ -526,14 +576,16 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.likes.filter(user=request.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['liked_post_ids']
         return False
 
     def get_is_reposted(self, obj):
-        user = self.context.get('request').user
-        if user.is_authenticated:
-            return obj.reposts.filter(user=user).exists()
+        request = self.context.get('request')
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['reposted_post_ids']
         return False
 
     def get_repost_details(self, obj):
@@ -548,8 +600,9 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.bookmarks.filter(user=request.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['bookmarked_post_ids']
         return False
 
     def get_review_details(self, obj):
@@ -616,9 +669,9 @@ class PostSerializer(serializers.ModelSerializer):
         is_private = instance.user.settings.get('privateProfile', False)
         is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
         is_following = False
-        if request and request.user.is_authenticated:
-            from api.models import Follow
-            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            is_following = instance.user.id in cache['following_ids']
             
         if is_private and not is_owner and not is_following:
             representation['content'] = "This post is from a private account."
@@ -748,9 +801,9 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
         is_private = instance.user.settings.get('privateProfile', False)
         is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
         is_following = False
-        if request and request.user.is_authenticated:
-            from api.models import Follow
-            is_following = Follow.objects.filter(follower=request.user, following=instance.user).exists()
+        cache = get_request_cache(request)
+        if cache:
+            is_following = instance.user.id in cache['following_ids']
             
         if is_private and not is_owner and not is_following:
             representation['playtime_forever'] = 0
@@ -791,14 +844,16 @@ class NewsSerializer(serializers.ModelSerializer):
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Like.objects.filter(user=request.user, news=obj).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['liked_news_ids']
         return False
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Bookmark.objects.filter(user=request.user, news=obj).exists()
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['bookmarked_news_ids']
         return False
 class MessageReactionSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
