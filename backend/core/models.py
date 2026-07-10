@@ -44,7 +44,7 @@ class Review(models.Model):
     # Replay tracking
     playthrough_number = models.PositiveIntegerField(default=1)
     
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ('user', 'game', 'playthrough_number')

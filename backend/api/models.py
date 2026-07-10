@@ -150,7 +150,7 @@ class Notification(models.Model):
     target = GenericForeignKey('target_type', 'target_id')
     
     is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -186,6 +186,23 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 verb='commented on your review',
                 target=instance
             )
+        
+        # 3. Handle mentions
+        import re
+        mentions = re.findall(r'@([a-zA-Z0-9_-]+)', instance.content or '')
+        for username in set(mentions):
+            if username.lower() == instance.user.username.lower():
+                continue
+            try:
+                mentioned_user = User.objects.get(username__iexact=username)
+                Notification.objects.create(
+                    recipient=mentioned_user,
+                    actor=instance.user,
+                    verb='mentioned you in a post',
+                    target=instance
+                )
+            except User.DoesNotExist:
+                pass
 
 @receiver(post_save, sender='core.Like')
 def create_like_notification(sender, instance, created, **kwargs):
@@ -255,7 +272,7 @@ class Message(models.Model):
     sender = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='sent_messages', on_delete=models.CASCADE)
     content = models.TextField(blank=True, default='')
     is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     
     # Attachments
     image = models.ImageField(upload_to='messages/', null=True, blank=True)
