@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import Link from 'next/link';
 
 interface ImageModalProps {
     isOpen: boolean;
@@ -17,23 +18,61 @@ interface ImageModalProps {
 const renderContentWithLinks = (content: string | undefined) => {
     if (!content) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = content.split(urlRegex);
-    return parts.map((part, index) => {
-        if (part.match(urlRegex)) {
+    const hashtagRegex = /(#[a-zA-Z0-9_]+)/g;
+    const mentionRegex = /(@[a-zA-Z0-9_-]+)/g;
+    
+    const urlParts = content.split(urlRegex);
+    
+    return urlParts.map((urlPart, urlIndex) => {
+        if (urlPart.match(urlRegex)) {
             return (
                 <a
-                    key={index}
-                    href={part}
+                    key={`url-${urlIndex}`}
+                    href={urlPart}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
                     className="text-emerald-500 hover:text-emerald-400 hover:underline break-all font-medium"
                 >
-                    {part}
+                    {urlPart}
                 </a>
             );
         }
-        return part;
+        
+        const hashtagParts = urlPart.split(hashtagRegex);
+        return hashtagParts.map((hashtagPart, hashtagIndex) => {
+            if (hashtagPart.match(hashtagRegex)) {
+                const cleanTag = hashtagPart.slice(1);
+                return (
+                    <Link
+                        key={`tag-${urlIndex}-${hashtagIndex}`}
+                        href={`/explore?hashtag=${cleanTag}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-emerald-500 hover:text-emerald-400 font-bold hover:underline"
+                    >
+                        {hashtagPart}
+                    </Link>
+                );
+            }
+            
+            const mentionParts = hashtagPart.split(mentionRegex);
+            return mentionParts.map((mentionPart, mentionIndex) => {
+                if (mentionPart.match(mentionRegex)) {
+                    const username = mentionPart.slice(1);
+                    return (
+                        <Link
+                            key={`mention-${urlIndex}-${hashtagIndex}-${mentionIndex}`}
+                            href={`/${username}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-emerald-500 hover:text-emerald-400 font-bold hover:underline"
+                        >
+                            {mentionPart}
+                        </Link>
+                    );
+                }
+                return mentionPart;
+            });
+        });
     });
 };
 
