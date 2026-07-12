@@ -72,7 +72,7 @@ const getCategoryStyles = (cat: string) => {
 };
 
 export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onDelete }: TaskDetailsModalProps) {
-    const { data, logActivity, activeWorkspace, activeBoard } = useWorkspace();
+    const { data, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
     
     const [editingTitle, setEditingTitle] = useState(false);
@@ -125,19 +125,10 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
         }
 
         const orgMembers = activeWorkspace.org?.members ?? [];
-        if (orgMembers.length > 0) {
-            return orgMembers.map((m: any) => ({
-                username: m.user.username,
-                real_name: m.user.real_name || m.user.username,
-                avatar: m.user.avatar ?? undefined,
-            }));
-        }
-
-        const localTeam = data?.teamMembers ?? [];
-        return localTeam.map((m) => ({
-            username: m.username,
-            real_name: m.username,
-            avatar: m.avatar,
+        return orgMembers.map((m: any) => ({
+            username: m.user.username,
+            real_name: m.user.real_name || m.user.username,
+            avatar: m.user.avatar ?? undefined,
         }));
     };
 
@@ -195,12 +186,6 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
         };
         update({ comments: [...task.comments, c] });
         setNewComment('');
-    };
-
-    const isManagerOrAdmin = () => {
-        if (activeWorkspace.type === 'solo') return true;
-        const currentMember = activeWorkspace.org?.members?.find((m: any) => m.user.username === user?.username);
-        return currentMember?.role === 'owner' || currentMember?.role === 'admin';
     };
 
     const handleDeleteComment = (commentId: string) => {
@@ -460,7 +445,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                         const displayName = c.authorName || (isYou ? (user?.real_name || user?.username) : c.author);
                                         const avatarUrl = c.authorAvatar || (isYou ? user?.avatar : undefined);
                                         const canEdit = isYou;
-                                        const canDelete = isYou || isManagerOrAdmin();
+                                        const canDelete = isYou || hasPermission('kanban.comment.delete_any');
 
                                         return (
                                             <div key={c.id} className="flex gap-3 bg-zinc-900/25 border border-zinc-900/60 p-3 rounded-xl group/comment animate-in fade-in duration-100">

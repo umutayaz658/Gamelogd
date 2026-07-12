@@ -75,6 +75,39 @@ class Organisation(models.Model):
     def __str__(self):
         return self.name
 
+class Role(models.Model):
+    """
+    Custom role: a named bundle of granular permission-key strings (see
+    api.permission_catalog.PERMISSION_CATALOG). When `project` is null, this
+    is an organisation-wide role (assignable on OrganisationMember and, via
+    legacy-role fallback, implicitly to the org owner/admins across every
+    project). When `project` is set, this role belongs to that single
+    project only and is assignable exclusively to that project's
+    ProjectMember rows — organisation roles and project roles are
+    intentionally separate catalogs, never interchangeable.
+    """
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='roles')
+    project = models.ForeignKey('Project', on_delete=models.CASCADE, null=True, blank=True, related_name='roles')
+    name = models.CharField(max_length=100)
+    description = models.CharField(max_length=255, blank=True, default='')
+    permissions = models.JSONField(default=list, blank=True)
+    is_system = models.BooleanField(default=False)
+    is_default_for = models.CharField(max_length=20, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'name'], condition=models.Q(project__isnull=True), name='unique_org_role_name'),
+            models.UniqueConstraint(fields=['project', 'name'], condition=models.Q(project__isnull=False), name='unique_project_role_name'),
+        ]
+        ordering = ['-is_system', 'name']
+
+    def __str__(self):
+        scope = self.project.title if self.project_id else self.organisation.name
+        return f"{self.name} ({scope})"
+
+
 class OrganisationMember(models.Model):
     ROLE_CHOICES = [
         ('owner', 'Owner'),
@@ -84,6 +117,7 @@ class OrganisationMember(models.Model):
     organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organisation_memberships')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
+    custom_role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='org_member_assignments')
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -104,6 +138,7 @@ class OrganisationInvitation(models.Model):
     organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='invitations')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organisation_invitations')
     role = models.CharField(max_length=20, choices=OrganisationMember.ROLE_CHOICES, default='member')
+    custom_role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='org_invitation_assignments')
     invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_organisation_invitations')
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -156,6 +191,7 @@ class ProjectMember(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='project_memberships')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='participant')
+    custom_role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='project_member_assignments')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 

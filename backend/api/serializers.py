@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
+from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 RESERVED_USERNAMES = [
@@ -914,16 +914,61 @@ class BookmarkSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Bookmark must target exactly one item (post, review, or news).")
         return super().create(validated_data)
 
+class RoleSerializer(serializers.ModelSerializer):
+    organisation = serializers.PrimaryKeyRelatedField(queryset=Organisation.objects.all(), required=False)
+
+    class Meta:
+        model = Role
+        fields = ['id', 'organisation', 'project', 'name', 'description', 'permissions', 'is_system', 'is_default_for', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'is_system', 'is_default_for', 'created_at', 'updated_at']
+        # DRF auto-generates a UniqueTogetherValidator from Role.Meta.constraints, which forces
+        # every field in the constraint (including `organisation`) to be present in the raw
+        # request — before our own validate() below gets a chance to derive `organisation` from
+        # `project`. We replace that automatic check with an equivalent manual one instead.
+        validators = []
+
+    def validate(self, attrs):
+        project = attrs.get('project', self.instance.project if self.instance else None)
+        organisation = attrs.get('organisation', self.instance.organisation if self.instance else None)
+        if project is not None:
+            if project.organisation_id is None:
+                raise serializers.ValidationError({"project": "Personal (org-less) projects don't support custom roles."})
+            # A project-scoped role always belongs to that project's own organisation —
+            # derive it rather than trusting a possibly-mismatched client-supplied value.
+            attrs['organisation'] = organisation = project.organisation
+        elif organisation is None:
+            raise serializers.ValidationError({"organisation": "This field is required when no project is given."})
+
+        name = attrs.get('name', self.instance.name if self.instance else None)
+        clash = Role.objects.filter(organisation=organisation, project=project, name=name)
+        if self.instance:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise serializers.ValidationError({"name": "A role with this name already exists in this scope."})
+        return attrs
+
+
 class ProjectMemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='user', write_only=True
     )
+    custom_role_details = RoleSerializer(source='custom_role', read_only=True)
 
     class Meta:
         model = ProjectMember
-        fields = ['id', 'project', 'user', 'user_id', 'role', 'status', 'created_at']
+        fields = ['id', 'project', 'user', 'user_id', 'role', 'custom_role', 'custom_role_details', 'status', 'created_at']
         read_only_fields = ['id', 'status', 'created_at']
+
+    def validate_custom_role(self, value):
+        if value is None:
+            return value
+        project = self.instance.project if self.instance else self.initial_data.get('project')
+        if isinstance(project, (int, str)):
+            project = Project.objects.filter(id=project).first()
+        if project and value.project_id != project.id:
+            raise serializers.ValidationError("This role does not belong to this project.")
+        return value
 
 class ProjectSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
@@ -1002,11 +1047,22 @@ class OrganisationMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='user', write_only=True
     )
-    
+    custom_role_details = RoleSerializer(source='custom_role', read_only=True)
+
     class Meta:
         model = OrganisationMember
-        fields = ['id', 'organisation', 'user', 'user_id', 'role', 'joined_at']
+        fields = ['id', 'organisation', 'user', 'user_id', 'role', 'custom_role', 'custom_role_details', 'joined_at']
         read_only_fields = ['id', 'joined_at']
+
+    def validate_custom_role(self, value):
+        if value is None:
+            return value
+        organisation = self.instance.organisation if self.instance else self.initial_data.get('organisation')
+        if isinstance(organisation, (int, str)):
+            organisation = Organisation.objects.filter(id=organisation).first()
+        if organisation and value.organisation_id != organisation.id:
+            raise serializers.ValidationError("This role does not belong to this organisation.")
+        return value
 
 
 class OrganisationSerializer(serializers.ModelSerializer):
@@ -1061,10 +1117,11 @@ class OrganisationInvitationSerializer(serializers.ModelSerializer):
     )
     organisation_details = serializers.SerializerMethodField()
     invited_by_details = UserSerializer(source='invited_by', read_only=True)
-    
+    custom_role_details = RoleSerializer(source='custom_role', read_only=True)
+
     class Meta:
         model = OrganisationInvitation
-        fields = ['id', 'organisation', 'organisation_details', 'user', 'user_id', 'role', 'invited_by', 'invited_by_details', 'created_at', 'is_active']
+        fields = ['id', 'organisation', 'organisation_details', 'user', 'user_id', 'role', 'custom_role', 'custom_role_details', 'invited_by', 'invited_by_details', 'created_at', 'is_active']
         read_only_fields = ['id', 'invited_by', 'created_at', 'is_active']
         
     def get_organisation_details(self, obj):
