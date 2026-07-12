@@ -8,9 +8,8 @@ import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { Asset, AssetCategoryItem, DEFAULT_ASSET_CATEGORIES } from './WorkspaceTypes';
 import { cn } from '@/lib/utils';
-import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import BoardSwitcher from './BoardSwitcher';
 
 const COLOR_PRESETS = [
     { name: 'Blue',     color: 'text-blue-400',    bg: 'bg-blue-500/10 border-blue-500/20' },
@@ -473,7 +472,7 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
 export default function AssetRegistry() {
     const { user } = useAuth();
     const {
-        data, setAssets, logActivity, activeWorkspace, activeBoard, setActiveBoard, setAssetCategories
+        data, setAssets, logActivity, setAssetCategories, hasPermission
     } = useWorkspace();
     const { assets } = data;
 
@@ -484,55 +483,10 @@ export default function AssetRegistry() {
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const [showBoardDropdown, setShowBoardDropdown] = useState(false);
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
     const [showCategoryManager, setShowCategoryManager] = useState(false);
     const [selectedDetailAsset, setSelectedDetailAsset] = useState<Asset | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-    const [projects, setProjects] = useState<any[]>([]);
-
-    // Fetch projects for active workspace board switching
-    useEffect(() => {
-        api.get('/projects/?manageable=true')
-            .then((res) => {
-                const all = res.data.results ?? res.data;
-                if (activeWorkspace.type === 'org' && activeWorkspace.org) {
-                    setProjects(all.filter((p: any) => p.organisation === activeWorkspace.org?.id));
-                } else {
-                    setProjects(all.filter((p: any) => !p.organisation));
-                }
-            })
-            .catch((err) => console.error('Failed to load projects:', err));
-    }, [activeWorkspace]);
-
-    // Track active board title and avatar info
-    const activeBoardInfo = useMemo(() => {
-        if (activeBoard === 'solo') {
-            return {
-                name: user?.real_name || user?.username || 'Personal Workspace',
-                avatar: user?.avatar,
-            };
-        }
-        if (activeBoard === 'org') {
-            return {
-                name: activeWorkspace.org?.name || 'Organisation',
-                avatar: activeWorkspace.org?.logo,
-            };
-        }
-        if (activeBoard.startsWith('project_')) {
-            const pid = parseInt(activeBoard.replace('project_', ''), 10);
-            const p = projects.find((proj) => proj.id === pid);
-            return {
-                name: p?.title || 'Project Board',
-                avatar: p?.cover_image,
-            };
-        }
-        return {
-            name: 'Board',
-            avatar: undefined,
-        };
-    }, [activeBoard, user, activeWorkspace, projects]);
 
     const filtered = assets.filter((a) => {
         const matchCat = filterCat === 'all' || a.category === filterCat;
@@ -598,99 +552,7 @@ export default function AssetRegistry() {
             <div className="flex items-center justify-between">
                 <div>
                     <div className="flex items-center gap-3">
-                        <div className="relative">
-                            <button
-                                type="button"
-                                onClick={() => setShowBoardDropdown(!showBoardDropdown)}
-                                className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 transition-all rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-md cursor-pointer min-w-[200px] justify-between"
-                            >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className="w-6 h-6 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                        <img
-                                            src={getImageUrl(activeBoardInfo.avatar, activeBoardInfo.name)}
-                                            alt=""
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <span className="truncate max-w-[120px]">{activeBoardInfo.name}</span>
-                                </div>
-                                <ChevronDown className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                            </button>
-
-                            {showBoardDropdown && (
-                                <>
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        onClick={() => setShowBoardDropdown(false)}
-                                    />
-                                    <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
-                                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
-                                            Switch Workspace Board
-                                        </p>
-                                        
-                                        {/* Solo/Org Root Board */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setActiveBoard(activeWorkspace.type === 'solo' ? 'solo' : 'org');
-                                                setShowBoardDropdown(false);
-                                            }}
-                                            className={cn(
-                                                "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
-                                                (activeBoard === 'solo' || activeBoard === 'org')
-                                                    ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                    : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                                            )}
-                                        >
-                                            <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                <img
-                                                    src={getImageUrl(activeWorkspace.type === 'solo' ? user?.avatar : activeWorkspace.org?.logo, activeWorkspace.type === 'solo' ? user?.real_name || user?.username : activeWorkspace.org?.name)}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                            <span className="truncate">
-                                                {activeWorkspace.type === 'solo' ? 'Personal' : activeWorkspace.org?.name}
-                                            </span>
-                                        </button>
-
-                                        {/* Projects list */}
-                                        {projects.length > 0 && (
-                                            <div className="pt-1.5 border-t border-zinc-900/60 mt-1">
-                                                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2.5 py-1">
-                                                    Projects
-                                                </p>
-                                                {projects.map((p) => (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setActiveBoard(`project_${p.id}`);
-                                                            setShowBoardDropdown(false);
-                                                        }}
-                                                        className={cn(
-                                                            "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
-                                                            activeBoard === `project_${p.id}`
-                                                                ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                                : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                                                        )}
-                                                    >
-                                                        <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                            <img
-                                                                src={getImageUrl(p.cover_image, p.title)}
-                                                                alt=""
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                        <span className="truncate">{p.title}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        <BoardSwitcher />
                         <span className="text-zinc-655 text-lg font-light">/</span>
                         <h2 className="text-xl font-bold text-white">Assets</h2>
                     </div>
@@ -822,12 +684,14 @@ export default function AssetRegistry() {
                                                         >
                                                             <Pencil className="w-3.5 h-3.5" />
                                                         </button>
-                                                        <button
-                                                            onClick={() => setConfirmDeleteId(asset.id)}
-                                                            className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
+                                                        {hasPermission('assets.delete') && (
+                                                            <button
+                                                                onClick={() => setConfirmDeleteId(asset.id)}
+                                                                className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -905,12 +769,14 @@ export default function AssetRegistry() {
                                                     >
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </button>
-                                                    <button
-                                                        onClick={() => setConfirmDeleteId(asset.id)}
-                                                        className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
+                                                    {hasPermission('assets.delete') && (
+                                                        <button
+                                                            onClick={() => setConfirmDeleteId(asset.id)}
+                                                            className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 

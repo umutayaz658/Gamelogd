@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, permissions, filters, generics
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
@@ -2077,7 +2077,19 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if project.owner != user and not project.members.filter(user=user, role='admin').exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only project admins can add members.")
-        
+
+        if target_user == user:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("You can't invite yourself.")
+
+        if target_user == project.owner:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("The project owner already has full access and can't be invited.")
+
+        if not serializer.validated_data.get('custom_role'):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("A role must be selected.")
+
         # Check if already a member or pending
         if ProjectMember.objects.filter(project=project, user=target_user).exists():
             from rest_framework.exceptions import ValidationError
@@ -2099,6 +2111,9 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if project.owner != user and not project.members.filter(user=user, role='admin').exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only project admins can update members.")
+        if serializer.instance.user_id == project.owner_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("The project owner's access can't be changed here.")
         serializer.save()
 
     @action(detail=True, methods=['post'])
@@ -2107,32 +2122,67 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if instance.user != request.user:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You can only accept your own invites.")
-        
+
         instance.status = 'active'
         instance.save()
-        
-        # Trigger notification to project owner
+
+        # A project always belongs to its organisation as a whole, not just to whichever members
+        # happen to have their own org-level invite — so accepting a project invite implicitly
+        # joins that organisation too, at a fixed base 'member' level regardless of the project
+        # role picked (the project role only ever controls project-scoped access, never org-wide
+        # standing). No-op if they're already an org member (any role).
+        if instance.project.organisation_id:
+            from .permission_catalog import create_default_roles
+            member_role = create_default_roles(instance.project.organisation)['member']
+            OrganisationMember.objects.get_or_create(
+                organisation=instance.project.organisation,
+                user=instance.user,
+                defaults={'role': 'member', 'custom_role': member_role},
+            )
+
         from api.models import Notification
+        from django.contrib.contenttypes.models import ContentType
+
+        # Resolve (and stop offering Accept/Decline on) the "invited you" notification. Without
+        # this, an already-active member could hit stale Accept/Decline buttons on the old
+        # notification — Decline would unconditionally delete their now-active membership.
+        Notification.objects.filter(
+            recipient=instance.user,
+            target_type=ContentType.objects.get_for_model(ProjectMember),
+            target_id=instance.id,
+        ).delete()
+
         Notification.objects.create(
             recipient=instance.project.owner,
             actor=request.user,
             verb='accepted your invite to join the project',
             target=instance
         )
-        
+
         return Response({'status': 'active'}, status=status.HTTP_200_OK)
+
     def perform_destroy(self, instance):
         project = instance.project
         user = self.request.user
-        
-        # Allow the user to decline/remove themselves
-        if instance.user == user:
-            instance.delete()
-            return
+        invitee = instance.user
 
-        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Only project admins can remove members.")
+        if invitee == project.owner:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("The project owner can't be removed from their own project.")
+
+        if invitee != user:
+            if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only project admins can remove members.")
+
+        from api.models import Notification
+        from django.contrib.contenttypes.models import ContentType
+        Notification.objects.filter(
+            recipient=invitee,
+            target_type=ContentType.objects.get_for_model(ProjectMember),
+            target_id=instance.id,
+        ).delete()
+
         instance.delete()
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -2181,7 +2231,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
             if not org.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("You do not have permission to create projects for this organisation.")
-            serializer.save(owner=self.request.user, organisation=org)
+            project = serializer.save(owner=self.request.user, organisation=org)
+            from api.permission_catalog import create_default_project_roles
+            create_default_project_roles(project)
         else:
             serializer.save(owner=self.request.user)
 
@@ -2513,6 +2565,8 @@ class OrganisationViewSet(viewsets.ModelViewSet):
                 user=self.request.user,
                 role='owner'
             )
+            from .permission_catalog import create_default_roles
+            create_default_roles(organisation)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, slug=None):
@@ -2538,36 +2592,87 @@ class OrganisationViewSet(viewsets.ModelViewSet):
             
         user_id = request.data.get('user_id')
         role = request.data.get('role', 'member')
-        
+        custom_role_id = request.data.get('custom_role')
+
         if not user_id:
             return Response({"error": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        if not custom_role_id:
+            return Response({"error": "A role must be selected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        custom_role = Role.objects.filter(id=custom_role_id, organisation=organisation, project__isnull=True).first()
+        if not custom_role:
+            return Response({"error": "Invalid role for this organisation."}, status=status.HTTP_400_BAD_REQUEST)
+        if custom_role.is_default_for == 'owner':
+            return Response({"error": "The Owner role can't be assigned through an invite."}, status=status.HTTP_400_BAD_REQUEST)
+
         target_user = get_object_or_404(User, id=user_id)
-        
+
+        if target_user == request.user:
+            return Response({"error": "You can't invite yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
         if organisation.members.filter(user=target_user).exists():
             return Response({"error": "User is already a member of this organisation."}, status=status.HTTP_400_BAD_REQUEST)
-            
-        if OrganisationInvitation.objects.filter(organisation=organisation, user=target_user, is_active=True).exists():
-            return Response({"error": "User has already been invited."}, status=status.HTTP_400_BAD_REQUEST)
-            
-        invitation = OrganisationInvitation.objects.create(
+
+        # update_or_create reuses the same row/id if this user was previously invited (even if
+        # declined/inactive) instead of colliding with the (organisation, user) unique constraint —
+        # this both fixes re-inviting after a decline and keeps a stable target_id for notifications.
+        invitation, _ = OrganisationInvitation.objects.update_or_create(
             organisation=organisation,
             user=target_user,
-            role=role,
-            invited_by=request.user
+            defaults={'role': role, 'custom_role': custom_role, 'invited_by': request.user, 'is_active': True}
         )
-        
+
         from django.contrib.contenttypes.models import ContentType
         content_type = ContentType.objects.get_for_model(invitation.__class__)
-        Notification.objects.create(
+        Notification.objects.get_or_create(
             recipient=target_user,
             actor=request.user,
             verb=f'invited you to join {organisation.name}',
             target_type=content_type,
             target_id=invitation.id
         )
-        
+
         return Response(OrganisationInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='transfer-ownership')
+    def transfer_ownership(self, request, slug=None):
+        organisation = self.get_object()
+        current_owner_membership = organisation.members.filter(user=request.user, role='owner').first()
+        if not current_owner_membership:
+            return Response({"error": "Only the current owner can transfer ownership."}, status=status.HTTP_403_FORBIDDEN)
+
+        new_owner_user_id = request.data.get('new_owner_user_id')
+        if not new_owner_user_id:
+            return Response({"error": "new_owner_user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if str(new_owner_user_id) == str(request.user.id):
+            return Response({"error": "You're already the owner."}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_owner_membership = organisation.members.filter(user_id=new_owner_user_id).first()
+        if not new_owner_membership:
+            return Response({"error": "That user is not a member of this organisation."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            current_owner_membership.role = 'admin'
+            current_owner_membership.custom_role = None
+            current_owner_membership.save()
+
+            new_owner_membership.role = 'owner'
+            new_owner_membership.custom_role = None
+            new_owner_membership.save()
+
+            Notification.objects.create(
+                recipient=new_owner_membership.user,
+                actor=request.user,
+                verb=f'transferred ownership of {organisation.name} to you'
+            )
+            Notification.objects.create(
+                recipient=request.user,
+                actor=request.user,
+                verb=f'transferred ownership of {organisation.name} to {new_owner_membership.user.username}'
+            )
+
+        return Response({"message": f"Ownership transferred to @{new_owner_membership.user.username}."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def projects(self, request, slug=None):
@@ -2592,11 +2697,31 @@ class OrganisationMemberViewSet(viewsets.ModelViewSet):
     serializer_class = OrganisationMemberSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = OrganisationMember.objects.all()
+        organisation_id = self.request.query_params.get('organisation')
+        if organisation_id:
+            queryset = queryset.filter(organisation_id=organisation_id)
+        return queryset
+
     def update(self, request, *args, **kwargs):
         member = self.get_object()
         requesting_member = member.organisation.members.filter(user=request.user).first()
         if not requesting_member or requesting_member.role not in ['owner', 'admin']:
             return Response({"error": "Only admins and owners can modify member roles."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Ownership can only change via the dedicated transfer-ownership action (owner-only,
+        # confirmation-gated) — not this generic endpoint, which any admin can otherwise reach.
+        if member.role == 'owner':
+            return Response({"error": "The owner's role can't be changed here. Use ownership transfer instead."}, status=status.HTTP_400_BAD_REQUEST)
+        if request.data.get('role') == 'owner':
+            return Response({"error": "Use the ownership transfer action to make someone the owner."}, status=status.HTTP_400_BAD_REQUEST)
+        custom_role_id = request.data.get('custom_role')
+        if custom_role_id:
+            target_role = Role.objects.filter(id=custom_role_id).first()
+            if target_role and target_role.is_default_for == 'owner':
+                return Response({"error": "The Owner role can't be assigned directly. Use ownership transfer instead."}, status=status.HTTP_400_BAD_REQUEST)
+
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -2610,7 +2735,14 @@ class OrganisationMemberViewSet(viewsets.ModelViewSet):
             
         if member.user != request.user and requesting_member.role not in ['owner', 'admin']:
             return Response({"error": "Only admins and owners can remove members."}, status=status.HTTP_403_FORBIDDEN)
-            
+
+        # An organisation's projects are implicitly available to all its members (mirrors
+        # ProjectMemberViewSet.accept's auto-join the other way round) — so leaving/being removed
+        # from the organisation must also remove them from every project under it. Otherwise
+        # they'd keep project-level access (and show up in project rosters) via a membership the
+        # UI has no way to reach or explain anymore.
+        ProjectMember.objects.filter(project__organisation=member.organisation, user=member.user).delete()
+
         return super().destroy(request, *args, **kwargs)
 
 
@@ -2631,7 +2763,17 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
                 return queryset.filter(organisation=org, is_active=True).order_by('-created_at')
             else:
                 raise PermissionDenied("You do not have permission to view invitations for this organisation.")
-        return queryset.filter(user=self.request.user, is_active=True).order_by('-created_at')
+        # Without an explicit organisation_slug (e.g. a plain DELETE/accept/decline on a detail URL),
+        # make both "invitations sent to me" and "invitations I can manage as an org owner/admin"
+        # reachable — previously this only included the former, so an org admin cancelling an
+        # invite they sent (dashboard's DELETE /organisation-invitations/{id}/, no query params)
+        # would 404 before even reaching the destroy() permission check.
+        from django.db.models import Q
+        return queryset.filter(
+            Q(user=self.request.user) |
+            Q(organisation__members__user=self.request.user, organisation__members__role__in=['owner', 'admin']),
+            is_active=True,
+        ).distinct().order_by('-created_at')
 
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
@@ -2639,23 +2781,32 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
         if invitation.user != request.user:
             return Response({"error": "This invitation was not sent to you."}, status=status.HTTP_403_FORBIDDEN)
             
+        from django.contrib.contenttypes.models import ContentType
+        content_type = ContentType.objects.get_for_model(OrganisationInvitation)
+
         with transaction.atomic():
             member, created = OrganisationMember.objects.get_or_create(
                 organisation=invitation.organisation,
                 user=request.user,
-                defaults={'role': invitation.role}
+                defaults={'role': invitation.role, 'custom_role': invitation.custom_role}
             )
             invitation.is_active = False
             invitation.save()
-            
+
             OrganisationFollow.objects.get_or_create(user=request.user, organisation=invitation.organisation)
-            
+
+            # Resolve (and stop offering Accept/Decline on) the "invited you" notification —
+            # mirrors FollowRequest.approve_request's cleanup of its own pending-request notification.
+            Notification.objects.filter(
+                recipient=invitation.user, target_type=content_type, target_id=invitation.id
+            ).delete()
+
             Notification.objects.create(
                 recipient=invitation.invited_by,
                 actor=request.user,
                 verb=f'accepted your invitation to join {invitation.organisation.name}'
             )
-            
+
         return Response({"message": f"Successfully joined {invitation.organisation.name}."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
@@ -2663,9 +2814,17 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
         invitation = self.get_object()
         if invitation.user != request.user:
             return Response({"error": "This invitation was not sent to you."}, status=status.HTTP_403_FORBIDDEN)
-            
+
         invitation.is_active = False
         invitation.save()
+
+        from django.contrib.contenttypes.models import ContentType
+        Notification.objects.filter(
+            recipient=invitation.user,
+            target_type=ContentType.objects.get_for_model(OrganisationInvitation),
+            target_id=invitation.id,
+        ).delete()
+
         return Response({"message": "Invitation declined."}, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
@@ -2674,11 +2833,171 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
         is_org_admin = invitation.organisation.members.filter(user=request.user, role__in=['owner', 'admin']).exists()
         if not is_invitee and not is_org_admin:
             return Response({"error": "You do not have permission to delete this invitation."}, status=status.HTTP_403_FORBIDDEN)
+
+        from django.contrib.contenttypes.models import ContentType
+        Notification.objects.filter(
+            recipient=invitation.user,
+            target_type=ContentType.objects.get_for_model(OrganisationInvitation),
+            target_id=invitation.id,
+        ).delete()
+
         return super().destroy(request, *args, **kwargs)
+
+
+from core.models import Role
+from .serializers import RoleSerializer
+from .permission_catalog import PERMISSION_CATALOG
+from .permissions_service import get_effective_permissions, user_has_permission
+
+
+class RoleViewSet(viewsets.ModelViewSet):
+    queryset = Role.objects.all()
+    serializer_class = RoleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Role.objects.all()
+        project_id = self.request.query_params.get('project')
+        organisation_id = self.request.query_params.get('organisation')
+        if project_id:
+            # Project-scoped roles are their own separate catalog — never mixed with
+            # the organisation's own roles, even when the project belongs to an org.
+            queryset = queryset.filter(project_id=project_id)
+        elif organisation_id:
+            queryset = queryset.filter(organisation_id=organisation_id, project__isnull=True)
+        return queryset
+
+    def _require_manage_permission(self, organisation, project=None):
+        if not user_has_permission(self.request.user, 'team.role.manage', organisation=organisation, project=project):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You do not have permission to manage roles for this scope.")
+
+    def _require_owner(self, organisation):
+        if not organisation.members.filter(user=self.request.user, role='owner').exists():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only the organisation owner can edit the Owner role.")
+
+    def perform_create(self, serializer):
+        organisation = serializer.validated_data.get('organisation')
+        project = serializer.validated_data.get('project')
+        self._require_manage_permission(organisation, project=project)
+        serializer.save(is_system=False, is_default_for='')
+
+    def perform_update(self, serializer):
+        role = serializer.instance
+        self._require_manage_permission(role.organisation, project=role.project)
+        if role.is_default_for == 'owner':
+            # The Owner role is the only system role that's fully locked: anyone with plain
+            # team.role.manage (today: every admin too, since Owner/Admin share the same
+            # seeded permission set) could otherwise silently strip/grant owner-level access
+            # via this role's permissions, or rename it in a way that breaks the "this org's
+            # Owner role" lookup elsewhere. Admin/Member/Playtester may be freely renamed and
+            # have their permissions edited — is_default_for (not name) is what the rest of the
+            # system actually keys off of, so renaming them is safe.
+            self._require_owner(role.organisation)
+            from rest_framework.exceptions import ValidationError
+            serializer.validated_data.pop('name', None)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_manage_permission(instance.organisation, project=instance.project)
+        if instance.is_system:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("System roles cannot be deleted.")
+
+        # Role selection is mandatory everywhere else in this system, so deleting a role must
+        # never leave anyone without one — reassign affected members to this scope's baseline
+        # "Member" role instead of nulling custom_role out (this scope always has one: Member is
+        # a system role that can't itself be deleted).
+        from .permission_catalog import create_default_roles, create_default_project_roles
+        fallback_roles = create_default_project_roles(instance.project) if instance.project_id else create_default_roles(instance.organisation)
+        fallback_role = fallback_roles['member']
+        OrganisationMember.objects.filter(custom_role=instance).update(custom_role=fallback_role)
+        ProjectMember.objects.filter(custom_role=instance).update(custom_role=fallback_role)
+        OrganisationInvitation.objects.filter(custom_role=instance, is_active=True).update(custom_role=fallback_role)
+
+        instance.delete()
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def permission_catalog_view(request):
+    from .permission_catalog import PERMISSION_HIERARCHY
+    return Response({"catalog": PERMISSION_CATALOG, "hierarchy": PERMISSION_HIERARCHY})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def my_permissions_view(request):
+    organisation = None
+    project = None
+    org_id = request.query_params.get('organisation')
+    project_id = request.query_params.get('project')
+    if org_id:
+        from core.models import Organisation
+        organisation = get_object_or_404(Organisation, id=org_id)
+    if project_id:
+        from core.models import Project
+        project = get_object_or_404(Project, id=project_id)
+        if organisation is None:
+            organisation = project.organisation
+
+    perms = get_effective_permissions(request.user, organisation=organisation, project=project)
+    if perms is None:
+        return Response({"role": None, "permissions": []})
+
+    role = None
+    if organisation is not None:
+        member = None
+        if project is not None:
+            member = project.members.filter(user=request.user, status='active').first()
+        if member is None:
+            member = organisation.members.filter(user=request.user).first()
+        if member and member.custom_role_id:
+            role = {"id": member.custom_role.id, "name": member.custom_role.name, "is_system": member.custom_role.is_system}
+
+    return Response({"role": role, "permissions": perms})
 
 
 from core.models import WorkspaceState
 from .serializers import WorkspaceStateSerializer
+
+def _parse_org_workspace_key(key):
+    """
+    Parses 'workspace__org_<org_id>_board_org' or
+    'workspace__org_<org_id>_board_project_<project_id>' into (org_id, project_id).
+    Raises ValueError on malformed keys.
+    """
+    import re
+    match = re.match(r'^workspace__org_(\d+)_board_(.+)$', key)
+    if not match:
+        raise ValueError("Malformed org workspace key.")
+    org_id = int(match.group(1))
+    board = match.group(2)
+    project_id = int(board[len('project_'):]) if board.startswith('project_') else None
+    return org_id, project_id
+
+
+def _check_org_board_access(org, project_id, user):
+    """
+    Coarse membership gate for an org-scoped WorkspaceState key. Org owners/admins
+    may access every board in their org (mirrors ProjectViewSet's manageable-filter
+    precedent). Plain members may access the org-root board, but a project-specific
+    board additionally requires actual membership on that project — closing a prior
+    gap where any org member could write to a project's board without being on it.
+    """
+    if org.members.filter(user=user, role__in=['owner', 'admin']).exists():
+        return True
+    if not org.members.filter(user=user).exists():
+        return False
+    if project_id is None:
+        return True
+    from core.models import Project
+    project = Project.objects.filter(id=project_id).first()
+    if project is None:
+        return True
+    return project.owner_id == user.id or project.members.filter(user=user, status='active').exists()
+
 
 class WorkspaceStateViewSet(viewsets.ModelViewSet):
     queryset = WorkspaceState.objects.all()
@@ -2691,29 +3010,25 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
         user = self.request.user
         from django.db.models import Q
         return WorkspaceState.objects.filter(
-            Q(user=user) | 
+            Q(user=user) |
             Q(organisation__members__user=user)
         ).distinct()
 
     def get_object(self):
         key = self.kwargs.get('key')
         user = self.request.user
-        
+
         if key.startswith('workspace__org_'):
             try:
-                # Key format: workspace__org_<org_id>_board_<board_name>...
-                prefix = 'workspace__org_'
-                rest = key[len(prefix):]
-                org_id_str = rest.split('_')[0]
-                org_id = int(org_id_str)
+                org_id, project_id = _parse_org_workspace_key(key)
                 from core.models import Organisation
                 from django.shortcuts import get_object_or_404
                 from rest_framework.exceptions import PermissionDenied
-                
+
                 org = get_object_or_404(Organisation, id=org_id)
-                if not org.members.filter(user=user).exists():
+                if not _check_org_board_access(org, project_id, user):
                     raise PermissionDenied("You do not have access to this organization's workspace.")
-                
+
                 obj, created = WorkspaceState.objects.get_or_create(
                     key=key,
                     organisation=org,
@@ -2721,7 +3036,7 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
                     defaults={'data': {}}
                 )
                 return obj
-            except (ValueError, IndexError):
+            except ValueError:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError("Invalid workspace key format.")
         else:
@@ -2736,23 +3051,29 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         key = request.data.get('key')
         data = request.data.get('data')
+        tool = request.data.get('tool')
         if not key:
             return Response({"error": "key is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         user = request.user
         if key.startswith('workspace__org_'):
             try:
-                prefix = 'workspace__org_'
-                rest = key[len(prefix):]
-                org_id_str = rest.split('_')[0]
-                org_id = int(org_id_str)
-                from core.models import Organisation
+                org_id, project_id = _parse_org_workspace_key(key)
+                from core.models import Organisation, Project
                 from django.shortcuts import get_object_or_404
-                
+
                 org = get_object_or_404(Organisation, id=org_id)
-                if not org.members.filter(user=user).exists():
+                if not _check_org_board_access(org, project_id, user):
                     return Response({"error": "You do not have access to this organization's workspace."}, status=status.HTTP_403_FORBIDDEN)
-                
+
+                if tool:
+                    from .permission_catalog import TOOL_WRITE_PERMISSIONS
+                    from .permissions_service import user_has_any_permission
+                    write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
+                    project = Project.objects.filter(id=project_id).first() if project_id else None
+                    if write_perms and not user_has_any_permission(user, write_perms, organisation=org, project=project):
+                        return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
+
                 obj, created = WorkspaceState.objects.update_or_create(
                     key=key,
                     organisation=org,
@@ -2762,7 +3083,7 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
                 if not created:
                     obj.data = data
                     obj.save()
-            except (ValueError, IndexError):
+            except ValueError:
                 return Response({"error": "Invalid workspace key format."}, status=status.HTTP_400_BAD_REQUEST)
         else:
             obj, created = WorkspaceState.objects.update_or_create(
@@ -2774,7 +3095,7 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
             if not created:
                 obj.data = data
                 obj.save()
-                
+
         serializer = self.get_serializer(obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

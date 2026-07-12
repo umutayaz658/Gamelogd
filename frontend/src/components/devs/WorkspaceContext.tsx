@@ -18,7 +18,6 @@ import {
     Asset,
     TranslationEntry,
     GlossaryTerm,
-    TeamMember,
     PlaytestFeedback,
     ActivityItem,
     ActivityType,
@@ -37,6 +36,7 @@ export type WorkspaceTool =
     | 'assets'
     | 'localisation'
     | 'members'
+    | 'playtest'
     | 'settings';
 
 export type WorkspaceType = 'solo' | 'org';
@@ -201,12 +201,6 @@ function buildDefaultData(): WorkspaceData {
             { id: 'gl1', term: 'Mana', translations: { Turkish: 'Mana', Spanish: 'Maná', French: 'Mana' } },
             { id: 'gl2', term: 'Fireball', translations: { Turkish: 'Alev Topu', Spanish: 'Bola de Fuego' } },
         ],
-        teamMembers: [
-            {
-                id: 'tm1', username: 'You (Owner)', role: 'owner', joinedAt: '3mo ago',
-                stats: { tasksCompleted: 12, gddPagesEdited: 8, localisationsApproved: 0 },
-            },
-        ],
         playtestFeedback: [],
         activities: [
             { id: 'act1', type: 'task_created', text: 'Welcome to your Developer Workspace!', time: 'just now', icon: '🚀' },
@@ -232,6 +226,9 @@ interface WorkspaceContextType {
     organisations: Organisation[];
     loadingOrgs: boolean;
     refetchOrgs: () => void;
+    // Effective permissions for the current org/project scope (see backend api.permission_catalog)
+    permissions: string[];
+    hasPermission: (key: string) => boolean;
     // Workspace data
     data: WorkspaceData;
     // Mutators
@@ -242,7 +239,6 @@ interface WorkspaceContextType {
     setAssets: (assets: Asset[] | ((prev: Asset[]) => Asset[])) => void;
     setTranslationKeys: (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => void;
     setGlossary: (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => void;
-    setTeamMembers: (m: TeamMember[] | ((prev: TeamMember[]) => TeamMember[])) => void;
     setPlaytestFeedback: (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) => void;
     setCategories: (categories: string[] | ((prev: string[]) => string[])) => void;
     setGDDCategories: (categories: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => void;
@@ -251,6 +247,28 @@ interface WorkspaceContextType {
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
+
+// ─── Last-active-workspace persistence ───────────────────────────────────────
+// Remembers which workspace/board/tool the user was last in, so navigating away from /devs and
+// back (e.g. via the top nav, which links to a bare /devs with no query params) restores it
+// instead of always resetting to the personal/solo workspace.
+
+const LAST_WORKSPACE_KEY = 'gamelogd_devs_last_workspace';
+
+function readPersistedWorkspace(): { workspace?: string; board?: string; tool?: string } {
+    try {
+        const raw = localStorage.getItem(LAST_WORKSPACE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistWorkspace(workspace: string, board: string, tool: string) {
+    try {
+        localStorage.setItem(LAST_WORKSPACE_KEY, JSON.stringify({ workspace, board, tool }));
+    } catch { /* storage disabled/full — persistence is best-effort */ }
+}
 
 // ─── Storage Key Helper ───────────────────────────────────────────────────────
 
@@ -276,6 +294,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [organisations, setOrganisations] = useState<Organisation[]>([]);
     const [loadingOrgs, setLoadingOrgs] = useState(false);
     const [data, setData] = useState<WorkspaceData>(buildDefaultData);
+    const [permissions, setPermissions] = useState<string[]>([]);
 
     // Track if we already initialised from URL params
     const initialised = useRef(false);
@@ -285,9 +304,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (initialised.current) return;
         initialised.current = true;
 
-        const toolParam = searchParams.get('tool') as WorkspaceTool | null;
-        const wsParam = searchParams.get('workspace');
-        const boardParam = searchParams.get('board');
+        // Fall back to the last-persisted workspace only when the URL has none of these params
+        // at all (a genuine deep link always wins over the remembered one).
+        const persisted = readPersistedWorkspace();
+        const toolParam = (searchParams.get('tool') as WorkspaceTool | null) ?? (persisted.tool as WorkspaceTool | undefined) ?? null;
+        const wsParam = searchParams.get('workspace') ?? persisted.workspace ?? null;
+        const boardParam = searchParams.get('board') ?? persisted.board ?? null;
 
         if (toolParam) _setActiveTool(toolParam);
         if (wsParam === 'solo') {
@@ -315,14 +337,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const orgs: Organisation[] = res.data.results ?? res.data;
             setOrganisations(orgs);
 
-            // Resolve org workspace from URL now that we have org list
-            const wsParam = searchParams.get('workspace');
+            // Resolve org workspace from the URL, falling back to the last-persisted one —
+            // same rule as the initial-mount effect above (URL always wins if present).
+            const persisted = readPersistedWorkspace();
+            const wsParam = searchParams.get('workspace') ?? persisted.workspace ?? null;
             if (wsParam && wsParam.startsWith('org_')) {
                 const orgId = parseInt(wsParam.replace('org_', ''), 10);
                 const org = orgs.find((o) => o.id === orgId);
                 if (org) {
                     _setActiveWorkspace({ type: 'org', org });
-                    const boardParam = searchParams.get('board') || 'org';
+                    const boardParam = searchParams.get('board') ?? persisted.board ?? 'org';
                     _setActiveBoard(boardParam);
                 }
             }
@@ -408,10 +432,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (persistTimer.current) clearTimeout(persistTimer.current);
         persistTimer.current = setTimeout(() => {
             const key = storageKey(activeWorkspace, activeBoard, user?.id);
+            const tool = lastToolRef.current;
+            lastToolRef.current = null;
             try {
                 localStorage.setItem(key, JSON.stringify(data));
                 if (user) {
-                    api.post('/workspace-state/', { key, data })
+                    api.post('/workspace-state/', { key, data, tool })
                         .catch((err) => console.error('Failed to sync workspace state to backend:', err));
                 }
             } catch { /* quota */ }
@@ -419,9 +445,33 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         return () => { if (persistTimer.current) clearTimeout(persistTimer.current); };
     }, [data, activeWorkspace, activeBoard, user]);
 
+    // ── Effective permissions for the current org/project scope ──────────────
+    useEffect(() => {
+        if (activeWorkspace.type === 'solo' || !activeWorkspace.org || !user) {
+            setPermissions([]);
+            return;
+        }
+        const params = new URLSearchParams();
+        params.append('organisation', String(activeWorkspace.org.id));
+        if (activeBoard.startsWith('project_')) {
+            params.append('project', activeBoard.replace('project_', ''));
+        }
+        let active = true;
+        api.get(`/my-permissions/?${params.toString()}`)
+            .then((res) => { if (active) setPermissions(res.data?.permissions ?? []); })
+            .catch(() => { if (active) setPermissions([]); });
+        return () => { active = false; };
+    }, [activeWorkspace, activeBoard, user]);
+
+    const hasPermission = useCallback((key: string) => {
+        if (activeWorkspace.type === 'solo') return true;
+        return permissions.includes(key);
+    }, [activeWorkspace, permissions]);
+
     // ── URL sync helpers ──────────────────────────────────────────────────────
     const pushURL = useCallback((ws: ActiveWorkspace, tool: WorkspaceTool, board: string) => {
         const wsVal = ws.type === 'solo' ? 'solo' : `org_${ws.org?.id}`;
+        persistWorkspace(wsVal, board, tool);
         router.replace(`/devs?workspace=${wsVal}&tool=${tool}&board=${board}`, { scroll: false });
     }, [router]);
 
@@ -443,41 +493,65 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }, [activeWorkspace, activeTool, pushURL]);
 
     // ── Data mutators ─────────────────────────────────────────────────────────
-    const setColumns = (cols: KanbanColumn[]) =>
+    // lastToolRef tracks which Devs tool the most recent mutation belongs to, so the
+    // debounced persist effect below can tell the backend's coarse per-tool write
+    // permission check (see WorkspaceStateViewSet) which tool this write is for.
+    const lastToolRef = useRef<string | null>(null);
+
+    const setColumns = (cols: KanbanColumn[]) => {
+        lastToolRef.current = 'kanban';
         setData((d) => ({ ...d, columns: cols }));
+    };
 
-    const setTasks = (tasks: Task[] | ((prev: Task[]) => Task[])) =>
+    const setTasks = (tasks: Task[] | ((prev: Task[]) => Task[])) => {
+        lastToolRef.current = 'kanban';
         setData((d) => ({ ...d, tasks: typeof tasks === 'function' ? tasks(d.tasks) : tasks }));
+    };
 
-    const setGDDDocs = (docs: GDDDoc[] | ((prev: GDDDoc[]) => GDDDoc[])) =>
+    const setGDDDocs = (docs: GDDDoc[] | ((prev: GDDDoc[]) => GDDDoc[])) => {
+        lastToolRef.current = 'gdd';
         setData((d) => ({ ...d, gddDocs: typeof docs === 'function' ? docs(d.gddDocs) : docs }));
+    };
 
-    const setBalancingTables = (tables: BalancingTable[] | ((prev: BalancingTable[]) => BalancingTable[])) =>
+    const setBalancingTables = (tables: BalancingTable[] | ((prev: BalancingTable[]) => BalancingTable[])) => {
+        lastToolRef.current = 'gdd';
         setData((d) => ({ ...d, balancingTables: typeof tables === 'function' ? tables(d.balancingTables) : tables }));
+    };
 
-    const setAssets = (assets: Asset[] | ((prev: Asset[]) => Asset[])) =>
+    const setAssets = (assets: Asset[] | ((prev: Asset[]) => Asset[])) => {
+        lastToolRef.current = 'assets';
         setData((d) => ({ ...d, assets: typeof assets === 'function' ? assets(d.assets) : assets }));
+    };
 
-    const setTranslationKeys = (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) =>
+    const setTranslationKeys = (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => {
+        lastToolRef.current = 'localisation';
         setData((d) => ({ ...d, translationKeys: typeof keys === 'function' ? keys(d.translationKeys) : keys }));
+    };
 
-    const setGlossary = (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) =>
+    const setGlossary = (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => {
+        lastToolRef.current = 'localisation';
         setData((d) => ({ ...d, glossary: typeof g === 'function' ? g(d.glossary) : g }));
+    };
 
-    const setTeamMembers = (m: TeamMember[] | ((prev: TeamMember[]) => TeamMember[])) =>
-        setData((d) => ({ ...d, teamMembers: typeof m === 'function' ? m(d.teamMembers) : m }));
-
-    const setPlaytestFeedback = (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) =>
+    const setPlaytestFeedback = (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) => {
+        lastToolRef.current = 'playtest';
         setData((d) => ({ ...d, playtestFeedback: typeof f === 'function' ? f(d.playtestFeedback) : f }));
+    };
 
-    const setCategories = (cats: string[] | ((prev: string[]) => string[])) =>
+    const setCategories = (cats: string[] | ((prev: string[]) => string[])) => {
+        lastToolRef.current = 'kanban';
         setData((d) => ({ ...d, categories: typeof cats === 'function' ? cats(d.categories ?? ['code', 'art', 'audio', 'qa', 'other']) : cats }));
+    };
 
-    const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) =>
+    const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => {
+        lastToolRef.current = 'gdd';
         setData((d) => ({ ...d, gddCategories: typeof cats === 'function' ? cats(d.gddCategories ?? DEFAULT_GDD_CATEGORIES) : cats }));
+    };
 
-    const setAssetCategories = (cats: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) =>
+    const setAssetCategories = (cats: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => {
+        lastToolRef.current = 'assets';
         setData((d) => ({ ...d, assetCategories: typeof cats === 'function' ? cats(d.assetCategories ?? DEFAULT_ASSET_CATEGORIES) : cats }));
+    };
 
     const logActivity = useCallback((type: ActivityType, text: string, icon: string, actor?: string) => {
         const item: ActivityItem = {
@@ -503,6 +577,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 organisations,
                 loadingOrgs,
                 refetchOrgs: fetchOrgs,
+                permissions,
+                hasPermission,
                 data,
                 setColumns,
                 setTasks,
@@ -511,7 +587,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 setAssets,
                 setTranslationKeys,
                 setGlossary,
-                setTeamMembers,
                 setPlaytestFeedback,
                 setCategories,
                 setGDDCategories,

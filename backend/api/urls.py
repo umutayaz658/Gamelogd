@@ -32,6 +32,8 @@ router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call'
 router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 router.register(r'feed', FeedViewSet, basename='feed')
 router.register(r'workspace-state', WorkspaceStateViewSet, basename='workspace-state')
+from .views import RoleViewSet, permission_catalog_view, my_permissions_view
+router.register(r'organisation-roles', RoleViewSet, basename='organisation-role')
 from .views import ExplorePostsViewSet
 router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
 
@@ -43,4 +45,6 @@ urlpatterns = [
     path('login/', CustomAuthToken.as_view(), name='api_token_auth'),
     path('verify-email/', VerifyEmailView.as_view(), name='verify-email'),
     path('resend-verification/', ResendVerificationView.as_view(), name='resend-verification'),
+    path('permission-catalog/', permission_catalog_view, name='permission-catalog'),
+    path('my-permissions/', my_permissions_view, name='my-permissions'),
 ]
