@@ -37,10 +37,10 @@ export default function WorkspaceSelector() {
             ? getImageUrl(activeWorkspace.org.logo)
             : null;
 
-    const currentAvatar =
-        activeWorkspace.type === 'solo' && user?.avatar
-            ? getImageUrl(user.avatar)
-            : null;
+    // Always resolved (never null) so a user without an uploaded avatar gets the same
+    // username-seeded initials placeholder used everywhere else in the app, instead of this
+    // component's own generic "anonymous" icon.
+    const currentAvatar = activeWorkspace.type === 'solo' ? getImageUrl(user?.avatar, user?.username) : null;
 
     const handleSelectSolo = () => {
         setActiveWorkspace({ type: 'solo' });

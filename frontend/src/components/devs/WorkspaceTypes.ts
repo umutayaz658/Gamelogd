@@ -126,7 +126,8 @@ export interface TranslationSuggestion {
     id: string;
     author: string;
     text: string;
-    votes: number;
+    votes: number; // derived mirror of votedBy.length, kept for old persisted rows without votedBy
+    votedBy?: string[]; // usernames who liked this suggestion — optional, absent on old blob data
     approved: boolean;
 }
 
@@ -145,22 +146,9 @@ export interface GlossaryTerm {
     translations: Record<string, string>; // lang -> locked translation
 }
 
-// ─── Team Types ───────────────────────────────────────────────────────────────
-
-export type TeamMemberRole = 'owner' | 'admin' | 'member' | 'playtester';
-
-export interface TeamMember {
-    id: string;
-    username: string;
-    avatar?: string;
-    role: TeamMemberRole;
-    joinedAt: string;
-    stats: {
-        tasksCompleted: number;
-        gddPagesEdited: number;
-        localisationsApproved: number;
-    };
-}
+// ─── Playtest Types ─────────────────────────────────────────────────────────
+// Team membership/roles are now backed by the real OrganisationMember/ProjectMember
+// + Role models (see TeamRoles.tsx) rather than client-only WorkspaceState data.
 
 export interface PlaytestFeedback {
     id: string;
@@ -169,7 +157,6 @@ export interface PlaytestFeedback {
     severity: 'low' | 'medium' | 'high' | 'critical';
     description: string;
     buildVersion: string;
-    systemInfo?: string;
     submittedAt: string;
     convertedToTaskId?: string;
 }
@@ -216,7 +203,6 @@ export interface WorkspaceData {
     assets: Asset[];
     translationKeys: TranslationEntry[];
     glossary: GlossaryTerm[];
-    teamMembers: TeamMember[];
     playtestFeedback: PlaytestFeedback[];
     activities: ActivityItem[];
     categories?: string[];
@@ -251,6 +237,7 @@ export const DEFAULT_GDD_CATEGORIES: GDDCategory[] = [
 ];
 
 export const SUPPORTED_LANGS = ['Turkish', 'Spanish', 'French', 'German', 'Japanese', 'Portuguese'];
+export const SOURCE_LANG = 'English';
 
 export const CATEGORY_EMOJI: Record<TaskCategory, string> = {
     code: '💻',

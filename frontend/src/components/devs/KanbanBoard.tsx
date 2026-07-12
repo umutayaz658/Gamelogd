@@ -9,6 +9,7 @@ import CreateTaskModal from './CreateTaskModal';
 import KanbanCard from './KanbanCard';
 import TaskDetailsModal from './TaskDetailsModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import BoardSwitcher from './BoardSwitcher';
 import { cn, getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 
@@ -109,7 +110,7 @@ const getCategoryStyles = (cat: string) => {
 };
 
 export default function KanbanBoard() {
-    const { data, setColumns, setTasks, setCategories, logActivity, activeWorkspace, activeBoard, setActiveBoard } = useWorkspace();
+    const { data, setColumns, setTasks, setCategories, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { columns, tasks } = data;
     const { user } = useAuth();
     const [projects, setProjects] = useState<any[]>([]);
@@ -158,35 +159,6 @@ export default function KanbanBoard() {
     const [searchTaskQuery, setSearchTaskQuery] = useState('');
     const [filterMe, setFilterMe] = useState(false);
     const [filterCats, setFilterCats] = useState<TaskCategory[]>([]);
-
-    const [showBoardDropdown, setShowBoardDropdown] = useState(false);
-
-    const activeBoardInfo = (() => {
-        if (activeBoard === 'solo') {
-            return {
-                name: user?.real_name || user?.username || 'Personal Workspace',
-                avatar: user?.avatar,
-            };
-        }
-        if (activeBoard === 'org') {
-            return {
-                name: activeWorkspace.org?.name || 'Organisation',
-                avatar: activeWorkspace.org?.logo,
-            };
-        }
-        if (activeBoard.startsWith('project_')) {
-            const pid = parseInt(activeBoard.replace('project_', ''), 10);
-            const p = projects.find((proj) => proj.id === pid);
-            return {
-                name: p?.title || 'Project Board',
-                avatar: p?.cover_image,
-            };
-        }
-        return {
-            name: 'Board',
-            avatar: undefined,
-        };
-    })();
 
     const [groupBy, setGroupBy] = useState<'none' | 'assignee' | 'priority'>('none');
     const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
@@ -510,103 +482,7 @@ export default function KanbanBoard() {
             <div className="flex items-center justify-between">
                 <div>
                     <div className="flex items-center gap-3">
-                        {/* Custom Board Selector on the Left */}
-                        <div className="relative">
-                            <button
-                                type="button"
-                                onClick={() => setShowBoardDropdown(!showBoardDropdown)}
-                                className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 transition-all rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-md cursor-pointer min-w-[200px] justify-between"
-                            >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className="w-6 h-6 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                        <img
-                                            src={getImageUrl(activeBoardInfo.avatar, activeBoardInfo.name)}
-                                            alt=""
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <span className="truncate max-w-[120px]">{activeBoardInfo.name}</span>
-                                </div>
-                                <ChevronDown className="w-4 h-4 text-zinc-400" />
-                            </button>
-
-                            {showBoardDropdown && (
-                                <>
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        onClick={() => setShowBoardDropdown(false)}
-                                    />
-                                    <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
-                                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
-                                            Switch Workspace Board
-                                        </p>
-
-                                        {/* General Board option */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setActiveBoard(activeWorkspace.type === 'solo' ? 'solo' : 'org');
-                                                setShowBoardDropdown(false);
-                                            }}
-                                            className={cn(
-                                                "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
-                                                (activeBoard === 'solo' || activeBoard === 'org')
-                                                    ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                    : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                                            )}
-                                        >
-                                            <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                <img
-                                                    src={getImageUrl(
-                                                        activeWorkspace.type === 'solo' ? user?.avatar : activeWorkspace.org?.logo,
-                                                        activeWorkspace.type === 'solo' ? (user?.real_name || user?.username) : activeWorkspace.org?.name
-                                                    )}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                            <span className="truncate">
-                                                {activeWorkspace.type === 'solo' ? 'Personal' : activeWorkspace.org?.name}
-                                            </span>
-                                        </button>
-
-                                        {/* Projects list */}
-                                        {projects.length > 0 && (
-                                            <div className="pt-1.5 border-t border-zinc-900/60 mt-1">
-                                                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2.5 py-1">
-                                                    Projects
-                                                </p>
-                                                {projects.map((p) => (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setActiveBoard(`project_${p.id}`);
-                                                            setShowBoardDropdown(false);
-                                                        }}
-                                                        className={cn(
-                                                            "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
-                                                            activeBoard === `project_${p.id}`
-                                                                ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                                : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                                                        )}
-                                                    >
-                                                        <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-805 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                            <img
-                                                                src={getImageUrl(p.cover_image, p.title)}
-                                                                alt=""
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                        <span className="truncate">{p.title}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        <BoardSwitcher />
 
                         <span className="text-zinc-700 text-lg font-light">/</span>
 
@@ -1095,7 +971,7 @@ export default function KanbanBoard() {
                                                     >
                                                         <Plus className="w-3.5 h-3.5" />
                                                     </button>
-                                                    {columns.length > 1 && (
+                                                    {columns.length > 1 && hasPermission('kanban.column.manage') && (
                                                         <button
                                                             onClick={() => handleDeleteColumn(col.id)}
                                                             className="text-zinc-700 hover:text-red-400 p-1 rounded-lg hover:bg-red-500/10 transition-all"

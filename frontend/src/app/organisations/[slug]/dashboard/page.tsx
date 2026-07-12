@@ -5,15 +5,16 @@ import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
-import { Organisation, OrganisationMember, OrganisationInvitation, User } from '@/types';
+import { Organisation, OrganisationInvitation, User } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
-import { 
-    Check, X, Upload, Shield, Users, Search, Mail, 
-    Globe, Twitter, Youtube, ArrowLeft, Trash2, Edit3 
+import {
+    Check, X, Upload, Search, Mail,
+    Globe, Twitter, Youtube, ArrowLeft
 } from 'lucide-react';
 import Link from 'next/link';
+import MemberManager from '@/components/team/MemberManager';
 
 export default function OrganisationDashboardPage() {
     const { slug } = useParams() as { slug: string };
@@ -51,46 +52,43 @@ export default function OrganisationDashboardPage() {
     const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member');
     const [invitingUserId, setInvitingUserId] = useState<number | null>(null);
 
-    useEffect(() => {
+    const fetchData = async () => {
         if (!slug) return;
+        try {
+            const orgRes = await api.get(`/organisations/${slug}/`);
+            const orgData = orgRes.data as Organisation;
 
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const orgRes = await api.get(`/organisations/${slug}/`);
-                const orgData = orgRes.data as Organisation;
-
-                // Check permissions
-                const requestingMember = orgData.members?.find(m => m.user.id === currentUser?.id);
-                if (!requestingMember || (requestingMember.role !== 'owner' && requestingMember.role !== 'admin')) {
-                    setError("Access Denied: You do not have permission to manage this organisation.");
-                    setOrganisation(orgData);
-                    setLoading(false);
-                    return;
-                }
-
+            // Check permissions
+            const requestingMember = orgData.members?.find(m => m.user.id === currentUser?.id);
+            if (!requestingMember || (requestingMember.role !== 'owner' && requestingMember.role !== 'admin')) {
+                setError("Access Denied: You do not have permission to manage this organisation.");
                 setOrganisation(orgData);
-                setName(orgData.name);
-                setDescription(orgData.description || '');
-                setWebsite(orgData.website || '');
-                setTwitter(orgData.twitter || '');
-                setYoutube(orgData.youtube || '');
-
-                if (orgData.logo) setLogoPreview(getImageUrl(orgData.logo));
-                if (orgData.banner) setBannerPreview(getImageUrl(orgData.banner));
-
-                // Fetch pending invitations
-                const invitesRes = await api.get(`/organisation-invitations/?organisation_slug=${slug}`);
-                setInvitations(invitesRes.data.results || invitesRes.data);
-            } catch (err: any) {
-                console.error("Error fetching dashboard details:", err);
-                setError(err.response?.data?.detail || "Failed to load dashboard data.");
-            } finally {
-                setLoading(false);
+                return;
             }
-        };
 
-        fetchData();
+            setOrganisation(orgData);
+            setName(orgData.name);
+            setDescription(orgData.description || '');
+            setWebsite(orgData.website || '');
+            setTwitter(orgData.twitter || '');
+            setYoutube(orgData.youtube || '');
+
+            if (orgData.logo) setLogoPreview(getImageUrl(orgData.logo));
+            if (orgData.banner) setBannerPreview(getImageUrl(orgData.banner));
+
+            // Fetch pending invitations
+            const invitesRes = await api.get(`/organisation-invitations/?organisation_slug=${slug}`);
+            setInvitations(invitesRes.data.results || invitesRes.data);
+        } catch (err: any) {
+            console.error("Error fetching dashboard details:", err);
+            setError(err.response?.data?.detail || "Failed to load dashboard data.");
+        }
+    };
+
+    useEffect(() => {
+        setLoading(true);
+        fetchData().finally(() => setLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug, currentUser]);
 
     // Handle updates
@@ -124,41 +122,6 @@ export default function OrganisationDashboardPage() {
             setError(err.response?.data?.detail || "Failed to save settings. Please verify details.");
         } finally {
             setSaveLoading(false);
-        }
-    };
-
-    // Member updates
-    const handleRoleChange = async (memberId: number, newRole: 'admin' | 'member') => {
-        try {
-            const res = await api.patch(`/organisation-members/${memberId}/`, { role: newRole });
-            setOrganisation(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    members: prev.members?.map(m => m.id === memberId ? { ...m, role: res.data.role } : m)
-                };
-            });
-            setSuccessMessage("Member role updated.");
-        } catch (err: any) {
-            alert(err.response?.data?.detail || "Failed to update member role.");
-        }
-    };
-
-    const handleRemoveMember = async (memberId: number) => {
-        if (!confirm("Are you sure you want to remove this member from the studio?")) return;
-
-        try {
-            await api.delete(`/organisation-members/${memberId}/`);
-            setOrganisation(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    members: prev.members?.filter(m => m.id !== memberId)
-                };
-            });
-            setSuccessMessage("Member removed from organisation.");
-        } catch (err: any) {
-            alert(err.response?.data?.detail || "Failed to remove member.");
         }
     };
 
@@ -478,60 +441,17 @@ export default function OrganisationDashboardPage() {
                                     </div>
                                 </form>
                             ) : activeTab === 'members' ? (
-                                <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl overflow-hidden">
-                                    <div className="p-4 bg-zinc-950/60 border-b border-zinc-800">
-                                        <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Active Developers & Team</h3>
-                                    </div>
-                                    <div className="divide-y divide-zinc-850">
-                                        {organisation?.members?.map((member) => (
-                                            <div key={member.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-xl bg-zinc-950 overflow-hidden flex items-center justify-center font-bold text-white shrink-0">
-                                                        {member.user.avatar ? (
-                                                            <img src={getImageUrl(member.user.avatar)} alt={member.user.username} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            member.user.username.charAt(0).toUpperCase()
-                                                        )}
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-white text-sm hover:underline">
-                                                            <Link href={`/${member.user.username}`}>{member.user.real_name || member.user.username}</Link>
-                                                        </h4>
-                                                        <span className="text-xs text-zinc-550 block">@{member.user.username} • Joined {new Date(member.joined_at).toLocaleDateString()}</span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-3 self-end sm:self-auto">
-                                                    {/* Role modifier */}
-                                                    {member.role === 'owner' ? (
-                                                        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                                                            <Shield className="h-3.5 w-3.5" />
-                                                            <span>Owner</span>
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <select
-                                                                className="bg-zinc-950 border border-zinc-800 text-white rounded-xl text-xs font-semibold px-3 py-1.5 outline-none focus:border-zinc-700"
-                                                                value={member.role}
-                                                                onChange={(e) => handleRoleChange(member.id, e.target.value as 'admin' | 'member')}
-                                                            >
-                                                                <option value="admin">Admin</option>
-                                                                <option value="member">Developer</option>
-                                                            </select>
-
-                                                            <button
-                                                                onClick={() => handleRemoveMember(member.id)}
-                                                                className="p-2 bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-red-400 hover:border-red-500/20 rounded-xl transition-all"
-                                                                title="Remove developer"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-4">
+                                    {organisation && (
+                                        <MemberManager
+                                            scope="organisation"
+                                            organisationId={organisation.id}
+                                            organisationSlug={organisation.slug}
+                                            members={organisation.members ?? []}
+                                            onRefresh={fetchData}
+                                            showInviteButton={false}
+                                        />
+                                    )}
                                 </div>
                             ) : (
                                 <div className="space-y-6">

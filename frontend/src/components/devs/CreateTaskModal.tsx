@@ -128,19 +128,10 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
         }
 
         const orgMembers = activeWorkspace.org?.members ?? [];
-        if (orgMembers.length > 0) {
-            return orgMembers.map((m: any) => ({
-                username: m.user.username,
-                real_name: m.user.real_name || m.user.username,
-                avatar: m.user.avatar ?? undefined,
-            }));
-        }
-
-        const localTeam = data?.teamMembers ?? [];
-        return localTeam.map((m) => ({
-            username: m.username,
-            real_name: m.username,
-            avatar: m.avatar,
+        return orgMembers.map((m: any) => ({
+            username: m.user.username,
+            real_name: m.user.real_name || m.user.username,
+            avatar: m.user.avatar ?? undefined,
         }));
     };
 

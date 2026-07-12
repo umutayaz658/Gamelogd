@@ -7,15 +7,16 @@ import LeftSidebar from "@/components/LeftSidebar";
 import ProjectCard from "@/components/ProjectCard";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
-import { Organisation, Project, Post, OrganisationMember } from '@/types';
+import { Organisation, Project, Post } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
-import { 
-    Check, Users, Globe, Twitter, Youtube, Calendar, 
-    FolderKanban, Layout, Users2, Settings, Plus, CheckSquare, Shield 
+import {
+    Check, Users, Globe, Twitter, Youtube, Calendar,
+    FolderKanban, Layout, Users2, Settings, Plus, CheckSquare
 } from 'lucide-react';
 import Link from 'next/link';
+import MemberManager from '@/components/team/MemberManager';
 
 export default function OrganisationProfilePage() {
     const { slug } = useParams() as { slug: string };
@@ -30,31 +31,29 @@ export default function OrganisationProfilePage() {
     const [followLoading, setFollowLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'projects' | 'devlogs' | 'team'>('projects');
 
-    useEffect(() => {
+    const fetchOrganisationData = async () => {
         if (!slug) return;
+        try {
+            // Fetch organisation details
+            const orgRes = await api.get(`/organisations/${slug}/`);
+            setOrganisation(orgRes.data);
 
-        const fetchOrganisationData = async () => {
-            setLoading(true);
-            try {
-                // Fetch organisation details
-                const orgRes = await api.get(`/organisations/${slug}/`);
-                setOrganisation(orgRes.data);
+            // Fetch projects associated with this organisation
+            const projRes = await api.get(`/projects/?organisation_slug=${slug}`);
+            setProjects(projRes.data.results || projRes.data);
 
-                // Fetch projects associated with this organisation
-                const projRes = await api.get(`/projects/?organisation_slug=${slug}`);
-                setProjects(projRes.data.results || projRes.data);
+            // Fetch devlogs associated with this organisation
+            const devlogRes = await api.get(`/posts/?organisation_slug=${slug}`);
+            setDevlogs(devlogRes.data.results || devlogRes.data);
+        } catch (error) {
+            console.error("Failed to fetch organisation details:", error);
+        }
+    };
 
-                // Fetch devlogs associated with this organisation
-                const devlogRes = await api.get(`/posts/?organisation_slug=${slug}`);
-                setDevlogs(devlogRes.data.results || devlogRes.data);
-            } catch (error) {
-                console.error("Failed to fetch organisation details:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchOrganisationData();
+    useEffect(() => {
+        setLoading(true);
+        fetchOrganisationData().finally(() => setLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug]);
 
     if (loading) {
@@ -117,14 +116,6 @@ export default function OrganisationProfilePage() {
             console.error("Error toggling organisation follow:", error);
         } finally {
             setFollowLoading(false);
-        }
-    };
-
-    const getRoleLabel = (role: string) => {
-        switch(role) {
-            case 'owner': return t('owner' as any) || 'Kurucu / Sahip';
-            case 'admin': return t('admin' as any) || 'Yönetici';
-            default: return t('developer' as any) || 'Geliştirici';
         }
     };
 
@@ -330,41 +321,14 @@ export default function OrganisationProfilePage() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-                                    {organisation.members && organisation.members.length > 0 ? (
-                                        organisation.members.map((member: OrganisationMember) => (
-                                            <div key={member.id} className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800/80 rounded-2xl p-4 flex items-center gap-4 hover:border-zinc-700/80 transition-all">
-                                                <Link href={`/${member.user.username}`} className="w-12 h-12 rounded-xl bg-zinc-950 overflow-hidden flex items-center justify-center font-bold text-white shrink-0">
-                                                    {member.user.avatar ? (
-                                                        <img src={getImageUrl(member.user.avatar)} alt={member.user.username} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        member.user.username.charAt(0).toUpperCase()
-                                                    )}
-                                                </Link>
-
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Link href={`/${member.user.username}`} className="font-bold text-white hover:underline truncate">
-                                                            {member.user.real_name || member.user.username}
-                                                        </Link>
-                                                        {member.user.role === 'dev' && (
-                                                            <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase">Dev</span>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-xs text-zinc-500 block font-mono truncate">@{member.user.username}</span>
-                                                </div>
-
-                                                <div className="flex items-center gap-1.5 bg-zinc-950/60 border border-zinc-850 px-2.5 py-1 rounded-xl text-xs font-semibold text-zinc-400 capitalize">
-                                                    <Shield className={`h-3.5 w-3.5 ${member.role === 'owner' ? 'text-amber-500' : member.role === 'admin' ? 'text-blue-500' : 'text-zinc-500'}`} />
-                                                    <span>{getRoleLabel(member.role)}</span>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="text-center col-span-2 py-20 text-zinc-500 bg-zinc-900/20 rounded-2xl border border-zinc-800/40">
-                                            {t('noMembersFound' as any) || 'No members found.'}
-                                        </div>
-                                    )}
+                                <div className="w-full">
+                                    <MemberManager
+                                        scope="organisation"
+                                        organisationId={organisation.id}
+                                        organisationSlug={organisation.slug}
+                                        members={organisation.members ?? []}
+                                        onRefresh={fetchOrganisationData}
+                                    />
                                 </div>
                             )}
                         </div>

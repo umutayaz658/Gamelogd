@@ -69,7 +69,7 @@ const getCategoryColor = (cat: string) => {
 };
 
 export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps) {
-    const { data, setTasks, activeWorkspace, activeBoard } = useWorkspace();
+    const { setTasks, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
     const [projectMembers, setProjectMembers] = useState<{ username: string; real_name?: string }[]>([]);
     const [showAssignDropdown, setShowAssignDropdown] = useState(false);
@@ -97,16 +97,9 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
             return projectMembers;
         }
         const orgMembers = activeWorkspace.org?.members ?? [];
-        if (orgMembers.length > 0) {
-            return orgMembers.map((m: any) => ({
-                username: m.user.username,
-                real_name: m.user.real_name || m.user.username,
-            }));
-        }
-        const localTeam = data?.teamMembers ?? [];
-        return localTeam.map((m) => ({
-            username: m.username,
-            real_name: m.username,
+        return orgMembers.map((m: any) => ({
+            username: m.user.username,
+            real_name: m.user.real_name || m.user.username,
         }));
     };
 
@@ -134,13 +127,15 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
                     {getCategoryEmoji(task.category) ? <span>{getCategoryEmoji(task.category)}</span> : null}
                     <span>{getCategoryLabel(task.category)}</span>
                 </span>
-                <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
-                    className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 p-0.5 rounded transition-all"
-                    aria-label="Delete task"
-                >
-                    <Trash2 className="w-3 h-3" />
-                </button>
+                {hasPermission('kanban.task.delete') && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                        className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 p-0.5 rounded transition-all"
+                        aria-label="Delete task"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                )}
             </div>
 
             {/* Title */}
