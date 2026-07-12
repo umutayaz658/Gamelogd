@@ -91,10 +91,37 @@ export interface Project {
     created_at: string;
 }
 
+export interface Role {
+    id: number;
+    organisation: number;
+    project: number | null;
+    name: string;
+    description: string;
+    permissions: string[];
+    is_system: boolean;
+    is_default_for: string;
+}
+
+export interface PermissionCatalog {
+    [category: string]: [string, string][];
+}
+
+export interface PermissionTier {
+    label: string;
+    description: string;
+    keys: string[];
+}
+
+export interface PermissionHierarchy {
+    [category: string]: PermissionTier[];
+}
+
 export interface ProjectMember {
     id: number;
     user: User;
     role: 'participant' | 'editor' | 'admin';
+    custom_role: number | null;
+    custom_role_details: { id: number; name: string; is_system: boolean } | null;
     status: 'pending' | 'active';
     created_at: string;
 }
@@ -326,6 +353,8 @@ export interface OrganisationMember {
     organisation: number;
     user: User;
     role: 'owner' | 'admin' | 'member';
+    custom_role: number | null;
+    custom_role_details: { id: number; name: string; is_system: boolean } | null;
     joined_at: string;
 }
 
@@ -340,6 +369,8 @@ export interface OrganisationInvitation {
     };
     user: User;
     role: 'owner' | 'admin' | 'member';
+    custom_role: number | null;
+    custom_role_details: { id: number; name: string; is_system: boolean } | null;
     invited_by: number;
     invited_by_details: User;
     created_at: string;

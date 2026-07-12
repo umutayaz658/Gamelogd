@@ -6,13 +6,14 @@ import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
-import { Project, Post, User, ProjectMember } from '@/types';
+import { Project, Post } from '@/types';
 import { getImageUrl } from '@/lib/utils';
-import { MapPin, Calendar, Link as LinkIcon, Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, MoreHorizontal, ChevronDown, Clock, UserPlus, UserCheck } from 'lucide-react';
+import { Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, ChevronDown, UserPlus, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import { useTranslation } from '@/lib/useTranslation';
+import MemberManager from '@/components/team/MemberManager';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -44,18 +45,6 @@ export default function ProjectDetailPage() {
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Add Participant
-    const [showAddParticipantModal, setShowAddParticipantModal] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<User[]>([]);
-    const [selectedTargetUser, setSelectedTargetUser] = useState<User | null>(null);
-    const [selectedRole, setSelectedRole] = useState<'participant' | 'editor' | 'admin'>('participant');
-    const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
-    const [isAddingUser, setIsAddingUser] = useState(false);
-
-    // 3-dots Menu
-    const [actionMenuOpenFor, setActionMenuOpenFor] = useState<number | null>(null);
-
     // Status Dropdown
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
@@ -65,17 +54,6 @@ export default function ProjectDetailPage() {
     const [isFollowLoading, setIsFollowLoading] = useState(false);
     const [showDevlogModal, setShowDevlogModal] = useState(false);
     const [isInviteActionLoading, setIsInviteActionLoading] = useState(false);
-
-    // Collapsible Roles
-    const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>({
-        admin: false,
-        editor: false,
-        participant: false
-    });
-
-    const toggleRoleCollapse = (role: string) => {
-        setCollapsedRoles(prev => ({ ...prev, [role]: !prev[role] }));
-    };
 
     const fetchProjectData = async () => {
         if (!projectId) return;
@@ -200,85 +178,6 @@ export default function ProjectDetailPage() {
         }
     };
 
-    const handleSearchUsers = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSearchQuery(e.target.value);
-        if (e.target.value.length > 2) {
-            try {
-                const res = await api.get(`/users/?search=${e.target.value}`);
-                setSearchResults(res.data.results || res.data);
-            } catch (err) {
-                console.error(err);
-            }
-        } else {
-            setSearchResults([]);
-        }
-    };
-
-    const handleAddParticipant = async () => {
-        if (!project || !selectedTargetUser) return;
-        setIsAddingUser(true);
-        try {
-            await api.post(`/project-members/`, {
-                project: project.id,
-                user_id: selectedTargetUser.id,
-                role: selectedRole
-            });
-            await fetchProjectData();
-            
-            // Reset
-            setShowAddParticipantModal(false);
-            setSearchQuery('');
-            setSearchResults([]);
-            setSelectedTargetUser(null);
-            setSelectedRole('participant');
-        } catch (error: any) {
-            console.error("Failed to add participant", error);
-            if (error.response?.data) {
-                alert(JSON.stringify(error.response.data));
-            }
-        } finally {
-            setIsAddingUser(false);
-        }
-    };
-
-    const handleRevokeFromSearch = async () => {
-        if (!selectedTargetUser || !project) return;
-        const existingMember = project.members?.find(m => m.user.id === selectedTargetUser.id);
-        if (!existingMember) return;
-        
-        setIsAddingUser(true);
-        try {
-            await api.delete(`/project-members/${existingMember.id}/`);
-            await fetchProjectData();
-            // It automatically turns back to send invite because existingMember will be undefined
-        } catch (error) {
-            console.error("Failed to revoke invite", error);
-        } finally {
-            setIsAddingUser(false);
-        }
-    };
-
-    const handleChangeRole = async (memberId: number, newRole: string) => {
-        try {
-            await api.patch(`/project-members/${memberId}/`, { role: newRole });
-            await fetchProjectData();
-            setActionMenuOpenFor(null);
-        } catch (error) {
-            console.error("Failed to change role", error);
-        }
-    };
-
-    const handleRemoveParticipant = async (memberId: number) => {
-        if (!confirm(t('removeParticipantConfirm'))) return;
-        try {
-            await api.delete(`/project-members/${memberId}/`);
-            await fetchProjectData();
-            setActionMenuOpenFor(null);
-        } catch (error) {
-            console.error("Failed to remove participant", error);
-        }
-    };
-
     if (loading) {
         return (
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -297,12 +196,6 @@ export default function ProjectDetailPage() {
             </div>
         );
     }
-
-    const membersByRole = {
-        admin: project.members?.filter(m => m.role === 'admin') || [],
-        editor: project.members?.filter(m => m.role === 'editor') || [],
-        participant: project.members?.filter(m => m.role === 'participant') || []
-    };
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
@@ -662,190 +555,20 @@ export default function ProjectDetailPage() {
                             ) : (
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                     {/* Participants */}
-                                    <div className="space-y-6">
+                                    <div className="lg:col-span-2 space-y-6">
                                         <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-                                            <div className="flex items-center justify-between mb-6">
-                                                <h3 className="text-lg font-bold flex items-center gap-2">
-                                                    <Users className="w-5 h-5 text-emerald-500" />
-                                                    {t('participants')}
-                                                </h3>
-                                                {isAdmin && (
-                                                    <button onClick={() => setShowAddParticipantModal(true)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-1.5 rounded-lg transition-colors">
-                                                        <Plus className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            <div className="space-y-6">
-                                                {/* Admins */}
-                                                <div>
-                                                    <div 
-                                                        className="flex items-center gap-2 cursor-pointer mb-3 group w-max"
-                                                        onClick={() => toggleRoleCollapse('admin')}
-                                                    >
-                                                        <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${collapsedRoles.admin ? '-rotate-90' : ''}`} />
-                                                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">{t('admins')}</h4>
-                                                    </div>
-                                                    
-                                                    {!collapsedRoles.admin && (
-                                                        <div className="space-y-3 pl-6">
-                                                            <div className="flex items-center justify-between">
-                                                                <Link href={`/${project.owner.username}`} className="flex items-center gap-3">
-                                                                    <img src={getImageUrl(project.owner.avatar, project.owner.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Owner" />
-                                                                    <div>
-                                                                        <div className="text-sm font-medium text-white">{project.owner.username}</div>
-                                                                        <div className="text-xs text-zinc-500">{t('owner')}</div>
-                                                                    </div>
-                                                                </Link>
-                                                            </div>
-                                                            {membersByRole.admin.map(member => (
-                                                                <div key={member.id} className="flex items-center justify-between group relative">
-                                                                    <Link href={`/${member.user.username}`} className="flex items-center gap-3">
-                                                                        <img src={getImageUrl(member.user.avatar, member.user.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Admin" />
-                                                                        <div>
-                                                                            <div className="text-sm font-medium text-white flex items-center gap-2">
-                                                                                {member.user.username}
-                                                                                {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> {t('pending')}</span>}
-                                                                            </div>
-                                                                            <div className="text-xs text-zinc-500">{t('admins')}</div>
-                                                                        </div>
-                                                                    </Link>
-                                                                    {isAdmin && (
-                                                                        <div className="relative">
-                                                                            <button onClick={() => setActionMenuOpenFor(actionMenuOpenFor === member.id ? null : member.id)} className="text-zinc-500 hover:text-white p-1 rounded transition-colors hover:bg-zinc-800">
-                                                                                <MoreHorizontal className="w-5 h-5" />
-                                                                            </button>
-                                                                            {actionMenuOpenFor === member.id && (
-                                                                                <>
-                                                                                    <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpenFor(null)} />
-                                                                                    <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">{t('changeRole')}</div>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10">{t('makeAdmin')}</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeEditor')}</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-b border-zinc-800">{t('makeParticipant')}</button>
-                                                                                        
-                                                                                        <button onClick={() => handleRemoveParticipant(member.id)} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                                            {member.status === 'pending' ? t('revokeInvite') : t('removeParticipant')}
-                                                                                        </button>
-                                                                                    </div>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Editors */}
-                                                {membersByRole.editor.length > 0 && (
-                                                    <div>
-                                                        <div 
-                                                            className="flex items-center gap-2 cursor-pointer mb-3 group w-max"
-                                                            onClick={() => toggleRoleCollapse('editor')}
-                                                        >
-                                                            <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${collapsedRoles.editor ? '-rotate-90' : ''}`} />
-                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">{t('editors')}</h4>
-                                                        </div>
-                                                        
-                                                        {!collapsedRoles.editor && (
-                                                            <div className="space-y-3 pl-6">
-                                                            {membersByRole.editor.map(member => (
-                                                                <div key={member.id} className="flex items-center justify-between group">
-                                                                    <Link href={`/${member.user.username}`} className="flex items-center gap-3">
-                                                                        <img src={getImageUrl(member.user.avatar, member.user.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Editor" />
-                                                                        <div className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                                                                            {member.user.username}
-                                                                            {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> {t('pending')}</span>}
-                                                                        </div>
-                                                                    </Link>
-                                                                {isAdmin && (
-                                                                    <div className="relative">
-                                                                        <button onClick={() => setActionMenuOpenFor(actionMenuOpenFor === member.id ? null : member.id)} className="text-zinc-500 hover:text-white p-1 rounded transition-colors hover:bg-zinc-800">
-                                                                            <MoreHorizontal className="w-5 h-5" />
-                                                                        </button>
-                                                                        {actionMenuOpenFor === member.id && (
-                                                                            <>
-                                                                                <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpenFor(null)} />
-                                                                                <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                                    <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">{t('changeRole')}</div>
-                                                                                    <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeAdmin')}</button>
-                                                                                    <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10">{t('makeEditor')}</button>
-                                                                                    <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-b border-zinc-800">{t('makeParticipant')}</button>
-                                                                                    
-                                                                                    <button onClick={() => handleRemoveParticipant(member.id)} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                                        {member.status === 'pending' ? t('revokeInvite') : t('removeParticipant')}
-                                                                                    </button>
-                                                                                </div>
-                                                                            </>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                )}
-
-                                                {/* Participants */}
-                                                {membersByRole.participant.length > 0 && (
-                                                    <div>
-                                                        <div 
-                                                            className="flex items-center gap-2 cursor-pointer mb-3 group w-max"
-                                                            onClick={() => toggleRoleCollapse('participant')}
-                                                        >
-                                                            <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${collapsedRoles.participant ? '-rotate-90' : ''}`} />
-                                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider group-hover:text-zinc-300 transition-colors">{t('participants')}</h4>
-                                                        </div>
-                                                        
-                                                        {!collapsedRoles.participant && (
-                                                            <div className="space-y-3 pl-6">
-                                                            {membersByRole.participant.map(member => (
-                                                                <div key={member.id} className="flex items-center justify-between group">
-                                                                    <Link href={`/${member.user.username}`} className="flex items-center gap-3">
-                                                                        <img src={getImageUrl(member.user.avatar, member.user.username)} className="w-8 h-8 rounded-full border border-zinc-700 object-cover" alt="Participant" />
-                                                                        <div className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                                                                            {member.user.username}
-                                                                            {member.status === 'pending' && <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase"><Clock className="w-3 h-3"/> {t('pending')}</span>}
-                                                                        </div>
-                                                                    </Link>
-                                                                    {isAdmin && (
-                                                                        <div className="relative">
-                                                                            <button onClick={() => setActionMenuOpenFor(actionMenuOpenFor === member.id ? null : member.id)} className="text-zinc-500 hover:text-white p-1 rounded transition-colors hover:bg-zinc-800">
-                                                                                <MoreHorizontal className="w-5 h-5" />
-                                                                            </button>
-                                                                            {actionMenuOpenFor === member.id && (
-                                                                                <>
-                                                                                    <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpenFor(null)} />
-                                                                                    <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95">
-                                                                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900/50">{t('changeRole')}</div>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'admin')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeAdmin')}</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'editor')} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors">{t('makeEditor')}</button>
-                                                                                        <button onClick={() => handleChangeRole(member.id, 'participant')} className="w-full text-left px-4 py-2 text-sm text-emerald-400 bg-emerald-500/10 border-b border-zinc-800">{t('makeParticipant')}</button>
-                                                                                        
-                                                                                        <button onClick={() => handleRemoveParticipant(member.id)} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                                            {member.status === 'pending' ? t('revokeInvite') : t('removeParticipant')}
-                                                                                        </button>
-                                                                                    </div>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="lg:col-span-2 hidden lg:block">
-                                        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 border-dashed text-center flex flex-col items-center justify-center h-full text-zinc-500">
-                                            <Users className="w-12 h-12 mb-4 opacity-50" />
-                                            <p>{t('participants')}</p>
+                                            <h3 className="text-lg font-bold flex items-center gap-2 mb-6">
+                                                <Users className="w-5 h-5 text-emerald-500" />
+                                                {t('participants')}
+                                            </h3>
+                                            <MemberManager
+                                                scope="project"
+                                                organisationId={project.organisation ?? null}
+                                                projectId={project.id}
+                                                members={project.members ?? []}
+                                                projectOwner={project.owner}
+                                                onRefresh={fetchProjectData}
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -883,124 +606,6 @@ export default function ProjectDetailPage() {
                                     {t('deleteProject')}
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Add Participant Modal */}
-            {showAddParticipantModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
-                        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                            <h3 className="font-bold text-lg">{t('addParticipant')}</h3>
-                            <button onClick={() => { setShowAddParticipantModal(false); setSelectedTargetUser(null); setSearchQuery(''); }} className="text-zinc-500 hover:text-white">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="p-6">
-                            {!selectedTargetUser ? (
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm text-zinc-400 mb-2">{t('searchUser')}</label>
-                                        <input 
-                                            type="text" 
-                                            value={searchQuery}
-                                            onChange={handleSearchUsers}
-                                            placeholder={t('typeUsername')}
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-colors"
-                                        />
-                                    </div>
-                                    
-                                    {searchResults.length > 0 && (
-                                        <div className="max-h-60 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded-xl p-2 space-y-1">
-                                            {searchResults.map(u => (
-                                                <div 
-                                                    key={u.id} 
-                                                    onClick={() => {
-                                                        setSelectedTargetUser(u);
-                                                        setSearchResults([]);
-                                                        setSearchQuery('');
-                                                    }}
-                                                    className="flex items-center gap-3 p-3 hover:bg-zinc-900 rounded-lg cursor-pointer transition-colors"
-                                                >
-                                                    <img src={getImageUrl(u.avatar, u.username)} className="w-10 h-10 rounded-full border border-zinc-800" alt="" />
-                                                    <span className="font-medium text-white">{u.username}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="space-y-6">
-                                    <div className="flex flex-col items-center p-6 bg-zinc-950 rounded-xl border border-zinc-800">
-                                        <img src={getImageUrl(selectedTargetUser.avatar, selectedTargetUser.username)} className="w-16 h-16 rounded-full border-2 border-zinc-800 mb-3" alt="" />
-                                        <div className="text-lg font-bold text-white">{selectedTargetUser.username}</div>
-                                        <div className="text-sm text-zinc-500">{t('willReceiveInvite')}</div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm text-zinc-400 mb-2">{t('selectRole')}</label>
-                                        <div className="relative">
-                                            <div 
-                                                onClick={() => setRoleDropdownOpen(!roleDropdownOpen)} 
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white cursor-pointer flex justify-between items-center hover:border-emerald-500 transition-colors"
-                                            >
-                                                <span className="font-medium">
-                                                    {selectedRole === 'admin' ? t('adminFullAccess') : selectedRole === 'editor' ? t('editorAccess') : t('participantAccess')}
-                                                </span>
-                                                <ChevronDown className="w-5 h-5 text-zinc-500" />
-                                            </div>
-                                            
-                                            {roleDropdownOpen && (
-                                                <div className="absolute z-10 w-full mt-2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
-                                                    {[
-                                                        { value: 'participant', label: t('participant'), desc: t('roleParticipantDesc') },
-                                                        { value: 'editor', label: t('editor'), desc: t('roleEditorDesc') },
-                                                        { value: 'admin', label: t('admin'), desc: t('roleAdminDesc') }
-                                                    ].map(r => (
-                                                        <div 
-                                                            key={r.value} 
-                                                            onClick={() => { setSelectedRole(r.value as any); setRoleDropdownOpen(false); }} 
-                                                            className={`px-4 py-3 cursor-pointer hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-0 ${selectedRole === r.value ? 'bg-emerald-500/10' : ''}`}
-                                                        >
-                                                            <div className={`font-bold ${selectedRole === r.value ? 'text-emerald-400' : 'text-white'}`}>{r.label}</div>
-                                                            <div className="text-xs text-zinc-500 mt-1">{r.desc}</div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex gap-3 pt-2">
-                                        <button 
-                                            onClick={() => setSelectedTargetUser(null)} 
-                                            className="flex-1 py-3 text-zinc-400 font-bold hover:text-white bg-zinc-950 hover:bg-zinc-800 rounded-xl transition-colors border border-zinc-800"
-                                        >
-                                            {t('cancel')}
-                                        </button>
-                                        
-                                        {project.members?.find(m => m.user.id === selectedTargetUser.id) ? (
-                                            <button 
-                                                onClick={handleRevokeFromSearch}
-                                                disabled={isAddingUser}
-                                                className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 py-3 rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 border border-red-500/20"
-                                            >
-                                                {isAddingUser ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500" /> : t('revokeInvite')}
-                                            </button>
-                                        ) : (
-                                            <button 
-                                                onClick={handleAddParticipant}
-                                                disabled={isAddingUser}
-                                                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                            >
-                                                {isAddingUser ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : t('sendInvite')}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
