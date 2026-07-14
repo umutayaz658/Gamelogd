@@ -8,12 +8,13 @@ import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
 import { Project, Post } from '@/types';
 import { getImageUrl } from '@/lib/utils';
-import { Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, ChevronDown, UserPlus, UserCheck } from 'lucide-react';
+import { Users, Layout, Info, Edit2, Check, X, ShieldAlert, Trash2, Plus, Settings, ChevronDown, UserPlus, UserCheck, Bug } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import { useTranslation } from '@/lib/useTranslation';
 import MemberManager from '@/components/team/MemberManager';
+import FeedbackPanel from '@/components/devs/FeedbackPanel';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -29,7 +30,7 @@ export default function ProjectDetailPage() {
 
     const [project, setProject] = useState<Project | null>(null);
     const [devlogs, setDevlogs] = useState<Post[]>([]);
-    const [activeTab, setActiveTab] = useState<'about' | 'devlogs' | 'participants'>('devlogs');
+    const [activeTab, setActiveTab] = useState<'about' | 'devlogs' | 'feedback' | 'participants'>('devlogs');
     const [loading, setLoading] = useState(true);
 
     const [isEditingAbout, setIsEditingAbout] = useState(false);
@@ -136,16 +137,16 @@ export default function ProjectDetailPage() {
         if (!project) return;
         setIsSaving(true);
         try {
-            await api.patch(`/projects/${project.id}/`, { 
+            await api.patch(`/projects/${project.id}/`, {
                 title: editedTitle,
                 description: editedDescription,
-                tech_stack: editedTechStack
+                tech_stack: editedTechStack,
             });
-            setProject({ 
-                ...project, 
-                title: editedTitle, 
+            setProject({
+                ...project,
+                title: editedTitle,
                 description: editedDescription,
-                tech_stack: editedTechStack
+                tech_stack: editedTechStack,
             });
             setIsEditingAbout(false);
         } catch (error) {
@@ -232,7 +233,7 @@ export default function ProjectDetailPage() {
                                                 project.status === 'alpha' ? 'bg-purple-500/20 border-purple-500 text-purple-400' :
                                                 'bg-amber-500/20 border-amber-500 text-amber-400'
                                             }`}>
-                                            {project.status.replace('_', ' ')}
+                                            {project.status.replaceAll('_', ' ')}
                                         </span>
                                     </div>
                                 </div>
@@ -342,6 +343,19 @@ export default function ProjectDetailPage() {
                                     {t('about')}
                                 </div>
                                 {activeTab === 'about' && (
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('feedback')}
+                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'feedback' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Bug className="h-5 w-5" />
+                                    Feedback
+                                </div>
+                                {activeTab === 'feedback' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
                                 )}
                             </button>
@@ -515,7 +529,7 @@ export default function ProjectDetailPage() {
                                                                 >
                                                                     {project.status === 'released' ? t('released') :
                                                                      project.status === 'in_dev' ? t('inDevelopment') :
-                                                                     project.status.replace('_', ' ')} <ChevronDown className="w-3 h-3" />
+                                                                     project.status.replaceAll('_', ' ')} <ChevronDown className="w-3 h-3" />
                                                                 </button>
                                                                 {showStatusDropdown && (
                                                                     <>
@@ -531,7 +545,7 @@ export default function ProjectDetailPage() {
                                                                                         onClick={() => handleUpdateStatus(s)}
                                                                                         className={`w-full text-left px-4 py-2 text-sm capitalize transition-colors ${project.status === s ? 'bg-emerald-500/10 text-emerald-400' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}`}
                                                                                     >
-                                                                                        {statusLabel.replace('_', ' ')}
+                                                                                        {statusLabel.replaceAll('_', ' ')}
                                                                                     </button>
                                                                                 );
                                                                             })}
@@ -543,7 +557,7 @@ export default function ProjectDetailPage() {
                                                             <div className="font-mono text-emerald-400 capitalize">
                                                                 {project.status === 'released' ? t('released') :
                                                                  project.status === 'in_dev' ? t('inDevelopment') :
-                                                                 project.status.replace('_', ' ')}
+                                                                 project.status.replaceAll('_', ' ')}
                                                             </div>
                                                         )}
                                                     </div>
@@ -552,7 +566,13 @@ export default function ProjectDetailPage() {
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
+                            ) : activeTab === 'feedback' ? (
+                                <FeedbackPanel
+                                    projectId={project.id}
+                                    organisationId={project.organisation ?? null}
+                                    stickyTopClassName="top-16"
+                                />
+                            ) : activeTab === 'participants' ? (
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                     {/* Participants */}
                                     <div className="lg:col-span-2 space-y-6">
@@ -572,7 +592,7 @@ export default function ProjectDetailPage() {
                                         </div>
                                     </div>
                                 </div>
-                            )}
+                            ) : null}
                         </div>
 
                     </div>
@@ -662,6 +682,7 @@ export default function ProjectDetailPage() {
                     setDevlogs(prev => [newPost, ...prev]);
                 }}
             />
+
         </div>
     );
 }

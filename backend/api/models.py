@@ -356,6 +356,13 @@ class PendingRegistration(models.Model):
     registration_data = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
+    # Wrong-code attempts against this code; used to lock out brute force even from
+    # distributed IPs that would slip past request throttling.
+    failed_attempts = models.PositiveIntegerField(default=0)
+
+    # After this many wrong codes the pending registration is invalidated and the user
+    # must request a fresh code.
+    MAX_VERIFY_ATTEMPTS = 5
 
     def save(self, *args, **kwargs):
         if not self.expires_at:

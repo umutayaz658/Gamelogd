@@ -8,7 +8,7 @@ import ConfirmDeleteModal from '@/components/devs/ConfirmDeleteModal';
 
 const CATEGORY_LABEL: Record<string, string> = {
     kanban: 'Kanban', gdd: 'GDD Hub', assets: 'Asset Registry',
-    localisation: 'Localisation', team: 'Team & Roles', playtest: 'Playtest Feedback', settings: 'Settings',
+    localisation: 'Localisation', team: 'Team & Roles', feedback: 'Feedback', settings: 'Settings',
 };
 
 export type RoleScope =
