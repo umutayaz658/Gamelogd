@@ -10,6 +10,7 @@ import api from "@/lib/api";
 import Link from 'next/link';
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/lib/useTranslation";
+import { useToast } from "@/context/ToastContext";
 
 interface Game {
     id: number;
@@ -32,6 +33,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
     const { username } = use(params);
     const { user: currentUser } = useAuth();
     const { t } = useTranslation();
+    const toast = useToast();
     const isOwnProfile = currentUser?.username?.toLowerCase() === username?.toLowerCase();
     // State
     const [games, setGames] = useState<LibraryEntry[]>([]);
@@ -100,7 +102,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
             setEditingId(null);
         } catch (error) {
             console.error("Failed to update status:", error);
-            alert("Failed to update status");
+            toast.error("Failed to update status");
         } finally {
             setUpdatingId(null);
         }

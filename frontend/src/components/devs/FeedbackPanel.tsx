@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { PRIORITY_COLOR, type TaskPriority } from './WorkspaceTypes';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import { useToast } from '@/context/ToastContext';
 import type { PlaytestFeedback, FeedbackType, FeedbackStatus } from '@/types';
 
 const TYPE_META: Record<FeedbackType, { label: string; icon: typeof Bug }> = {
@@ -80,6 +81,7 @@ export default function FeedbackPanel({
 }: FeedbackPanelProps) {
     const { user } = useAuth();
     const { language } = useTranslation();
+    const toast = useToast();
 
     const [feedback, setFeedback] = useState<PlaytestFeedback[]>([]);
     const [loading, setLoading] = useState(false);
@@ -151,7 +153,7 @@ export default function FeedbackPanel({
             description: fbDesc.trim(), build_version: fbBuild.trim(),
         })
             .then(() => { fetchFeedback(); resetForm(); setShowSubmitModal(false); })
-            .catch((err) => alert(err.response?.data?.description?.[0] || err.response?.data?.detail || 'Failed to submit feedback.'))
+            .catch((err) => toast.error(err.response?.data?.description?.[0] || err.response?.data?.detail || 'Failed to submit feedback.'))
             .finally(() => setSubmitting(false));
     };
 
@@ -174,7 +176,7 @@ export default function FeedbackPanel({
         api.post(`/playtest-feedback/${fb.id}/toggle-pin/`)
             // Pinning changes list ordering (pinned first), so refetch to reflect the new order.
             .then(() => fetchFeedback())
-            .catch((err) => alert(err.response?.data?.detail || 'Failed to update pin state.'));
+            .catch((err) => toast.error(err.response?.data?.detail || 'Failed to update pin state.'));
     };
 
     const setStatus = (fb: PlaytestFeedback, newStatus: FeedbackStatus) => {
@@ -189,7 +191,7 @@ export default function FeedbackPanel({
                     setFeedback((prev) => prev.map((f) => f.id === fb.id ? res.data : f));
                 }
             })
-            .catch((err) => alert(err.response?.data?.detail || 'Failed to update status.'));
+            .catch((err) => toast.error(err.response?.data?.detail || 'Failed to update status.'));
     };
 
     const convertToTask = (fb: PlaytestFeedback) => {
@@ -198,7 +200,7 @@ export default function FeedbackPanel({
                 setFeedback((prev) => prev.map((f) => f.id === fb.id ? res.data : f));
                 onKanbanChanged?.();
             })
-            .catch((err) => alert(err.response?.data?.error || err.response?.data?.detail || 'Failed to convert to task.'));
+            .catch((err) => toast.error(err.response?.data?.error || err.response?.data?.detail || 'Failed to convert to task.'));
     };
 
     const performRevert = () => {
@@ -209,7 +211,7 @@ export default function FeedbackPanel({
                 setFeedback((prev) => prev.map((f) => f.id === fb.id ? res.data : f));
                 onKanbanChanged?.();
             })
-            .catch((err) => alert(err.response?.data?.error || err.response?.data?.detail || 'Failed to pull back from Kanban.'))
+            .catch((err) => toast.error(err.response?.data?.error || err.response?.data?.detail || 'Failed to pull back from Kanban.'))
             .finally(() => setConfirmRevertTarget(null));
     };
 
@@ -218,7 +220,7 @@ export default function FeedbackPanel({
         const fb = confirmDeleteTarget;
         api.delete(`/playtest-feedback/${fb.id}/`)
             .then(() => setFeedback((prev) => prev.filter((f) => f.id !== fb.id)))
-            .catch((err) => alert(err.response?.data?.detail || 'Failed to delete feedback.'))
+            .catch((err) => toast.error(err.response?.data?.detail || 'Failed to delete feedback.'))
             .finally(() => setConfirmDeleteTarget(null));
     };
 

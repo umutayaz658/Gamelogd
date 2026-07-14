@@ -10,6 +10,8 @@ import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import ImageModal from '@/components/modals/ImageModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const renderContentWithLinks = (content: string | undefined) => {
     if (!content) return null;
@@ -83,6 +85,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
     const { t, language } = useTranslation();
+    const toast = useToast();
+    const confirm = useConfirm();
 
     const author = post.author_details || {
         type: 'user',
@@ -205,7 +209,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm("Are you sure you want to delete this post?")) return;
+        if (!(await confirm({ message: "Are you sure you want to delete this post?", confirmText: 'Delete', isDanger: true }))) return;
         
         try {
             await api.delete(`/posts/${post.id}/`);
@@ -261,7 +265,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 await navigator.share(shareData);
             } else {
                 await navigator.clipboard.writeText(url);
-                alert('Link copied to clipboard!');
+                toast.success('Link copied to clipboard!');
             }
         } catch (error) {
             // User cancelled share dialog, ignore
@@ -735,7 +739,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             setShowShareMenu(false);
                                             const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
                                             navigator.clipboard.writeText(url);
-                                            alert(t('linkCopied'));
+                                            toast.success(t('linkCopied'));
                                         }}
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                     >

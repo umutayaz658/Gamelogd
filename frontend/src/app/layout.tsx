@@ -8,6 +8,8 @@ import ClientLogModalWrapper from '@/components/ClientLogModalWrapper';
 import { ReplyModalProvider } from '@/context/ReplyModalContext';
 import ReplyModal from '@/components/ReplyModal';
 import { FeedProvider } from '@/context/FeedContext';
+import { ToastProvider } from '@/context/ToastContext';
+import { ConfirmProvider } from '@/context/ConfirmContext';
 
 export const metadata: Metadata = {
     title: 'Gamelogd',
@@ -22,20 +24,24 @@ export default function RootLayout({
     return (
         <html lang="en" className="dark">
             <body className="bg-zinc-950 text-zinc-100 antialiased" suppressHydrationWarning={true}>
-                <AuthProvider>
-                    <NotificationProvider>
-                        <LogModalProvider>
-                            <ReplyModalProvider>
-                                <FeedProvider>
-                                    {children}
-                                    <MessagesDrawer />
-                                    <ClientLogModalWrapper />
-                                    <ReplyModal />
-                                </FeedProvider>
-                            </ReplyModalProvider>
-                        </LogModalProvider>
-                    </NotificationProvider>
-                </AuthProvider>
+                <ToastProvider>
+                    <ConfirmProvider>
+                        <AuthProvider>
+                            <NotificationProvider>
+                                <LogModalProvider>
+                                    <ReplyModalProvider>
+                                        <FeedProvider>
+                                            {children}
+                                            <MessagesDrawer />
+                                            <ClientLogModalWrapper />
+                                            <ReplyModal />
+                                        </FeedProvider>
+                                    </ReplyModalProvider>
+                                </LogModalProvider>
+                            </NotificationProvider>
+                        </AuthProvider>
+                    </ConfirmProvider>
+                </ToastProvider>
             </body>
         </html>
     );

@@ -9,6 +9,7 @@ import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
 
 interface PostComposerProps {
     onPostCreated: (post: Post) => void;
@@ -20,6 +21,7 @@ interface PostComposerProps {
 export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
     const { user } = useAuth();
     const { t } = useTranslation();
+    const toast = useToast();
 
     // Create Post State
     const [content, setContent] = useState('');
@@ -183,9 +185,9 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             console.error('Failed to create post:', error);
             if (error.response?.data?.traceback) {
                 console.error('BACKEND TRACEBACK:\n', error.response.data.traceback);
-                alert(`Failed to create post:\n${error.response.data.error || 'Server Error'}`);
+                toast.error(`Failed to create post:\n${error.response.data.error || 'Server Error'}`);
             } else {
-                alert('Failed to create post. Please try again.');
+                toast.error('Failed to create post. Please try again.');
             }
         } finally {
             setIsPosting(false);
