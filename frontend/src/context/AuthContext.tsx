@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
 import api, { isCookieAuth } from '@/lib/api';
+import { useToast } from '@/context/ToastContext';
 
 // Store the JS token cookie with the strongest flags the current protocol allows.
 // (Only used in header mode — cookie mode never exposes the token to JS.)
@@ -54,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
+    const toast = useToast();
 
     // Check for token and fetch user on mount
     useEffect(() => {
@@ -96,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             router.refresh();
         } catch (error) {
             console.error('Login failed during user fetch:', error);
-            alert('Login succeeded but failed to load profile.');
+            toast.error('Login succeeded but failed to load profile.');
         } finally {
             setIsLoading(false);
         }

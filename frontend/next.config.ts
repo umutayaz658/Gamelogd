@@ -1,6 +1,39 @@
 import type { NextConfig } from 'next';
 import path from 'path';
 
+// Derive the API origin (scheme://host[:port]) from NEXT_PUBLIC_API_URL so the CSP
+// connect-src always matches whatever backend the frontend is actually configured to
+// call (e.g. https://api.gamelogd.net). Without this the browser blocks every API
+// request when the backend host changes. Falls back to nothing if the env is unset/invalid.
+function apiOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (!raw) return null;
+  try {
+    // NEXT_PUBLIC_API_URL may be a bare host or a full URL with an /api path — normalise both.
+    const withScheme = /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+    return new URL(withScheme).origin;
+  } catch {
+    return null;
+  }
+}
+
+const API_ORIGIN = apiOrigin();
+
+// Known API hosts across environments. The env-derived origin is added first so the
+// live backend is always allowed; the rest keep local dev and the legacy Railway host working.
+const CONNECT_SRC = [
+  "'self'",
+  API_ORIGIN,
+  'https://api.gamelogd.net',
+  'https://gamelogd-production.up.railway.app',
+  'http://localhost:8000',
+  'http://127.0.0.1:8000',
+  'https://accounts.google.com',
+  'https://api.giphy.com',
+]
+  .filter((v, i, arr) => v && arr.indexOf(v) === i)
+  .join(' ');
+
 const nextConfig: NextConfig = {
   // @ts-ignore
   turbopack: {
@@ -105,7 +138,7 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://gsi.gstatic.com; " +
               "style-src 'self' 'unsafe-inline' https://accounts.google.com https://gsi.gstatic.com https://fonts.googleapis.com; " +
               "img-src * data: blob:; " +
-              "connect-src 'self' https://gamelogd-production.up.railway.app http://localhost:8000 http://127.0.0.1:8000 https://accounts.google.com https://api.giphy.com; " +
+              `connect-src ${CONNECT_SRC}; ` +
               "frame-src 'self' https://accounts.google.com; " +
               "font-src 'self' data: https://fonts.gstatic.com; " +
               "frame-ancestors 'none';",

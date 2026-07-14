@@ -16,6 +16,7 @@ import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
 
 // API Data Types
 interface MessageReaction {
@@ -101,6 +102,7 @@ export default function MessagesDrawer() {
     const { user } = useAuth();
     const { unreadMessages } = useNotifications();
     const { t } = useTranslation();
+    const toast = useToast();
 
     if (pathname?.startsWith('/messages')) return null;
 
@@ -151,7 +153,7 @@ export default function MessagesDrawer() {
         if (!file) return;
         
         if (file.size > 10 * 1024 * 1024) {
-            alert("File size must be less than 10MB");
+            toast.error("File size must be less than 10MB");
             return;
         }
         

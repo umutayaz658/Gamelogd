@@ -11,6 +11,8 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 interface ReviewCardProps {
     review: Review;
@@ -22,6 +24,8 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
     const { t, language } = useTranslation();
+    const toast = useToast();
+    const confirm = useConfirm();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
     const baseId = useId().replace(/:/g, '-');
 
@@ -85,7 +89,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm("Are you sure you want to delete this review?")) return;
+        if (!(await confirm({ message: "Are you sure you want to delete this review?", confirmText: 'Delete', isDanger: true }))) return;
         try {
             await api.delete(`/reviews/${review.id}/`);
             window.location.reload();
@@ -114,7 +118,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                 await navigator.share(shareData);
             } else {
                 await navigator.clipboard.writeText(url);
-                alert('Link copied to clipboard!');
+                toast.success('Link copied to clipboard!');
             }
         } catch (error) {
             // User cancelled share dialog, ignore
@@ -386,7 +390,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                                             setShowShareMenu(false);
                                             const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
                                             navigator.clipboard.writeText(url);
-                                            alert('Link copied to clipboard!');
+                                            toast.success('Link copied to clipboard!');
                                         }}
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                     >

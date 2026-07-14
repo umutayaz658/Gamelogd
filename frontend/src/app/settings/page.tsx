@@ -8,7 +8,8 @@ import api from "@/lib/api";
 import { getImageUrl } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-import { 
+import { useToast } from "@/context/ToastContext";
+import {
     User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe, 
     FileText, HelpCircle, ChevronRight, ExternalLink, MessageCircle, Bug, Zap, Play, 
     Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX, ChevronDown
@@ -920,6 +921,7 @@ function SettingsContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
+    const toast = useToast();
 
     const activeTab = searchParams.get('tab') || 'account';
 
@@ -986,7 +988,7 @@ function SettingsContent() {
                     setBlockedUsers(prev => prev.filter(u => u.id !== blockedUser.id));
                 } catch (error) {
                     console.error("Failed to unblock user:", error);
-                    alert("Failed to unblock user.");
+                    toast.error("Failed to unblock user.");
                 }
             }
         });
@@ -1176,7 +1178,7 @@ function SettingsContent() {
             setFollowRequests(prev => prev.filter(r => r.username !== requestUsername));
         } catch (error) {
             console.error("Failed to approve request:", error);
-            alert("Failed to approve follow request.");
+            toast.error("Failed to approve follow request.");
         }
     };
 
@@ -1186,7 +1188,7 @@ function SettingsContent() {
             setFollowRequests(prev => prev.filter(r => r.username !== requestUsername));
         } catch (error) {
             console.error("Failed to reject request:", error);
-            alert("Failed to reject follow request.");
+            toast.error("Failed to reject follow request.");
         }
     };
 
@@ -1194,7 +1196,7 @@ function SettingsContent() {
 
     const handleSaveProfile = async () => {
         if (!username || !email) {
-            alert(t('errorFields'));
+            toast.error(t('errorFields'));
             return;
         }
         setIsSavingProfile(true);
@@ -1214,11 +1216,11 @@ function SettingsContent() {
                 is_investor: isInvestor
             });
             updateUser(res.data);
-            alert(t('successSaveProfile'));
+            toast.success(t('successSaveProfile'));
         } catch (error: any) {
             console.error("Failed to update profile:", error);
             const errMsg = error.response?.data?.username?.[0] || error.response?.data?.email?.[0] || "Failed to save profile changes.";
-            alert(errMsg);
+            toast.error(errMsg);
         } finally {
             setIsSavingProfile(false);
         }
@@ -1287,7 +1289,7 @@ function SettingsContent() {
                     await api.post('/users/disconnect_steam/');
                     setSteamConnected(false);
                     setSteamIdInput('');
-                    alert(t('successSteamDisconnect'));
+                    toast.success(t('successSteamDisconnect'));
                     const meRes = await api.get('/users/me/');
                     updateUser(meRes.data);
                 } catch (error) {
@@ -1328,10 +1330,10 @@ function SettingsContent() {
         try {
             const res = await api.patch('/users/me/', { settings: updatedSettings });
             updateUser(res.data);
-            alert(`${connectingPlatform.name} ${t('successPlatformUpdate')}`);
+            toast.success(`${connectingPlatform.name} ${t('successPlatformUpdate')}`);
         } catch (error) {
             console.error(`Failed to connect to ${connectingPlatform.name}:`, error);
-            alert(t('errorPlatformUpdate'));
+            toast.error(t('errorPlatformUpdate'));
         }
     };
 
@@ -1360,7 +1362,7 @@ function SettingsContent() {
                 try {
                     const res = await api.patch('/users/me/', { settings: updatedSettings });
                     updateUser(res.data);
-                    alert(`${platformName} ${t('successPlatformDisconnect')}`);
+                    toast.success(`${platformName} ${t('successPlatformDisconnect')}`);
                 } catch (error) {
                     console.error(`Failed to disconnect ${platformName}:`, error);
                 }
@@ -1372,7 +1374,7 @@ function SettingsContent() {
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
         if (newPassword !== confirmPassword) {
-            alert(t('errorPasswordsMatch'));
+            toast.error(t('errorPasswordsMatch'));
             return;
         }
         setIsSubmittingPassword(true);
@@ -1381,14 +1383,14 @@ function SettingsContent() {
                 current_password: currentPassword,
                 new_password: newPassword
             });
-            alert(t('successPasswordChange'));
+            toast.success(t('successPasswordChange'));
             setChangePasswordOpen(false);
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
         } catch (error: any) {
             console.error("Change password error:", error);
-            alert(t('errorPasswordChange'));
+            toast.error(t('errorPasswordChange'));
         } finally {
             setIsSubmittingPassword(false);
         }
@@ -1398,11 +1400,11 @@ function SettingsContent() {
         setIsSavingProfile(true);
         try {
             await api.post('/users/delete-account/');
-            alert(t('successDeleteAccount'));
+            toast.success(t('successDeleteAccount'));
             logout();
         } catch (error) {
             console.error("Delete account error:", error);
-            alert(t('errorDeleteAccount'));
+            toast.error(t('errorDeleteAccount'));
             setIsSavingProfile(false);
         }
     };
@@ -1410,7 +1412,7 @@ function SettingsContent() {
     const handleContactSupport = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!supportSubject || !supportDescription) {
-            alert("Fields are required!");
+            toast.error("Fields are required!");
             return;
         }
         setIsSubmittingSupport(true);
@@ -1422,13 +1424,13 @@ function SettingsContent() {
                 description: supportDescription
             });
 
-            alert(t('successSupportSubmit'));
+            toast.success(t('successSupportSubmit'));
             setSupportTicketOpen(false);
             setSupportSubject('');
             setSupportDescription('');
         } catch (error) {
             console.error("Support ticket error:", error);
-            alert(t('errorSupportSubmit'));
+            toast.error(t('errorSupportSubmit'));
         } finally {
             setIsSubmittingSupport(false);
         }
@@ -1437,7 +1439,7 @@ function SettingsContent() {
     const handleReportProblem = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!bugTitle || !bugDescription || !bugSteps) {
-            alert("Fields are required!");
+            toast.error("Fields are required!");
             return;
         }
         setIsSubmittingBug(true);
@@ -1450,14 +1452,14 @@ function SettingsContent() {
                 steps_to_reproduce: bugSteps,
                 severity: bugSeverity
             });
-            alert(t('successBugSubmit'));
+            toast.success(t('successBugSubmit'));
             setReportProblemOpen(false);
             setBugTitle('');
             setBugSteps('');
             setBugDescription('');
         } catch (error) {
             console.error("Bug report error:", error);
-            alert(t('errorBugSubmit'));
+            toast.error(t('errorBugSubmit'));
         } finally {
             setIsSubmittingBug(false);
         }
