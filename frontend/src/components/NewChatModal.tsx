@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Search, Loader2, ArrowLeft, Camera, Check } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
+import { useToast } from '@/context/ToastContext';
 
 interface User {
     id: number;
@@ -19,6 +20,7 @@ interface NewChatModalProps {
 }
 
 export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChatModalProps) {
+    const toast = useToast();
     const [searchQuery, setSearchQuery] = useState('');
     const [results, setResults] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -102,7 +104,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
             }
         } catch (error) {
             console.error("Failed to start chat:", error);
-            alert("Failed to start chat.");
+            toast.error("Failed to start chat.");
         } finally {
             setIsStartingChat(false);
         }
@@ -133,7 +135,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
             onClose();
         } catch (error) {
             console.error("Failed to create group:", error);
-            alert("Failed to create group.");
+            toast.error("Failed to create group.");
         } finally {
             setIsStartingChat(false);
         }

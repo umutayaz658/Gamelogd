@@ -15,6 +15,7 @@ import EditProfileModal from "@/components/EditProfileModal";
 import FollowersFollowingModal from "@/components/FollowersFollowingModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useTranslation } from "@/lib/useTranslation";
+import { useToast } from "@/context/ToastContext";
 
 interface Game {
     id: number;
@@ -62,6 +63,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const { user: currentUser } = useAuth();
     const { items: feedItems } = useFeed();
     const { t, language } = useTranslation();
+    const toast = useToast();
     const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('activity');
@@ -152,7 +154,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
     const handleBlockToggle = async () => {
         if (!currentUser) {
-            alert("Please login to block users.");
+            toast.info("Please login to block users.");
             return;
         }
 
@@ -178,7 +180,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                     refreshProfileCounts();
                 } catch (error) {
                     console.error("Failed to toggle block status:", error);
-                    alert("Failed to update block status.");
+                    toast.error("Failed to update block status.");
                 }
             }
         });
@@ -249,7 +251,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             console.error("Failed to update Steam status privacy:", error);
             // Revert on failure
             setIsSteamPrivate(!newPrivateState);
-            alert("Failed to update privacy settings. Please try again.");
+            toast.error("Failed to update privacy settings. Please try again.");
         } finally {
             setIsUpdatingPrivacy(false);
         }
@@ -383,7 +385,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             await api.patch('/users/me/', { top_favorites: favoritesPayload });
         } catch (error) {
             console.error("Failed to save favorites:", error);
-            alert("Failed to save changes. Please try again.");
+            toast.error("Failed to save changes. Please try again.");
         }
     };
 
@@ -409,13 +411,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             await api.patch('/users/me/', { top_favorites: favoritesPayload });
         } catch (error) {
             console.error("Failed to clear favorite slot:", error);
-            alert("Failed to clear slot. Please try again.");
+            toast.error("Failed to clear slot. Please try again.");
         }
     };
 
     const handleMessage = async () => {
         if (!currentUser) {
-            alert("Please login to send messages.");
+            toast.info("Please login to send messages.");
             return;
         }
         try {
@@ -424,13 +426,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             window.location.href = `/messages?chatId=${res.data.id}`;
         } catch (error) {
             console.error("Failed to start chat:", error);
-            alert("Failed to start chat.");
+            toast.error("Failed to start chat.");
         }
     };
 
     const handleFollowToggle = async () => {
         if (!currentUser) {
-            alert("Please login to follow users.");
+            toast.info("Please login to follow users.");
             return;
         }
 
@@ -489,7 +491,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             setIsFollowing(previousIsFollowing);
             setIsRequested(previousIsRequested);
             setFollowersCount(previousCount);
-            alert("Failed to update follow status.");
+            toast.error("Failed to update follow status.");
         }
     };
 
@@ -500,7 +502,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             refreshProfileCounts();
         } catch (error) {
             console.error("Failed to approve follow request:", error);
-            alert("Failed to approve follow request.");
+            toast.error("Failed to approve follow request.");
         }
     };
 
@@ -511,7 +513,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             refreshProfileCounts();
         } catch (error) {
             console.error("Failed to reject follow request:", error);
-            alert("Failed to reject follow request.");
+            toast.error("Failed to reject follow request.");
         }
     };
 

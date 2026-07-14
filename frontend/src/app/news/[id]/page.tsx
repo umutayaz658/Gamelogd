@@ -13,6 +13,7 @@ import PostCard from '@/components/PostCard';
 import { Post } from '@/types';
 import ShareModal from '@/components/ShareModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
 import DOMPurify from 'isomorphic-dompurify';
 
 interface NewsDetail {
@@ -34,6 +35,7 @@ export default function NewsDetailPage() {
     const params = useParams();
     const id = params.id;
     const { t } = useTranslation();
+    const toast = useToast();
 
     const getTranslatedCategory = (cat: string) => {
         const lower = cat.toLowerCase();
@@ -114,7 +116,7 @@ export default function NewsDetailPage() {
             }
         } else {
             navigator.clipboard.writeText(window.location.href);
-            alert('Link copied to clipboard!');
+            toast.success('Link copied to clipboard!');
         }
     };
 
@@ -231,7 +233,7 @@ export default function NewsDetailPage() {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
                                                 navigator.clipboard.writeText(window.location.href);
-                                                alert('Link copied to clipboard!');
+                                                toast.success('Link copied to clipboard!');
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >

@@ -15,6 +15,7 @@ import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import { useTranslation } from '@/lib/useTranslation';
 import MemberManager from '@/components/team/MemberManager';
 import FeedbackPanel from '@/components/devs/FeedbackPanel';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript', 
@@ -27,6 +28,7 @@ export default function ProjectDetailPage() {
     const projectId = params.id;
     const { user } = useAuth();
     const { t } = useTranslation();
+    const confirm = useConfirm();
 
     const [project, setProject] = useState<Project | null>(null);
     const [devlogs, setDevlogs] = useState<Post[]>([]);
@@ -101,7 +103,7 @@ export default function ProjectDetailPage() {
 
     const handleDeclineInvite = async () => {
         if (!userMember || isInviteActionLoading) return;
-        if (!confirm("Are you sure you want to decline this invitation?")) return;
+        if (!(await confirm({ message: "Are you sure you want to decline this invitation?", confirmText: 'Decline', isDanger: true }))) return;
         setIsInviteActionLoading(true);
         try {
             await api.delete(`/project-members/${userMember.id}/`);
