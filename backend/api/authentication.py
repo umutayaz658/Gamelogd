@@ -56,7 +56,13 @@ class CookieTokenAuthentication(TokenAuthentication):
 
 
 def set_auth_cookie(response, token_key):
-    """Attach the httpOnly auth cookie to a login response."""
+    """Attach the httpOnly auth cookie to a login response.
+
+    The cookie is scoped to AUTH_COOKIE_DOMAIN (e.g. .gamelogd.net) when set, so it is sent
+    to both the frontend (gamelogd.net) and the API (api.gamelogd.net). Without a shared
+    parent domain the cookie stays host-only to the API host and the frontend middleware
+    can't see it, trapping the user on /login despite a valid session.
+    """
     response.set_cookie(
         AUTH_COOKIE_NAME,
         token_key,
@@ -65,11 +71,17 @@ def set_auth_cookie(response, token_key):
         secure=not settings.DEBUG,
         samesite='Lax',
         path='/',
+        domain=getattr(settings, 'AUTH_COOKIE_DOMAIN', None),
     )
     return response
 
 
 def clear_auth_cookie(response):
-    """Remove the httpOnly auth cookie (logout)."""
-    response.delete_cookie(AUTH_COOKIE_NAME, path='/', samesite='Lax')
+    """Remove the httpOnly auth cookie (logout). Domain must match set_auth_cookie's."""
+    response.delete_cookie(
+        AUTH_COOKIE_NAME,
+        path='/',
+        samesite='Lax',
+        domain=getattr(settings, 'AUTH_COOKIE_DOMAIN', None),
+    )
     return response
