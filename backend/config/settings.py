@@ -290,4 +290,11 @@ CSRF_COOKIE_HTTPONLY = False
 # X-CSRFToken header. Leave unset (host-only cookie) for header-mode / same-origin setups.
 CSRF_COOKIE_DOMAIN = os.environ.get('CSRF_COOKIE_DOMAIN') or None
 
+# Domain for the httpOnly auth cookie (see api/authentication.py set_auth_cookie).
+# MUST be the shared parent domain (e.g. .gamelogd.net) when the API is on api.gamelogd.net
+# but the frontend is on gamelogd.net — otherwise the cookie is host-only to the API host,
+# the frontend's Next.js middleware can't see it, and every protected route bounces back to
+# /login even though the session is valid. Leave unset (host-only) for same-origin setups.
+AUTH_COOKIE_DOMAIN = os.environ.get('AUTH_COOKIE_DOMAIN') or None
+
 
