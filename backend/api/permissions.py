@@ -15,7 +15,9 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return obj.owner == request.user
         elif hasattr(obj, 'recruiter'):
             return obj.recruiter == request.user
-            
+        elif hasattr(obj, 'author'):
+            return obj.author == request.user
+
         return False
 
 class ProjectAccessPermission(permissions.BasePermission):

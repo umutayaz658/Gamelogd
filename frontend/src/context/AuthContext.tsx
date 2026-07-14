@@ -3,7 +3,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import api, { isCookieAuth } from '@/lib/api';
+
+// Store the JS token cookie with the strongest flags the current protocol allows.
+// (Only used in header mode — cookie mode never exposes the token to JS.)
+const setTokenCookie = (token: string) => {
+    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    Cookies.set('access_token', token, { expires: 7, secure, sameSite: 'strict' });
+};
 
 // Define User Interface based on backend response
 interface User {
@@ -51,17 +58,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for token and fetch user on mount
     useEffect(() => {
         const checkAuth = async () => {
-            const token = Cookies.get('access_token');
-
-            if (token) {
+            // Cookie mode: we can't read the httpOnly cookie, so just ask the API who we
+            // are — a 401 (handled below) means logged out. Header mode: only bother if a
+            // token cookie is present.
+            const shouldCheck = isCookieAuth || !!Cookies.get('access_token');
+            if (shouldCheck) {
                 try {
-                    // Token exists, fetch user data
                     const response = await api.get('/users/me/');
                     setUser(response.data);
                 } catch (error) {
-                    console.error('Failed to fetch user:', error);
-                    // If fetch fails (e.g. invalid token), clear auth
-                    Cookies.remove('access_token');
+                    if (!isCookieAuth) {
+                        Cookies.remove('access_token');
+                    }
                     setUser(null);
                 }
             }
@@ -74,11 +82,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = async (token: string) => {
         setIsLoading(true);
-        // 1. Set Cookie
-        Cookies.set('access_token', token, { expires: 7 });
+        // In cookie mode the backend already set the httpOnly auth cookie on the login
+        // response; never mirror the token into JS. In header mode, store it (hardened).
+        if (!isCookieAuth) {
+            setTokenCookie(token);
+        }
 
         try {
-            // 2. Fetch User Data
+            // Fetch user data (also primes the CSRF cookie in cookie mode).
             const response = await api.get('/users/me/');
             setUser(response.data);
             router.push('/');
@@ -92,7 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const logout = () => {
-        Cookies.remove('access_token');
+        if (isCookieAuth) {
+            // Ask the backend to clear the httpOnly cookie; ignore failures.
+            api.post('/logout/').catch(() => {});
+        } else {
+            Cookies.remove('access_token');
+        }
         setUser(null);
         router.push('/login');
         router.refresh();

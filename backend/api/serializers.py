@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role
+from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 RESERVED_USERNAMES = [
@@ -62,7 +62,11 @@ class UserSerializer(serializers.ModelSerializer):
             'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
-        read_only_fields = ['id', 'date_joined']
+        # email is read-only here: changing it must go through a verified flow, not a
+        # plain profile PATCH (otherwise a user could take over account-recovery identity
+        # without re-verification). steam_id is managed by the sync_steam/disconnect_steam
+        # actions, not by direct serializer writes.
+        read_only_fields = ['id', 'date_joined', 'email', 'steam_id']
 
     def to_representation(self, instance):
         """Override to safely handle mixed Cloudinary and local media paths and enforce privacy settings."""
@@ -302,8 +306,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        print("DEBUG: Validated Data received:", validated_data)
-        
+        # (Do not log validated_data — it contains the cleartext password.)
         email = validated_data.get('email')
         username = validated_data.get('username')
         
@@ -861,14 +864,14 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Like
-        fields = ['id', 'user', 'post', 'review', 'news', 'timestamp']
+        fields = ['id', 'user', 'post', 'review', 'news', 'playtest_feedback', 'timestamp']
         read_only_fields = ['id', 'user', 'timestamp']
 
     def create(self, validated_data):
         # Ensure only one target is set
-        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news')]
+        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news'), validated_data.get('playtest_feedback')]
         if sum(x is not None for x in targets) != 1:
-            raise serializers.ValidationError("Like must target exactly one item (post, review, or news).")
+            raise serializers.ValidationError("Like must target exactly one item (post, review, news, or playtest_feedback).")
         return super().create(validated_data)
 
 class NewsSerializer(serializers.ModelSerializer):
@@ -1056,6 +1059,45 @@ class ProjectSerializer(serializers.ModelSerializer):
                 'is_verified': obj.organisation.is_verified
             }
         return None
+
+
+class PlaytestFeedbackSerializer(serializers.ModelSerializer):
+    author = UserSerializer(read_only=True)
+    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    is_liked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlaytestFeedback
+        fields = [
+            'id', 'project', 'author', 'title', 'type', 'priority', 'build_version',
+            'description', 'status', 'is_pinned', 'converted_task_id',
+            'likes_count', 'is_liked', 'submitted_at', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'author', 'status', 'is_pinned', 'converted_task_id',
+            'likes_count', 'is_liked', 'submitted_at', 'created_at',
+        ]
+
+    def update(self, instance, validated_data):
+        # `project` is set at creation and must not be reassigned afterwards, so an author
+        # can't move their feedback onto a different project via PATCH.
+        validated_data.pop('project', None)
+        return super().update(instance, validated_data)
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
+        return False
+
+    def validate_title(self, value):
+        return value.strip() if value else value
+
+    def validate_description(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("This field is required.")
+        return value
+
 
 class JobPostingSerializer(serializers.ModelSerializer):
     recruiter = UserSerializer(read_only=True)

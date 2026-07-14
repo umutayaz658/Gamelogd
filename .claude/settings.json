@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -H 'Authorization: Token 13031c74da9eda6d887472540c80b7d536446319' http://localhost:8000/api/organisation-roles/?organisation=1)",
+      "Bash(docker exec -i gamelogd-backend-1 python -c ' *)",
+      "Bash(docker exec gamelogd-backend-1 python manage.py shell -c ' *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/devs\")",
+      "Bash(npm run *)",
+      "Bash(docker exec *)",
+      "Bash(docker cp *)",
+      "Bash(curl -s -H 'Authorization: Token 13031c74da9eda6d887472540c80b7d536446319' http://localhost:8000/api/organisation-members/?organisation=1)",
+      "Bash(curl -s -X DELETE -H 'Authorization: Token 13031c74da9eda6d887472540c80b7d536446319' http://localhost:8000/api/organisation-members/15/ -w 'STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -o /dev/null -w \"HTTP:%{http_code}\\\\n\" \"http://localhost:3000/devs\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec gamelogd-backend-1 grep -n \"def convert_to_task\" -A3 /app/api/views.py)",
+      "Bash(curl -s -H 'Authorization: Token 13031c74da9eda6d887472540c80b7d536446319' http://localhost:8000/api/playtest-feedback/?project=2)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(curl -s -o /dev/null -w 'devs:%{http_code}\\\\n' 'http://localhost:3000/devs?workspace=org_1&tool=playtest&board=project_2')",
+      "Bash(curl -s -o /dev/null -w 'project:%{http_code}\\\\n' 'http://localhost:3000/projects/2')",
+      "Bash(docker port *)",
+      "Bash(curl -s -o /dev/null -w \"status:%{http_code}\\\\n\" http://localhost:3000/devs)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(curl -s -o /dev/null -w \"devs:%{http_code}\\\\n\" \"http://localhost:3000/devs?workspace=org_1&tool=playtest&board=project_2\")"
+    ]
+  }
+}

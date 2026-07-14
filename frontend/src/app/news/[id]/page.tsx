@@ -13,6 +13,7 @@ import PostCard from '@/components/PostCard';
 import { Post } from '@/types';
 import ShareModal from '@/components/ShareModal';
 import { useTranslation } from '@/lib/useTranslation';
+import DOMPurify from 'isomorphic-dompurify';
 
 interface NewsDetail {
     id: number;
@@ -183,7 +184,9 @@ export default function NewsDetailPage() {
 
                         {/* Content */}
                         <div className="prose prose-invert prose-lg max-w-none text-zinc-300 leading-relaxed">
-                            <div dangerouslySetInnerHTML={{ __html: news.description }} />
+                            {/* News comes from external RSS feeds — sanitize before rendering
+                                so a crafted item can't run script / steal the session. */}
+                            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(news.description || '') }} />
                         </div>
 
                         {/* Social Actions Bar */}

@@ -18,7 +18,6 @@ import {
     Asset,
     TranslationEntry,
     GlossaryTerm,
-    PlaytestFeedback,
     ActivityItem,
     ActivityType,
     GDDCategory,
@@ -201,7 +200,6 @@ function buildDefaultData(): WorkspaceData {
             { id: 'gl1', term: 'Mana', translations: { Turkish: 'Mana', Spanish: 'Maná', French: 'Mana' } },
             { id: 'gl2', term: 'Fireball', translations: { Turkish: 'Alev Topu', Spanish: 'Bola de Fuego' } },
         ],
-        playtestFeedback: [],
         activities: [
             { id: 'act1', type: 'task_created', text: 'Welcome to your Developer Workspace!', time: 'just now', icon: '🚀' },
             { id: 'act2', type: 'task_completed', text: 'Task "Set up project structure" marked as Done.', time: '2d ago', icon: '✅', actor: 'devuser' },
@@ -231,6 +229,11 @@ interface WorkspaceContextType {
     hasPermission: (key: string) => boolean;
     // Workspace data
     data: WorkspaceData;
+    // Re-fetches the current board's data from the backend and replaces `data` with it — for
+    // callers that mutated the backend's WorkspaceState row directly (bypassing setTasks/setColumns
+    // etc.), e.g. converting Feedback into a Kanban task, so the in-memory context catches up
+    // without needing a full page reload.
+    refreshWorkspaceData: () => void;
     // Mutators
     setColumns: (cols: KanbanColumn[]) => void;
     setTasks: (tasks: Task[] | ((prev: Task[]) => Task[])) => void;
@@ -239,7 +242,6 @@ interface WorkspaceContextType {
     setAssets: (assets: Asset[] | ((prev: Asset[]) => Asset[])) => void;
     setTranslationKeys: (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => void;
     setGlossary: (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => void;
-    setPlaytestFeedback: (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) => void;
     setCategories: (categories: string[] | ((prev: string[]) => string[])) => void;
     setGDDCategories: (categories: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => void;
     setAssetCategories: (categories: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => void;
@@ -276,6 +278,10 @@ function storageKey(ws: ActiveWorkspace, board: string, userId?: number): string
     const suffix = userId ? `_u_${userId}` : '';
     if (ws.type === 'solo') {
         if (board === 'solo') return `workspace__solo${suffix}`;
+        // A project board is shared by all its members and lives in a single
+        // owner-canonical row on the backend, so it must NOT be keyed by the viewing
+        // user — otherwise each member would read/write a divergent copy.
+        if (board.startsWith('project_')) return `workspace__solo_board_${board}`;
         return `workspace__solo_board_${board}${suffix}`;
     }
     return `workspace__org_${ws.org?.id ?? 'unknown'}_board_${board}`;
@@ -359,10 +365,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => { fetchOrgs(); }, [user]);
 
+    // Fetches the given board's WorkspaceState row from the backend and, if it has real column
+    // data, replaces `data` with it. Shared by the load-on-board-change effect below and by
+    // refreshWorkspaceData (for callers that mutated the backend row directly, bypassing the
+    // setTasks/setColumns mutators — e.g. converting Feedback into a Kanban task).
+    const fetchWorkspaceDataFromBackend = useCallback((key: string) => {
+        return api.get(`/workspace-state/${key}/`)
+            .then((res) => {
+                const backendData = res.data?.data;
+                if (backendData && backendData.columns?.length) {
+                    if (!backendData.categories?.length) backendData.categories = ['code', 'art', 'audio', 'qa', 'other'];
+                    if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
+                    if (!backendData.assetCategories?.length) backendData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    setData(backendData);
+                    try { localStorage.setItem(key, JSON.stringify(backendData)); } catch {}
+                }
+            })
+            .catch((err) => {
+                console.log('No backend workspace state found or failed to load. Using local state.', err);
+            });
+    }, []);
+
+    const refreshWorkspaceData = useCallback(() => {
+        if (!user) return;
+        fetchWorkspaceDataFromBackend(storageKey(activeWorkspace, activeBoard, user.id));
+    }, [activeWorkspace, activeBoard, user, fetchWorkspaceDataFromBackend]);
+
     // ── Load workspace data from localStorage & backend when workspace or board changes ─
     useEffect(() => {
         const key = storageKey(activeWorkspace, activeBoard, user?.id);
-        
+
         // 1. Load from localStorage cache first for instant render
         try {
             const stored = localStorage.getItem(key);
@@ -404,27 +436,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // 2. Fetch fresh data from backend
         if (!user) return;
 
-        let active = true;
-        api.get(`/workspace-state/${key}/`)
-            .then((res) => {
-                if (!active) return;
-                const backendData = res.data?.data;
-                if (backendData && backendData.columns?.length) {
-                    if (!backendData.categories?.length) backendData.categories = ['code', 'art', 'audio', 'qa', 'other'];
-                    if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
-                    if (!backendData.assetCategories?.length) backendData.assetCategories = DEFAULT_ASSET_CATEGORIES;
-                    setData(backendData);
-                    try { localStorage.setItem(key, JSON.stringify(backendData)); } catch {}
-                }
-            })
-            .catch((err) => {
-                console.log('No backend workspace state found or failed to load. Using local state.', err);
-            });
-
-        return () => {
-            active = false;
-        };
-    }, [activeWorkspace, activeBoard, user]);
+        fetchWorkspaceDataFromBackend(key);
+    }, [activeWorkspace, activeBoard, user, fetchWorkspaceDataFromBackend]);
 
     // ── Persist workspace data to localStorage & backend whenever it changes ──
     const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -433,10 +446,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         persistTimer.current = setTimeout(() => {
             const key = storageKey(activeWorkspace, activeBoard, user?.id);
             const tool = lastToolRef.current;
-            lastToolRef.current = null;
             try {
                 localStorage.setItem(key, JSON.stringify(data));
-                if (user) {
+                // Only sync to the backend after a genuine user mutation (a data mutator
+                // sets lastToolRef; the load/hydration path uses setData directly and
+                // leaves it null). This prevents two data-loss/pollution bugs:
+                //  (H2) clobbering real backend data with freshly seeded/loaded defaults
+                //       before the initial GET for this board resolves, and
+                //  (M4) writing demo/seed data for a brand-new user who changed nothing.
+                if (user && tool) {
+                    lastToolRef.current = null;
                     api.post('/workspace-state/', { key, data, tool })
                         .catch((err) => console.error('Failed to sync workspace state to backend:', err));
                 }
@@ -533,11 +552,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setData((d) => ({ ...d, glossary: typeof g === 'function' ? g(d.glossary) : g }));
     };
 
-    const setPlaytestFeedback = (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) => {
-        lastToolRef.current = 'playtest';
-        setData((d) => ({ ...d, playtestFeedback: typeof f === 'function' ? f(d.playtestFeedback) : f }));
-    };
-
     const setCategories = (cats: string[] | ((prev: string[]) => string[])) => {
         lastToolRef.current = 'kanban';
         setData((d) => ({ ...d, categories: typeof cats === 'function' ? cats(d.categories ?? ['code', 'art', 'audio', 'qa', 'other']) : cats }));
@@ -554,8 +568,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
 
     const logActivity = useCallback((type: ActivityType, text: string, icon: string, actor?: string) => {
+        // Collision-resistant id: Date.now() alone duplicates when two activities are
+        // logged in the same millisecond, producing duplicate React keys.
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? `act-${crypto.randomUUID()}`
+            : `act-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const item: ActivityItem = {
-            id: `act-${Date.now()}`,
+            id,
             type,
             text,
             icon,
@@ -580,6 +599,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 permissions,
                 hasPermission,
                 data,
+                refreshWorkspaceData,
                 setColumns,
                 setTasks,
                 setGDDDocs,
@@ -587,7 +607,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 setAssets,
                 setTranslationKeys,
                 setGlossary,
-                setPlaytestFeedback,
                 setCategories,
                 setGDDCategories,
                 setAssetCategories,
