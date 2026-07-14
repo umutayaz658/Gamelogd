@@ -17,12 +17,14 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import MemberManager from '@/components/team/MemberManager';
+import { useToast } from '@/context/ToastContext';
 
 export default function OrganisationProfilePage() {
     const { slug } = useParams() as { slug: string };
     const { t } = useTranslation();
     const { user } = useAuth();
     const router = useRouter();
+    const toast = useToast();
 
     const [organisation, setOrganisation] = useState<Organisation | null>(null);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -91,7 +93,7 @@ export default function OrganisationProfilePage() {
 
     const handleFollowToggle = async () => {
         if (!user) {
-            alert(t('pleaseLogin' as any) || 'Please log in to follow.');
+            toast.info(t('pleaseLogin' as any) || 'Please log in to follow.');
             return;
         }
 

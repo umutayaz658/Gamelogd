@@ -5,6 +5,7 @@ import { ArrowLeft, Lock, Pencil, Plus, Settings2, Trash2, X } from 'lucide-reac
 import api from '@/lib/api';
 import type { PermissionHierarchy, Role } from '@/types';
 import ConfirmDeleteModal from '@/components/devs/ConfirmDeleteModal';
+import { useToast } from '@/context/ToastContext';
 
 const CATEGORY_LABEL: Record<string, string> = {
     kanban: 'Kanban', gdd: 'GDD Hub', assets: 'Asset Registry',
@@ -31,6 +32,7 @@ function tierIsSelected(keys: string[], selected: Set<string>) {
 }
 
 export default function RolesManagerModal({ roleScope, roles, hierarchy, canManage, viewerIsOwner, onClose, onChanged }: RolesManagerModalProps) {
+    const toast = useToast();
     const [editingRole, setEditingRole] = useState<Role | null | 'new'>(null);
     const [name, setName] = useState('');
     const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
@@ -71,20 +73,20 @@ export default function RolesManagerModal({ roleScope, roles, hierarchy, canMana
             else payload.organisation = roleScope.id;
             api.post('/organisation-roles/', payload)
                 .then(() => { onChanged(); setEditingRole(null); })
-                .catch((err) => alert(err.response?.data?.name?.[0] || err.response?.data?.detail || 'Failed to create role.'));
+                .catch((err) => toast.error(err.response?.data?.name?.[0] || err.response?.data?.detail || 'Failed to create role.'));
         } else if (editingRole) {
             const payload: { permissions: string[]; name?: string } = { permissions };
             if (!nameIsLocked(editingRole)) payload.name = name.trim();
             api.patch(`/organisation-roles/${editingRole.id}/`, payload)
                 .then(() => { onChanged(); setEditingRole(null); })
-                .catch((err) => alert(err.response?.data?.name?.[0] || err.response?.data?.detail || 'Failed to update role.'));
+                .catch((err) => toast.error(err.response?.data?.name?.[0] || err.response?.data?.detail || 'Failed to update role.'));
         }
     };
 
     const remove = (role: Role) => {
         api.delete(`/organisation-roles/${role.id}/`)
             .then(() => { onChanged(); setConfirmDeleteRole(null); })
-            .catch((err) => alert(err.response?.data?.[0] || err.response?.data?.detail || 'Cannot delete this role.'));
+            .catch((err) => toast.error(err.response?.data?.[0] || err.response?.data?.detail || 'Cannot delete this role.'));
     };
 
     const editable = canEditRole(editingRole);

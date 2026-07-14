@@ -5,6 +5,7 @@ import { X, Search, Send, Check, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -28,6 +29,7 @@ interface Conversation {
 
 export default function ShareModal({ isOpen, onClose, itemType, itemId, title }: ShareModalProps) {
     const { user: currentUser } = useAuth();
+    const toast = useToast();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [shareComment, setShareComment] = useState('');
@@ -77,7 +79,7 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
             }, 1000);
         } catch (error) {
             console.error("Failed to share item:", error);
-            alert("Failed to share. Please try again.");
+            toast.error("Failed to share. Please try again.");
             setSendingStates(prev => ({ ...prev, [chatId]: 'idle' }));
         }
     };

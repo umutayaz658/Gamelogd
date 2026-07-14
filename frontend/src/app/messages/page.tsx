@@ -19,6 +19,8 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import Link from 'next/link';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 // API Data Types
 interface MessageReaction {
@@ -270,6 +272,8 @@ function MessagesContent() {
     const searchParams = useSearchParams();
     const initialChatId = searchParams.get('chatId');
     const { t, language } = useTranslation();
+    const toast = useToast();
+    const confirm = useConfirm();
 
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedChatId, setSelectedChatId] = useState<number | null>(initialChatId ? parseInt(initialChatId) : null);
@@ -491,7 +495,7 @@ function MessagesContent() {
             fetchConversations();
         } catch (error) {
             console.error("Failed to send message:", error);
-            alert("Failed to send message.");
+            toast.error("Failed to send message.");
         } finally {
             setIsSending(false);
         }
@@ -571,7 +575,7 @@ function MessagesContent() {
                     fetchConversations();
                 } catch (error) {
                     console.error("Failed to toggle block:", error);
-                    alert("Failed to update block status.");
+                    toast.error("Failed to update block status.");
                 }
             }
         });
@@ -587,10 +591,10 @@ function MessagesContent() {
             setAddMemberResults([]);
             // Refresh conversation data
             fetchConversations();
-            alert(`Added ${username} successfully.`);
+            toast.success(`Added ${username} successfully.`);
         } catch (error) {
             console.error("Failed to add member:", error);
-            alert("Failed to add member.");
+            toast.error("Failed to add member.");
         }
     };
 
@@ -672,10 +676,10 @@ function MessagesContent() {
             setConversations(prev => prev.map(c => c.id === selectedChatId ? { ...c, name: res.data.name, avatar: res.data.avatar } : c));
             setGroupAvatarFile(null);
             setGroupAvatarPreview(null);
-            alert("Group details updated successfully.");
+            toast.success("Group details updated successfully.");
         } catch (error) {
             console.error("Failed to update group details:", error);
-            alert("Failed to update group.");
+            toast.error("Failed to update group.");
         } finally {
             setIsSavingDetails(false);
         }
@@ -704,7 +708,7 @@ function MessagesContent() {
     // Block user (individual chats)
     const handleBlockUser = async () => {
         if (!selectedChatId) return;
-        if (!window.confirm('Are you sure you want to block this user? You will no longer receive messages from them.')) return;
+        if (!(await confirm({ message: 'Are you sure you want to block this user? You will no longer receive messages from them.', confirmText: 'Block', isDanger: true }))) return;
         try {
             await api.post(`/conversations/${selectedChatId}/block-user/`);
             setSelectedChatId(null);
@@ -712,7 +716,7 @@ function MessagesContent() {
             fetchConversations();
         } catch (error) {
             console.error('Failed to block user:', error);
-            alert('Failed to block user.');
+            toast.error('Failed to block user.');
         }
     };
 
@@ -723,17 +727,17 @@ function MessagesContent() {
         if (!reason) return;
         try {
             await api.post(`/conversations/${selectedChatId}/report/`, { reason });
-            alert('Report submitted. Thank you.');
+            toast.success('Report submitted. Thank you.');
         } catch (error) {
             console.error('Failed to report conversation:', error);
-            alert('Failed to submit report.');
+            toast.error('Failed to submit report.');
         }
     };
 
     // Delete conversation
     const handleDeleteConversation = async () => {
         if (!selectedChatId) return;
-        if (!window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) return;
+        if (!(await confirm({ message: 'Are you sure you want to delete this conversation? This action cannot be undone.', confirmText: 'Delete', isDanger: true }))) return;
         try {
             await api.delete(`/conversations/${selectedChatId}/`);
             setSelectedChatId(null);
@@ -741,7 +745,7 @@ function MessagesContent() {
             fetchConversations();
         } catch (error) {
             console.error('Failed to delete conversation:', error);
-            alert('Failed to delete conversation.');
+            toast.error('Failed to delete conversation.');
         }
     };
 
@@ -764,19 +768,19 @@ function MessagesContent() {
             setEditContent('');
         } catch (error) {
             console.error('Failed to edit message:', error);
-            alert('Failed to edit message. You can only edit messages within 15 minutes.');
+            toast.error('Failed to edit message. You can only edit messages within 15 minutes.');
         }
     };
 
     // Delete message
     const handleDeleteMessage = async (messageId: number) => {
-        if (!window.confirm('Delete this message?')) return;
+        if (!(await confirm({ message: 'Delete this message?', confirmText: 'Delete', isDanger: true }))) return;
         try {
             await api.delete(`/messages/${messageId}/`);
             setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true, content: '' } : m));
         } catch (error) {
             console.error('Failed to delete message:', error);
-            alert('Failed to delete message.');
+            toast.error('Failed to delete message.');
         }
     };
 
@@ -788,7 +792,7 @@ function MessagesContent() {
             fetchConversations();
         } catch (error) {
             console.error('Failed to accept invite:', error);
-            alert('Failed to accept invitation.');
+            toast.error('Failed to accept invitation.');
         }
     };
 
@@ -800,13 +804,13 @@ function MessagesContent() {
             fetchConversations();
         } catch (error) {
             console.error('Failed to decline invite:', error);
-            alert('Failed to decline invitation.');
+            toast.error('Failed to decline invitation.');
         }
     };
 
     const handleBlockGroup = async () => {
         if (!selectedChatId) return;
-        if (!window.confirm('Block this group? You will no longer receive invitations from it.')) return;
+        if (!(await confirm({ message: 'Block this group? You will no longer receive invitations from it.', confirmText: 'Block', isDanger: true }))) return;
         try {
             await api.post(`/conversations/${selectedChatId}/block-group/`);
             setSelectedChatId(null);

@@ -15,12 +15,14 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import MemberManager from '@/components/team/MemberManager';
+import { useToast } from '@/context/ToastContext';
 
 export default function OrganisationDashboardPage() {
     const { slug } = useParams() as { slug: string };
     const { t } = useTranslation();
     const { user: currentUser } = useAuth();
     const router = useRouter();
+    const toast = useToast();
 
     const [organisation, setOrganisation] = useState<Organisation | null>(null);
     const [invitations, setInvitations] = useState<OrganisationInvitation[]>([]);
@@ -157,7 +159,7 @@ export default function OrganisationDashboardPage() {
             setSearchResults(prev => prev.filter(u => u.id !== userId));
             setSuccessMessage("Invitation sent successfully!");
         } catch (err: any) {
-            alert(err.response?.data?.error || err.response?.data?.detail || "Failed to send invitation.");
+            toast.error(err.response?.data?.error || err.response?.data?.detail || "Failed to send invitation.");
         } finally {
             setInvitingUserId(null);
         }
@@ -171,7 +173,7 @@ export default function OrganisationDashboardPage() {
             setSuccessMessage("Invitation cancelled.");
         } catch (err) {
             console.error("Failed to cancel invitation:", err);
-            alert("Failed to cancel invitation.");
+            toast.error("Failed to cancel invitation.");
         }
     };
 

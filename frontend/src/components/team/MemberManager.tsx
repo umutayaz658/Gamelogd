@@ -10,6 +10,7 @@ import ConfirmDeleteModal from '@/components/devs/ConfirmDeleteModal';
 import InviteModal from './InviteModal';
 import RolesManagerModal from './RolesManagerModal';
 import RoleSelectDrawer from './RoleSelectDrawer';
+import { useToast } from '@/context/ToastContext';
 
 const LEGACY_ROLE_LABEL: Record<string, string> = {
     owner: 'Owner', admin: 'Admin', member: 'Developer',
@@ -101,6 +102,7 @@ export default function MemberManager({
     scope, organisationId, organisationSlug, projectId, members, projectOwner, onRefresh, showInviteButton = true,
 }: MemberManagerProps) {
     const { user: currentUser } = useAuth();
+    const toast = useToast();
 
     const [permissions, setPermissions] = useState<string[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
@@ -175,14 +177,14 @@ export default function MemberManager({
         if (member.isOwner) return;
         api.patch(memberEndpoint(member.id), { custom_role: roleId })
             .then(() => { onRefresh(); setRoleDrawerFor(null); })
-            .catch((err) => alert(err.response?.data?.error || err.response?.data?.custom_role?.[0] || err.response?.data?.detail || 'Failed to update role.'));
+            .catch((err) => toast.error(err.response?.data?.error || err.response?.data?.custom_role?.[0] || err.response?.data?.detail || 'Failed to update role.'));
     };
 
     const handleRemoveMember = (member: DisplayMember) => {
         if (member.isOwner) return;
         api.delete(memberEndpoint(member.id))
             .then(onRefresh)
-            .catch((err) => alert(err.response?.data?.error || 'Failed to remove member.'))
+            .catch((err) => toast.error(err.response?.data?.error || 'Failed to remove member.'))
             .finally(() => setConfirmRemove(null));
     };
 
@@ -190,7 +192,7 @@ export default function MemberManager({
         if (!organisationSlug) return;
         api.post(`/organisations/${organisationSlug}/transfer-ownership/`, { new_owner_user_id: member.user.id })
             .then(onRefresh)
-            .catch((err) => alert(err.response?.data?.error || 'Failed to transfer ownership.'))
+            .catch((err) => toast.error(err.response?.data?.error || 'Failed to transfer ownership.'))
             .finally(() => setConfirmTransferTo(null));
     };
 
@@ -198,11 +200,11 @@ export default function MemberManager({
         if (scope === 'project') {
             api.post('/project-members/', { project: projectId, user_id: targetUser.id, role: legacyRole, custom_role: roleId })
                 .then(() => { onRefresh(); setShowInviteModal(false); })
-                .catch((err) => alert(err.response?.data?.detail || err.response?.data?.error || (Array.isArray(err.response?.data) ? err.response.data[0] : null) || 'Failed to invite.'));
+                .catch((err) => toast.error(err.response?.data?.detail || err.response?.data?.error || (Array.isArray(err.response?.data) ? err.response.data[0] : null) || 'Failed to invite.'));
         } else if (organisationSlug) {
             api.post(`/organisations/${organisationSlug}/invite/`, { user_id: targetUser.id, role: legacyRole, custom_role: roleId })
                 .then(() => setShowInviteModal(false))
-                .catch((err) => alert(err.response?.data?.error || 'Failed to invite.'));
+                .catch((err) => toast.error(err.response?.data?.error || 'Failed to invite.'));
         }
     };
 

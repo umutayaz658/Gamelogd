@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
 import Link from 'next/link';
 
 interface ImageModalProps {
@@ -78,6 +79,7 @@ const renderContentWithLinks = (content: string | undefined) => {
 
 export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, post }: ImageModalProps) {
     const { user } = useAuth();
+    const toast = useToast();
     const { t } = useTranslation();
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [zoom, setZoom] = useState(1);
@@ -215,7 +217,7 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
             setReplyContent('');
         } catch (err) {
             console.error('Failed to post reply:', err);
-            alert('Failed to send reply');
+            toast.error('Failed to send reply');
         } finally {
             setIsPostingReply(false);
         }

@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -16,6 +17,7 @@ interface EditProfileModalProps {
 export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: EditProfileModalProps) {
     const { updateUser } = useAuth();
     const { t } = useTranslation();
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(false);
 
     // Form State
@@ -96,7 +98,7 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
             onClose();
         } catch (error) {
             console.error("Failed to update profile:", error);
-            alert(t('errorFailedUpdateProfile'));
+            toast.error(t('errorFailedUpdateProfile'));
         } finally {
             setIsLoading(false);
         }
