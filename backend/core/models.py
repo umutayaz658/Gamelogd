@@ -201,6 +201,48 @@ class ProjectMember(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.role} at {self.project.title}"
 
+
+class PlaytestFeedback(models.Model):
+    """
+    Public, membership-free feedback on a project, submitted directly by any logged-in app user.
+    Deliberately a real relational model rather than the generic WorkspaceState JSON blob
+    everything else in the Devs workspace uses, because this needs to be publicly readable and
+    writable by non-members — both of which the member-scoped WorkspaceState access rules can't
+    support.
+    """
+    TYPE_CHOICES = [
+        ('bug', 'Bug'), ('suggestion', 'Suggestion'), ('crash', 'Crash'),
+        ('ui_ux', 'UI/UX'), ('performance', 'Performance'), ('other', 'Other'),
+    ]
+    # Deliberately the exact same key set as frontend/src/components/devs/WorkspaceTypes.ts's
+    # TaskPriority ('low'/'medium'/'high'/'urgent') — when a feedback item is converted to a
+    # Kanban task, its priority carries over 1:1 with no translation table needed.
+    PRIORITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')]
+    STATUS_CHOICES = [('open', 'Open'), ('in_progress', 'In Progress'), ('resolved', 'Resolved')]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='playtest_feedback')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='playtest_feedback')
+
+    title = models.CharField(max_length=200, blank=True, default='')
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES)
+    build_version = models.CharField(max_length=50, blank=True, default='')
+    description = models.TextField()
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    is_pinned = models.BooleanField(default=False)
+    converted_task_id = models.CharField(max_length=64, blank=True, default='')
+
+    submitted_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_pinned', '-submitted_at']
+
+    def __str__(self):
+        return f"Feedback on {self.project.title}"
+
+
 class JobPosting(models.Model):
     JOB_TYPE_CHOICES = [
         ('full_time', 'Full-time'),
@@ -308,10 +350,11 @@ class Like(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     review = models.ForeignKey(Review, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     news = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    playtest_feedback = models.ForeignKey(PlaytestFeedback, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news']]
+        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news'], ['user', 'playtest_feedback']]
 
     def __str__(self):
         return f"{self.user} liked something"

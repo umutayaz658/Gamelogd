@@ -47,10 +47,12 @@ PERMISSION_CATALOG = {
         ("team.role.assign", "Change a member's role"),
         ("team.role.manage", "Create/edit/delete custom roles"),
     ],
-    "playtest": [
-        ("playtest.view", "View playtest feedback"),
-        ("playtest.submit", "Submit playtest feedback"),
-        ("playtest.convert_to_task", "Convert feedback to QA task"),
+    "feedback": [
+        ("feedback.pin", "Pin feedback"),
+        ("feedback.mark_in_progress", "Mark feedback as in progress"),
+        ("feedback.mark_resolved", "Mark feedback as resolved"),
+        ("feedback.convert_to_task", "Convert feedback to a Kanban task"),
+        ("feedback.delete", "Delete feedback"),
     ],
     "settings": [
         ("settings.edit", "Edit workspace settings"),
@@ -94,10 +96,10 @@ PERMISSION_HIERARCHY = {
         {"label": "Manage roles", "description": "Assign member roles and create/edit/delete custom roles.", "keys": ["team.role.assign", "team.role.manage"]},
         {"label": "Remove members", "description": "Remove members from the team.", "keys": ["team.remove"]},
     ],
-    "playtest": [
-        {"label": "View", "description": "See playtest feedback.", "keys": ["playtest.view"]},
-        {"label": "Submit feedback", "description": "Submit new playtest feedback.", "keys": ["playtest.submit"]},
-        {"label": "Convert to task", "description": "Convert feedback into a QA task on the Kanban board.", "keys": ["playtest.convert_to_task"]},
+    "feedback": [
+        {"label": "Moderate", "description": "Pin feedback and update its status (in progress / resolved).", "keys": ["feedback.pin", "feedback.mark_in_progress", "feedback.mark_resolved"]},
+        {"label": "Convert to task", "description": "Convert feedback into a task on the Kanban board (and pull it back).", "keys": ["feedback.convert_to_task"]},
+        {"label": "Delete", "description": "Delete any feedback on this project.", "keys": ["feedback.delete"]},
     ],
     "settings": [
         {"label": "Edit settings", "description": "Edit workspace settings.", "keys": ["settings.edit"]},
@@ -113,7 +115,6 @@ TOOL_WRITE_PERMISSIONS = {
     "assets": ["assets.create"],
     "localisation": ["localisation.key.create", "localisation.suggestion.create"],
     "members": ["team.invite", "team.role.assign", "team.role.manage", "team.remove"],
-    "playtest": ["playtest.submit"],
     "settings": ["settings.edit"],
 }
 
@@ -123,7 +124,6 @@ TOOL_VIEW_PERMISSIONS = {
     "assets": ["assets.view"],
     "localisation": ["localisation.view"],
     "members": ["team.view"],
-    "playtest": ["playtest.view"],
     "settings": ["settings.edit"],
 }
 
@@ -138,17 +138,18 @@ def _member_permissions():
     ]
 
 
-PLAYTESTER_PERMISSIONS = ["playtest.view", "playtest.submit", "kanban.view", "gdd.view"]
-
-# name -> (is_default_for, permissions) seed spec for the 4 system roles created per-organisation.
-# is_default_for is a stable, rename-safe identifier (see create_default_roles) — it must stay
-# unique and non-empty per scope, which is why "Playtester" gets its own "playtester" key rather
-# than the empty string a bare display-name lookup would otherwise be tempted to rely on.
+# name -> (is_default_for, permissions) seed spec for the 3 system roles created per-organisation.
+# is_default_for is a stable, rename-safe identifier (see create_default_roles).
+# NOTE: there used to be a 4th seeded "Playtester" role, meant for guest-invited playtesters.
+# That model was dropped — playtest feedback is now open to any logged-in app user directly
+# (see core.models.PlaytestFeedback) and Steam Store reviews, neither of which requires inviting
+# anyone as a project/org member — so a dedicated Playtester role no longer serves a purpose.
+# Existing "Playtester"-assigned members are migrated to "Member" by
+# core/migrations/0053_remove_playtester_role.py, which also deletes the seeded Role rows.
 SYSTEM_ROLE_SEEDS = [
     ("Owner", "owner", list(ALL_PERMISSION_KEYS)),
     ("Admin", "admin", list(ALL_PERMISSION_KEYS)),
     ("Member", "member", _member_permissions()),
-    ("Playtester", "playtester", PLAYTESTER_PERMISSIONS),
 ]
 
 # Same idea, per-project: project roles never include an "owner" entry —
@@ -157,7 +158,6 @@ SYSTEM_ROLE_SEEDS = [
 PROJECT_ROLE_SEEDS = [
     ("Admin", "admin", list(ALL_PERMISSION_KEYS)),
     ("Member", "member", _member_permissions()),
-    ("Playtester", "playtester", PLAYTESTER_PERMISSIONS),
 ]
 
 
@@ -194,7 +194,7 @@ def legacy_role_permissions(flat_role):
 
 def create_default_roles(organisation):
     """
-    Get-or-create the 4 seeded system Role rows for `organisation`.
+    Get-or-create the 3 seeded system Role rows (Owner/Admin/Member) for `organisation`.
     Safe to call repeatedly (idempotent) — used both at org-creation time
     and as a defensive fallback from the permission resolver for
     organisations that pre-date this system.
@@ -224,8 +224,8 @@ def create_default_roles(organisation):
 
 def create_default_project_roles(project):
     """
-    Get-or-create the 3 seeded system Role rows for `project` (Admin/Member/
-    Playtester — no Owner, see PROJECT_ROLE_SEEDS). Only meaningful for
+    Get-or-create the 2 seeded system Role rows for `project` (Admin/Member —
+    no Owner, see PROJECT_ROLE_SEEDS). Only meaningful for
     projects that belong to an organisation; orgless personal projects have
     no custom-role support (mirrors the pre-existing legacy_role_permissions
     fallback). Idempotent — safe to call repeatedly.

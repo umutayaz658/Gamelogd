@@ -146,20 +146,10 @@ export interface GlossaryTerm {
     translations: Record<string, string>; // lang -> locked translation
 }
 
-// ─── Playtest Types ─────────────────────────────────────────────────────────
-// Team membership/roles are now backed by the real OrganisationMember/ProjectMember
-// + Role models (see TeamRoles.tsx) rather than client-only WorkspaceState data.
-
-export interface PlaytestFeedback {
-    id: string;
-    author: string;
-    type: 'bug' | 'suggestion' | 'crash' | 'ui';
-    severity: 'low' | 'medium' | 'high' | 'critical';
-    description: string;
-    buildVersion: string;
-    submittedAt: string;
-    convertedToTaskId?: string;
-}
+// Playtest feedback is now backed by a real backend model (core.models.PlaytestFeedback,
+// see PlaytestFeedback.tsx) rather than client-only WorkspaceState data — same reasoning as
+// Team & Roles below: it needs to be publicly readable and writable by non-members, which the
+// member-scoped WorkspaceState blob can't support.
 
 // ─── Activity Types ───────────────────────────────────────────────────────────
 
@@ -171,7 +161,6 @@ export type ActivityType =
     | 'asset_added'
     | 'translation_approved'
     | 'member_joined'
-    | 'playtest_submitted'
     | 'git_push'
     | 'steam_build';
 
@@ -203,7 +192,6 @@ export interface WorkspaceData {
     assets: Asset[];
     translationKeys: TranslationEntry[];
     glossary: GlossaryTerm[];
-    playtestFeedback: PlaytestFeedback[];
     activities: ActivityItem[];
     categories?: string[];
     gddCategories?: GDDCategory[];
