@@ -91,6 +91,30 @@ export interface Project {
     created_at: string;
 }
 
+export type FeedbackType = 'bug' | 'suggestion' | 'crash' | 'ui_ux' | 'performance' | 'other';
+// Deliberately identical to devs/WorkspaceTypes.ts's TaskPriority — a feedback item's priority
+// carries over 1:1 when converted to a Kanban task.
+export type FeedbackPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved';
+
+export interface PlaytestFeedback {
+    id: number;
+    project: number;
+    author: User | null;
+    title: string;
+    type: FeedbackType;
+    priority: FeedbackPriority;
+    build_version: string;
+    description: string;
+    status: FeedbackStatus;
+    is_pinned: boolean;
+    converted_task_id: string;
+    likes_count: number;
+    is_liked: boolean;
+    submitted_at: string;
+    created_at: string;
+}
+
 export interface Role {
     id: number;
     organisation: number;

@@ -7,18 +7,32 @@ from django.core.cache import cache
 from core.utils import is_unwanted_game
 from api.services.hltb_service import fetch_hltb_times
 
-# In a real app, these should come from settings or env properly. 
-# Using the fallback ones from the import script for now.
-IGDB_CLIENT_ID = os.environ.get('IGDB_CLIENT_ID') or 'elkye6v908qd8eb7sn10q9jy907j7w'
-IGDB_CLIENT_SECRET = os.environ.get('IGDB_CLIENT_SECRET') or 'bgv30rr6kcqlic5ukc5sn795qnvzcz'
+# Credentials come only from the environment. Never hard-code the Twitch/IGDB
+# client_secret here — a committed secret must be treated as compromised and rotated.
+IGDB_CLIENT_ID = os.environ.get('IGDB_CLIENT_ID')
+IGDB_CLIENT_SECRET = os.environ.get('IGDB_CLIENT_SECRET')
 
 # Simple memory cache for the token to avoid re-authenticating every time
 _ACCESS_TOKEN = None
 _TOKEN_EXPIRY = 0
 
+
+def _sanitize_apicalypse(value: str) -> str:
+    """Strip characters that could break out of a quoted apicalypse string literal.
+
+    Company/game names flow into IGDB `where name ~ *"..."*` clauses; removing quotes and
+    backslashes keeps user-supplied input from altering the query structure.
+    """
+    if not value:
+        return ''
+    return str(value).replace('"', '').replace('\\', '')
+
 def get_igdb_token():
     global _ACCESS_TOKEN, _TOKEN_EXPIRY
-    
+
+    if not IGDB_CLIENT_ID or not IGDB_CLIENT_SECRET:
+        return None
+
     if _ACCESS_TOKEN and time.time() < _TOKEN_EXPIRY:
         return _ACCESS_TOKEN
 
@@ -297,6 +311,7 @@ def resolve_company_name(name: str) -> str:
 
 def resolve_top_parent_dynamically(company_name: str, token: str) -> tuple[str, str | None]:
     """Resolve subsidiary studio name to topmost parent dynamically using IGDB."""
+    company_name = _sanitize_apicalypse(company_name)
     # First check static map
     mapped = resolve_company_name(company_name)
     if mapped.lower() != company_name.lower():
