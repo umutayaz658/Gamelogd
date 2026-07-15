@@ -69,12 +69,28 @@ const PUBLIC_PATHS = ['/login', '/register', '/', '/verify-email'];
 
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
-        if (error.response?.status === 401 && typeof window !== 'undefined') {
+    async (error) => {
+        // Skip the logout call's own failures so this can never recurse.
+        if (
+            error.response?.status === 401 &&
+            typeof window !== 'undefined' &&
+            !error.config?.__isLogout
+        ) {
             const hadClientToken = !isCookieAuth && !!Cookies.get('access_token');
-            if (!isCookieAuth) {
-                Cookies.remove('access_token');
+            Cookies.remove('access_token');
+
+            // The backend sets an httpOnly auth cookie that JS cannot delete, and the
+            // Next.js middleware gates routes purely on that cookie's presence. A revoked
+            // or expired token would therefore leave the browser "signed in" to the
+            // middleware but rejected by the API — stranding the user on '/' with no way to
+            // reach /login. Clearing it server-side is what makes that state recoverable.
+            // /logout/ is auth-exempt, so this cannot itself 401.
+            try {
+                await api.post('/logout/', {}, { __isLogout: true } as never);
+            } catch {
+                // Best effort — still fall through to the client-side teardown below.
             }
+
             const path = window.location.pathname;
             const onPublicPath = PUBLIC_PATHS.includes(path);
             // In header mode only redirect if we thought we were logged in (avoid

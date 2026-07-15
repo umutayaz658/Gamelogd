@@ -1,281 +1,437 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
-    Settings, Globe, Link2, Github, Copy, Check, Zap, Trash2,
-    AlertTriangle, X, RefreshCw, Terminal,
+    Settings, Github, Copy, Check, Trash2, AlertTriangle, X, RefreshCw,
+    KeyRound, Tag, KanbanSquare, BookOpen, FolderOpen, ArrowRight,
 } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
-import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { cn, getImageUrl } from '@/lib/utils';
+import api from '@/lib/api';
+import BoardSwitcher from './BoardSwitcher';
+import CategoryManager, { CategoryItem } from './CategoryManager';
+import { DEFAULT_KANBAN_CATEGORIES, DEFAULT_GDD_CATEGORIES, DEFAULT_ASSET_CATEGORIES } from './WorkspaceTypes';
+import type { Project } from '@/types';
+
+function IdentityCard({
+    avatarUrl, avatarSeed, title, subtitle, badge, href, linkLabel,
+}: {
+    avatarUrl?: string | null; avatarSeed?: string; title: string; subtitle?: string;
+    badge?: string; href: string; linkLabel: string;
+}) {
+    return (
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+                <img
+                    src={getImageUrl(avatarUrl ?? undefined, avatarSeed)}
+                    alt=""
+                    className="w-12 h-12 rounded-xl object-cover bg-zinc-800 border border-zinc-800 flex-shrink-0"
+                />
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <p className="font-bold text-white truncate">{title}</p>
+                        {badge && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
+                                {badge}
+                            </span>
+                        )}
+                    </div>
+                    {subtitle && <p className="text-xs text-zinc-500 truncate">{subtitle}</p>}
+                </div>
+            </div>
+            <Link
+                href={href}
+                className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 hover:text-blue-300 flex-shrink-0"
+            >
+                {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+        </div>
+    );
+}
+
+function CategoryPreviewRow({
+    icon: Icon, label, categories, onManage,
+}: {
+    icon: React.ElementType; label: string; categories: CategoryItem[]; onManage: () => void;
+}) {
+    return (
+        <div className="flex items-center justify-between gap-3 py-3 border-b border-zinc-900/60 last:border-0">
+            <div className="flex items-start gap-2.5 min-w-0">
+                <Icon className="w-4 h-4 text-zinc-500 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white">{label}</p>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                        {categories.slice(0, 6).map((c) => (
+                            <span key={c.id} className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded border', c.color, c.bg)}>
+                                {c.emoji} {c.label}
+                            </span>
+                        ))}
+                        {categories.length > 6 && <span className="text-[10px] text-zinc-600 self-center">+{categories.length - 6} more</span>}
+                    </div>
+                </div>
+            </div>
+            <button
+                type="button"
+                onClick={onManage}
+                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-semibold flex-shrink-0"
+            >
+                <Settings className="w-3.5 h-3.5" /> Manage
+            </button>
+        </div>
+    );
+}
+
+type DangerAction = 'clear' | 'delete-org' | null;
 
 export default function WorkspaceSettings() {
-    const { activeWorkspace, logActivity } = useWorkspace();
-    const isOrg = activeWorkspace.type === 'org';
+    const { user } = useAuth();
+    const {
+        activeWorkspace, setActiveWorkspace, activeBoard, data, hasPermission,
+        refetchOrgs, clearWorkspaceData,
+        setKanbanCategories, setGDDCategories, setAssetCategories,
+        setTasks, setGDDDocs, setAssets,
+    } = useWorkspace();
 
-    const [orgName, setOrgName] = useState(isOrg ? (activeWorkspace.org?.name ?? '') : 'Solo Workspace');
-    const [website, setWebsite] = useState('');
-    const [description, setDescription] = useState('');
-    const [github, setGithub] = useState('https://github.com/yourstudio/yourgame');
+    const projectId = activeBoard.startsWith('project_') ? parseInt(activeBoard.replace('project_', ''), 10) : null;
+    const isOrgRoot = activeWorkspace.type === 'org' && !projectId;
+    const canEdit = hasPermission('settings.edit');
+    const isOrgOwner = activeWorkspace.type === 'org'
+        && !!activeWorkspace.org?.members?.find((m) => m.user.id === user?.id && m.role === 'owner');
 
-    // Git integration
-    const [webhookCopied, setWebhookCopied] = useState(false);
-    const [gitTestResult, setGitTestResult] = useState<string | null>(null);
-    const [gitTesting, setGitTesting] = useState(false);
+    const [projectDetails, setProjectDetails] = useState<Project | null>(null);
 
-    // Steam integration
-    const [apiToken] = useState(() => `glk_${Array.from({ length: 32 }, () => Math.random().toString(36)[2]).join('')}`);
+    useEffect(() => {
+        if (!projectId) { setProjectDetails(null); return; }
+        api.get(`/projects/${projectId}/`).then((res) => setProjectDetails(res.data)).catch(() => setProjectDetails(null));
+    }, [projectId]);
+
+    // ── Integrations (project boards only) ────────────────────────────────
+    const [githubUrl, setGithubUrl] = useState('');
+    const [savingGithub, setSavingGithub] = useState(false);
+    const [generatingToken, setGeneratingToken] = useState(false);
     const [tokenCopied, setTokenCopied] = useState(false);
-    const [steamTestResult, setSteamTestResult] = useState<string | null>(null);
-    const [steamTesting, setSteamTesting] = useState(false);
 
-    // Danger zone
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    useEffect(() => { setGithubUrl(projectDetails?.github_repo_url ?? ''); }, [projectDetails]);
 
-    const webhookUrl = `https://api.gamelogd.com/api/integrations/github/webhook/${isOrg ? activeWorkspace.org?.id : 'solo'}/`;
-    const confirmText = isOrg ? (activeWorkspace.org?.name ?? 'workspace') : 'Solo Workspace';
-
-    const copyText = async (text: string, setter: (v: boolean) => void) => {
-        await navigator.clipboard.writeText(text);
-        setter(true);
-        setTimeout(() => setter(false), 2000);
+    const saveGithubUrl = () => {
+        if (!projectId) return;
+        setSavingGithub(true);
+        api.patch(`/projects/${projectId}/`, { github_repo_url: githubUrl.trim() })
+            .then((res) => setProjectDetails(res.data))
+            .catch((err) => alert(err.response?.data?.detail || 'Failed to save repo URL.'))
+            .finally(() => setSavingGithub(false));
     };
 
-    const testGitWebhook = async () => {
-        setGitTesting(true);
-        setGitTestResult(null);
-        await new Promise((r) => setTimeout(r, 1200));
-        logActivity('git_push', 'GitHub webhook test triggered — commit "fix: adjusted player jump height" received.', '🔗', 'devuser');
-        setGitTestResult('✅ Webhook received! Activity feed updated with mock commit.');
-        setGitTesting(false);
+    const generateToken = () => {
+        if (!projectId) return;
+        setGeneratingToken(true);
+        api.post(`/projects/${projectId}/ensure-build-token/`)
+            .then((res) => setProjectDetails(res.data))
+            .catch((err) => alert(err.response?.data?.detail || 'Failed to generate build token.'))
+            .finally(() => setGeneratingToken(false));
     };
 
-    const testSteamBuild = async () => {
-        setSteamTesting(true);
-        setSteamTestResult(null);
-        await new Promise((r) => setTimeout(r, 1500));
-        logActivity('steam_build', 'Steam build v1.2.0-beta successfully uploaded to Default branch!', '🚀');
-        setSteamTestResult('🚀 Mock build push received! Dashboard activity updated. Devlog draft would be auto-created.');
-        setSteamTesting(false);
+    const copyToken = () => {
+        if (!projectDetails?.ci_build_token) return;
+        navigator.clipboard.writeText(projectDetails.ci_build_token);
+        setTokenCopied(true);
+        setTimeout(() => setTokenCopied(false), 2000);
+    };
+
+    // ── Category managers ─────────────────────────────────────────────────
+    const [openCategoryManager, setOpenCategoryManager] = useState<'kanban' | 'gdd' | 'assets' | null>(null);
+    const kanbanCategories = data.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES;
+    const gddCategories = data.gddCategories ?? DEFAULT_GDD_CATEGORIES;
+    const assetCategories = data.assetCategories ?? DEFAULT_ASSET_CATEGORIES;
+
+    // ── Danger Zone ────────────────────────────────────────────────────────
+    const [confirmAction, setConfirmAction] = useState<DangerAction>(null);
+    const [confirmText, setConfirmText] = useState('');
+    const [processing, setProcessing] = useState(false);
+
+    const requiredConfirmText = confirmAction === 'delete-org' ? (activeWorkspace.org?.name ?? '') : 'CLEAR';
+
+    const closeConfirm = () => { setConfirmAction(null); setConfirmText(''); };
+
+    const executeClear = async () => {
+        setProcessing(true);
+        try {
+            await clearWorkspaceData();
+            closeConfirm();
+        } catch (err: any) {
+            alert(err.response?.data?.detail || 'Failed to clear workspace data.');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    const executeDeleteOrg = async () => {
+        if (!activeWorkspace.org) return;
+        setProcessing(true);
+        try {
+            await api.delete(`/organisations/${activeWorkspace.org.slug}/`);
+            refetchOrgs();
+            setActiveWorkspace({ type: 'solo' });
+            closeConfirm();
+        } catch (err: any) {
+            alert(err.response?.data?.detail || 'Failed to delete organisation.');
+        } finally {
+            setProcessing(false);
+        }
     };
 
     return (
         <div className="space-y-8 max-w-3xl">
-            {/* Header */}
-            <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-zinc-400" /> Workspace Settings
-                </h2>
-                <p className="text-sm text-zinc-500 mt-0.5">
-                    {isOrg ? `Manage "${activeWorkspace.org?.name}" organisation settings` : 'Manage your solo workspace settings'}
+            <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                    <BoardSwitcher />
+                    <span className="text-zinc-700 text-lg font-light">/</span>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <Settings className="w-5 h-5 text-zinc-400" /> Workspace Settings
+                    </h2>
+                </div>
+                <p className="text-sm text-zinc-500">
+                    {projectId
+                        ? `Settings for this project's Devs workspace — separate from every other project.`
+                        : isOrgRoot
+                            ? `Settings for "${activeWorkspace.org?.name}"'s general workspace — separate from any of its individual projects.`
+                            : 'Settings for your personal workspace.'}
                 </p>
             </div>
 
-            {/* General Info */}
-            <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-blue-400" /> General Information
-                </h3>
-                <div className="space-y-3">
-                    <div>
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">
-                            {isOrg ? 'Organisation Name' : 'Workspace Name'}
-                        </label>
-                        <input
-                            value={orgName}
-                            onChange={(e) => setOrgName(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Description</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Short description of your studio or project..."
-                            rows={2}
-                            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 resize-none transition-all"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Website</label>
-                        <input
-                            value={website}
-                            onChange={(e) => setWebsite(e.target.value)}
-                            placeholder="https://yourstudio.com"
-                            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
-                        />
-                    </div>
-                </div>
-                <button className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20">
-                    Save Changes
-                </button>
-            </section>
-
-            {/* Git Integration */}
-            <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
-                    <Github className="w-4 h-4 text-zinc-400" /> Git Integration (GitHub / GitLab)
-                </h3>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                    Add this webhook URL to your GitHub repo Settings → Webhooks. Push events, pull requests and releases will appear in your workspace activity feed.
-                </p>
-
-                <div>
-                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Webhook URL</label>
-                    <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono overflow-x-auto whitespace-nowrap">
-                            {webhookUrl}
-                        </code>
-                        <button
-                            onClick={() => copyText(webhookUrl, setWebhookCopied)}
-                            className={cn('flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all flex-shrink-0',
-                                webhookCopied ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600')}
-                        >
-                            {webhookCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                            {webhookCopied ? 'Copied!' : 'Copy'}
-                        </button>
-                    </div>
-                </div>
-
-                <div>
-                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">GitHub Repo URL</label>
-                    <input value={github} onChange={(e) => setGithub(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-all font-mono" />
-                </div>
-
-                <button
-                    onClick={testGitWebhook}
-                    disabled={gitTesting}
-                    className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                >
-                    {gitTesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Terminal className="w-4 h-4" />}
-                    {gitTesting ? 'Testing...' : 'Test Webhook (Simulate Commit)'}
-                </button>
-
-                {gitTestResult && (
-                    <p className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5">
-                        {gitTestResult}
-                    </p>
+            {/* Identity */}
+            <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
+                {projectId ? (
+                    <IdentityCard
+                        avatarUrl={projectDetails?.cover_image}
+                        avatarSeed={projectDetails?.title}
+                        title={projectDetails?.title ?? 'Loading…'}
+                        subtitle={projectDetails ? `Status: ${projectDetails.status.replace('_', ' ')}` : undefined}
+                        href={`/projects/${projectId}`}
+                        linkLabel="Edit project details"
+                    />
+                ) : isOrgRoot ? (
+                    <IdentityCard
+                        avatarUrl={activeWorkspace.org?.logo}
+                        avatarSeed={activeWorkspace.org?.name}
+                        title={activeWorkspace.org?.name ?? ''}
+                        subtitle={`@${activeWorkspace.org?.slug}`}
+                        badge={activeWorkspace.org?.is_verified ? 'Verified' : undefined}
+                        href={`/organisations/${activeWorkspace.org?.slug}/dashboard`}
+                        linkLabel="Edit identity & members"
+                    />
+                ) : (
+                    <IdentityCard
+                        avatarUrl={user?.avatar}
+                        avatarSeed={user?.username}
+                        title={user?.real_name || user?.username || ''}
+                        subtitle={user?.username ? `@${user.username}` : undefined}
+                        href="/settings"
+                        linkLabel="Manage your account"
+                    />
                 )}
             </section>
 
-            {/* Steam Integration */}
-            <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-blue-400" /> Steam CI/CD Build Notifier
+            {/* Categories */}
+            <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
+                <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2 mb-1">
+                    <Tag className="w-4 h-4 text-blue-400" /> Categories
                 </h3>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                    Add this API token to your GitHub Actions or CI/CD pipeline. When you push a build to Steam, include a simple curl command with this token to receive a build notification in your workspace dashboard.
-                </p>
-
-                <div>
-                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">API Token</label>
-                    <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-amber-400 font-mono overflow-x-auto whitespace-nowrap">
-                            {apiToken}
-                        </code>
-                        <button
-                            onClick={() => copyText(apiToken, setTokenCopied)}
-                            className={cn('flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all flex-shrink-0',
-                                tokenCopied ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600')}
-                        >
-                            {tokenCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                            {tokenCopied ? 'Copied!' : 'Copy'}
-                        </button>
-                    </div>
-                </div>
-
-                <div className="bg-zinc-950 border border-zinc-700 rounded-xl p-4">
-                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider font-bold mb-2">Example CI/CD Step (GitHub Actions)</p>
-                    <pre className="text-[11px] text-emerald-400 font-mono leading-relaxed overflow-x-auto whitespace-pre">
-{`- name: Notify Gamelogd
-  run: |
-    curl -X POST https://api.gamelogd.com/api/builds/ \\
-      -H "Authorization: Token ${apiToken.slice(0, 12)}..." \\
-      -d '{"version":"v\${{ env.VERSION }}","changes":"...'}`}
-                    </pre>
-                </div>
-
-                <button
-                    onClick={testSteamBuild}
-                    disabled={steamTesting}
-                    className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                >
-                    {steamTesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                    {steamTesting ? 'Simulating...' : 'Simulate Steam Build Push (v1.2.0-beta)'}
-                </button>
-
-                {steamTestResult && (
-                    <p className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-2.5">
-                        {steamTestResult}
-                    </p>
-                )}
+                <p className="text-xs text-zinc-500 mb-2">Manage the categories used across this board&apos;s Devs tools, all from one place.</p>
+                <CategoryPreviewRow icon={KanbanSquare} label="Kanban Task Categories" categories={kanbanCategories} onManage={() => setOpenCategoryManager('kanban')} />
+                <CategoryPreviewRow icon={BookOpen} label="GDD Hub Sections" categories={gddCategories} onManage={() => setOpenCategoryManager('gdd')} />
+                <CategoryPreviewRow icon={FolderOpen} label="Asset Registry Categories" categories={assetCategories} onManage={() => setOpenCategoryManager('assets')} />
             </section>
+
+            {/* Integrations */}
+            {projectId ? (
+                <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4">
+                    <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
+                        <Github className="w-4 h-4 text-zinc-400" /> Integrations
+                    </h3>
+                    <div>
+                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">GitHub Repo URL</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                value={githubUrl}
+                                onChange={(e) => setGithubUrl(e.target.value)}
+                                placeholder="https://github.com/yourstudio/yourgame"
+                                disabled={!canEdit}
+                                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all font-mono disabled:opacity-50"
+                            />
+                            {canEdit && (
+                                <button
+                                    onClick={saveGithubUrl}
+                                    disabled={savingGithub}
+                                    className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 flex-shrink-0"
+                                >
+                                    {savingGithub ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Save'}
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-zinc-600 mt-1.5">Reference only for now — links this project to its repo. Automatic push/build notifications aren&apos;t wired up yet.</p>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">CI Build Token</label>
+                        {projectDetails?.ci_build_token ? (
+                            <div className="flex items-center gap-2">
+                                <code className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-amber-400 font-mono overflow-x-auto whitespace-nowrap">
+                                    {projectDetails.ci_build_token}
+                                </code>
+                                <button
+                                    onClick={copyToken}
+                                    className={cn('flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all flex-shrink-0',
+                                        tokenCopied ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600')}
+                                >
+                                    {tokenCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                    {tokenCopied ? 'Copied!' : 'Copy'}
+                                </button>
+                            </div>
+                        ) : canEdit ? (
+                            <button
+                                onClick={generateToken}
+                                disabled={generatingToken}
+                                className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                            >
+                                {generatingToken ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                                Generate Token
+                            </button>
+                        ) : (
+                            <p className="text-xs text-zinc-600">No token generated yet.</p>
+                        )}
+                        <p className="text-[11px] text-zinc-600 mt-1.5">A unique token for this project, meant for a future CI/CD build-notifier integration.</p>
+                    </div>
+                </section>
+            ) : (
+                <section className="bg-zinc-900/50 border border-zinc-800 border-dashed rounded-2xl p-5 text-center text-sm text-zinc-500">
+                    Select a project from the switcher above to configure its Git/CI integrations — each project has its own.
+                </section>
+            )}
 
             {/* Danger Zone */}
             <section className="bg-red-950/20 border border-red-900/40 rounded-2xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-red-400 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> Danger Zone
                 </h3>
-                <div className="flex items-center justify-between">
+
+                <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
-                        <p className="text-sm font-semibold text-zinc-300">
-                            {isOrg ? 'Delete Organisation' : 'Clear Workspace Data'}
-                        </p>
+                        <p className="text-sm font-semibold text-zinc-300">Clear Workspace Data</p>
                         <p className="text-xs text-zinc-600 mt-0.5">
-                            {isOrg
-                                ? 'Permanently deletes this organisation and all its data. This action cannot be undone.'
-                                : 'Clears all workspace data from localStorage. This action cannot be undone.'}
+                            Permanently deletes this board&apos;s Kanban tasks, GDD docs, assets, and activity history. Columns and categories are kept. This cannot be undone.
                         </p>
                     </div>
-                    <button
-                        onClick={() => setShowDeleteModal(true)}
-                        className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                        {isOrg ? 'Delete' : 'Clear Data'}
-                    </button>
+                    {canEdit && (
+                        <button
+                            onClick={() => setConfirmAction('clear')}
+                            className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0"
+                        >
+                            <Trash2 className="w-4 h-4" /> Clear Data
+                        </button>
+                    )}
                 </div>
+
+                {isOrgRoot && (
+                    <div className="flex items-center justify-between gap-4 flex-wrap pt-4 border-t border-red-900/30">
+                        <div>
+                            <p className="text-sm font-semibold text-zinc-300">Delete Organisation</p>
+                            <p className="text-xs text-zinc-600 mt-0.5">
+                                Permanently deletes &quot;{activeWorkspace.org?.name}&quot;, its roles, and removes all members. Its projects are <span className="text-zinc-400 font-semibold">not</span> deleted — they just become independent, still owned by their creators. This cannot be undone.
+                            </p>
+                        </div>
+                        {isOrgOwner ? (
+                            <button
+                                onClick={() => setConfirmAction('delete-org')}
+                                className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0"
+                            >
+                                <Trash2 className="w-4 h-4" /> Delete
+                            </button>
+                        ) : (
+                            <p className="text-xs text-zinc-600 italic flex-shrink-0">Only the owner can do this.</p>
+                        )}
+                    </div>
+                )}
             </section>
 
-            {/* Delete Confirm Modal */}
-            {showDeleteModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-                    onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}>
+            {/* Confirm Modal */}
+            {confirmAction && (
+                <div
+                    className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                    onClick={(e) => { if (e.target === e.currentTarget) closeConfirm(); }}
+                >
                     <div className="bg-zinc-950 border border-red-900/50 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300 p-6 space-y-4">
                         <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-red-500/10 rounded-xl">
                                     <AlertTriangle className="w-5 h-5 text-red-400" />
                                 </div>
-                                <h3 className="text-lg font-bold text-white">Confirm Deletion</h3>
+                                <h3 className="text-lg font-bold text-white">
+                                    {confirmAction === 'delete-org' ? 'Delete Organisation?' : 'Clear Workspace Data?'}
+                                </h3>
                             </div>
-                            <button onClick={() => setShowDeleteModal(false)} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
+                            <button onClick={closeConfirm} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
                         </div>
                         <p className="text-sm text-zinc-400">
-                            Type <span className="font-bold text-white font-mono">"{confirmText}"</span> to confirm deletion:
+                            Type <span className="font-bold text-white font-mono">&quot;{requiredConfirmText}&quot;</span> to confirm:
                         </p>
                         <input
                             autoFocus
-                            value={deleteConfirmText}
-                            onChange={(e) => setDeleteConfirmText(e.target.value)}
-                            placeholder={confirmText}
+                            value={confirmText}
+                            onChange={(e) => setConfirmText(e.target.value)}
+                            placeholder={requiredConfirmText}
                             className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 transition-all"
                         />
                         <div className="flex gap-3">
-                            <button onClick={() => setShowDeleteModal(false)}
-                                className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">Cancel</button>
+                            <button onClick={closeConfirm} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">
+                                Cancel
+                            </button>
                             <button
-                                disabled={deleteConfirmText !== confirmText}
-                                onClick={() => setShowDeleteModal(false)}
-                                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                disabled={confirmText !== requiredConfirmText || processing}
+                                onClick={confirmAction === 'delete-org' ? executeDeleteOrg : executeClear}
+                                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                Delete Forever
+                                {processing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (confirmAction === 'delete-org' ? 'Delete Forever' : 'Clear Forever')}
                             </button>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {openCategoryManager === 'kanban' && (
+                <CategoryManager
+                    title="Manage Task Categories"
+                    categories={kanbanCategories}
+                    onSave={(cats) => setKanbanCategories(cats)}
+                    onDeleteReassign={(deletedId, fallbackId) => {
+                        setTasks((prev) => prev.map((t) => (t.category === deletedId ? { ...t, category: fallbackId } : t)));
+                    }}
+                    onClose={() => setOpenCategoryManager(null)}
+                />
+            )}
+            {openCategoryManager === 'gdd' && (
+                <CategoryManager
+                    title="Manage GDD Categories"
+                    categories={gddCategories}
+                    onSave={(cats) => setGDDCategories(cats)}
+                    onDeleteReassign={(deletedId, fallbackId) => {
+                        setGDDDocs((prev) => prev.map((d) => (d.section === deletedId ? { ...d, section: fallbackId } : d)));
+                    }}
+                    onClose={() => setOpenCategoryManager(null)}
+                />
+            )}
+            {openCategoryManager === 'assets' && (
+                <CategoryManager
+                    title="Manage Asset Categories"
+                    categories={assetCategories}
+                    onSave={(cats) => setAssetCategories(cats)}
+                    onDeleteReassign={(deletedId, fallbackId) => {
+                        setAssets((prev) => prev.map((a) => (a.category === deletedId ? { ...a, category: fallbackId } : a)));
+                    }}
+                    onClose={() => setOpenCategoryManager(null)}
+                />
             )}
         </div>
     );

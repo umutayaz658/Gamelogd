@@ -88,6 +88,8 @@ export interface Project {
     members?: ProjectMember[];
     followers_count?: number;
     is_following?: boolean;
+    github_repo_url?: string;
+    ci_build_token?: string | null;
     created_at: string;
 }
 

@@ -161,6 +161,11 @@ class Project(models.Model):
     cover_image = models.ImageField(upload_to='projects/', blank=True, null=True)
     tech_stack = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_dev')
+    # Devs workspace "Integrations" settings — deliberately real Project fields (not the
+    # WorkspaceState JSON blob) so a future webhook receiver can look up the owning project by
+    # token without reaching into an opaque per-board blob. See WorkspaceSettings.tsx.
+    github_repo_url = models.CharField(max_length=255, blank=True, default='')
+    ci_build_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
