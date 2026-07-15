@@ -44,7 +44,7 @@ interface AuthContextType {
     user: User | null;
     isLoading: boolean;
     login: (token: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     updateUser: (userData: User) => void;
     isAuthenticated: boolean;
 }
@@ -104,13 +104,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const logout = () => {
-        if (isCookieAuth) {
-            // Ask the backend to clear the httpOnly cookie; ignore failures.
-            api.post('/logout/').catch(() => {});
-        } else {
-            Cookies.remove('access_token');
+    const logout = async () => {
+        // Always hit the backend: it sets the httpOnly auth cookie on login in BOTH modes,
+        // and JS cannot delete an httpOnly cookie itself. Skipping this in header mode left
+        // `auth_token` behind, and the middleware (which accepts either cookie) kept treating
+        // the browser as signed in — trapping the user on '/' with no way back to /login.
+        // Awaited so the cookie deletion lands *before* we navigate; otherwise the middleware
+        // still sees a token and bounces /login straight back to /.
+        try {
+            await api.post('/logout/');
+        } catch {
+            // AllowAny endpoint that only clears a cookie — tear down the client state anyway.
         }
+        // Cleared after the request above, which needs it to authenticate in header mode.
+        Cookies.remove('access_token');
         setUser(null);
         router.push('/login');
         router.refresh();
