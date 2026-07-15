@@ -3,6 +3,18 @@
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type TaskCategory = string;
 
+// Structured replacement for the old free-form `data.categories: string[]` (which encoded custom
+// categories as fragile "emoji Label|colorName" strings) — same shape as AssetCategoryItem/
+// GDDCategory below, so all three can share one CategoryManager UI. `Task.category` keeps storing
+// this `id` as a plain string; only the list-of-categories representation changed.
+export interface KanbanCategoryItem {
+    id: string;
+    label: string;
+    color: string;
+    bg: string;
+    emoji: string;
+}
+
 export interface KanbanColumn {
     id: string;
     label: string;
@@ -193,10 +205,23 @@ export interface WorkspaceData {
     translationKeys: TranslationEntry[];
     glossary: GlossaryTerm[];
     activities: ActivityItem[];
+    // Legacy free-form Kanban categories list (mix of the 5 hardcoded ids and "emoji Label|color"
+    // encoded custom strings) — superseded by `kanbanCategories` below; kept only so
+    // WorkspaceContext's one-time migration step can read old saved boards. New code should never
+    // write to this field.
     categories?: string[];
+    kanbanCategories?: KanbanCategoryItem[];
     gddCategories?: GDDCategory[];
     assetCategories?: AssetCategoryItem[];
 }
+
+export const DEFAULT_KANBAN_CATEGORIES: KanbanCategoryItem[] = [
+    { id: 'code', label: 'Code', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', emoji: '💻' },
+    { id: 'art', label: 'Art', color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20', emoji: '🎨' },
+    { id: 'audio', label: 'Audio', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', emoji: '🎵' },
+    { id: 'qa', label: 'QA', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20', emoji: '🧪' },
+    { id: 'other', label: 'Other', color: 'text-zinc-400', bg: 'bg-zinc-700/20 border-zinc-700/30', emoji: '📌' },
+];
 
 export const DEFAULT_ASSET_CATEGORIES: AssetCategoryItem[] = [
     { id: '2d', label: '2D Art', color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20', emoji: '🎨' },

@@ -20,6 +20,28 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
 
         return False
 
+class OrganisationAccessPermission(permissions.BasePermission):
+    """
+    Custom permission for Organisations:
+    - Anyone can read.
+    - Owner or Admin can update.
+    - Only the Owner can delete (deleting an org is the most catastrophic action available —
+      cascades to its roles/members/WorkspaceState rows, see OrganisationViewSet.destroy()).
+    """
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        member = obj.members.filter(user=request.user).first()
+        if not member:
+            return False
+
+        if request.method == 'DELETE':
+            return member.role == 'owner'
+
+        return member.role in ('owner', 'admin')
+
+
 class ProjectAccessPermission(permissions.BasePermission):
     """
     Custom permission for Projects:

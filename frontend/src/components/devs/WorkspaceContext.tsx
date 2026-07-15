@@ -24,7 +24,10 @@ import {
     DEFAULT_GDD_CATEGORIES,
     AssetCategoryItem,
     DEFAULT_ASSET_CATEGORIES,
+    KanbanCategoryItem,
+    DEFAULT_KANBAN_CATEGORIES,
 } from './WorkspaceTypes';
+import { COLOR_PRESETS } from './CategoryManager';
 
 export type WorkspaceTool =
     | 'dashboard'
@@ -207,6 +210,7 @@ function buildDefaultData(): WorkspaceData {
         ],
         gddCategories: DEFAULT_GDD_CATEGORIES,
         assetCategories: DEFAULT_ASSET_CATEGORIES,
+        kanbanCategories: DEFAULT_KANBAN_CATEGORIES,
     };
 }
 
@@ -234,6 +238,9 @@ interface WorkspaceContextType {
     // etc.), e.g. converting Feedback into a Kanban task, so the in-memory context catches up
     // without needing a full page reload.
     refreshWorkspaceData: () => void;
+    // Resets this board's content back to empty (keeps columns/categories) — Workspace Settings'
+    // Danger Zone "Clear Workspace Data" action.
+    clearWorkspaceData: () => Promise<void>;
     // Mutators
     setColumns: (cols: KanbanColumn[]) => void;
     setTasks: (tasks: Task[] | ((prev: Task[]) => Task[])) => void;
@@ -242,7 +249,7 @@ interface WorkspaceContextType {
     setAssets: (assets: Asset[] | ((prev: Asset[]) => Asset[])) => void;
     setTranslationKeys: (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => void;
     setGlossary: (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => void;
-    setCategories: (categories: string[] | ((prev: string[]) => string[])) => void;
+    setKanbanCategories: (categories: KanbanCategoryItem[] | ((prev: KanbanCategoryItem[]) => KanbanCategoryItem[])) => void;
     setGDDCategories: (categories: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => void;
     setAssetCategories: (categories: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => void;
     logActivity: (type: ActivityType, text: string, icon: string, actor?: string) => void;
@@ -285,6 +292,49 @@ function storageKey(ws: ActiveWorkspace, board: string, userId?: number): string
         return `workspace__solo_board_${board}${suffix}`;
     }
     return `workspace__org_${ws.org?.id ?? 'unknown'}_board_${board}`;
+}
+
+// ─── Legacy Kanban category migration ────────────────────────────────────────
+// One-time, read-time conversion of the old free-form `data.categories: string[]` (custom
+// entries encoded as "emoji Label|colorName") into the structured `KanbanCategoryItem[]` shape
+// shared with GDD/Asset categories. `id` is kept as the *exact original raw string* so existing
+// `Task.category` values (which already store that same raw string) keep matching without
+// needing every Task row migrated too.
+const KANBAN_EMOJI_REGEX = /^(\p{Emoji_Presentation}|\p{Emoji}️)/u;
+const KANBAN_LABEL_STRIP_REGEX = /^(\p{Emoji_Presentation}|\p{Emoji}️)\s*/u;
+
+function migrateLegacyKanbanCategories(legacy: string[]): KanbanCategoryItem[] {
+    return legacy.map((cat) => {
+        const known = DEFAULT_KANBAN_CATEGORIES.find((c) => c.id === cat);
+        if (known) return known;
+
+        let colorName = 'zinc';
+        let baseCat = cat;
+        if (cat.includes('|')) {
+            const parts = cat.split('|');
+            baseCat = parts[0];
+            colorName = parts[1] || 'zinc';
+        }
+        const match = baseCat.match(KANBAN_EMOJI_REGEX);
+        const emoji = match ? match[0] : '📌';
+        const label = baseCat.replace(KANBAN_LABEL_STRIP_REGEX, '');
+        const preset = COLOR_PRESETS.find((p) => p.name.toLowerCase() === colorName.toLowerCase()) ?? COLOR_PRESETS[6];
+        return {
+            id: cat,
+            label: (label.charAt(0).toUpperCase() + label.slice(1)) || 'Custom',
+            emoji,
+            color: preset.color,
+            bg: preset.bg,
+        };
+    });
+}
+
+function ensureKanbanCategories(data: WorkspaceData): WorkspaceData {
+    if (data.kanbanCategories?.length) return data;
+    if (data.categories?.length) {
+        return { ...data, kanbanCategories: migrateLegacyKanbanCategories(data.categories) };
+    }
+    return { ...data, kanbanCategories: DEFAULT_KANBAN_CATEGORIES };
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -372,11 +422,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const fetchWorkspaceDataFromBackend = useCallback((key: string) => {
         return api.get(`/workspace-state/${key}/`)
             .then((res) => {
-                const backendData = res.data?.data;
+                let backendData = res.data?.data;
                 if (backendData && backendData.columns?.length) {
-                    if (!backendData.categories?.length) backendData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
                     if (!backendData.assetCategories?.length) backendData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    backendData = ensureKanbanCategories(backendData);
                     setData(backendData);
                     try { localStorage.setItem(key, JSON.stringify(backendData)); } catch {}
                 }
@@ -391,6 +441,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         fetchWorkspaceDataFromBackend(storageKey(activeWorkspace, activeBoard, user.id));
     }, [activeWorkspace, activeBoard, user, fetchWorkspaceDataFromBackend]);
 
+    // Resets this board's content (tasks/docs/assets/activities etc.) back to empty, while
+    // preserving its column and category configuration — used by Workspace Settings' Danger
+    // Zone "Clear Workspace Data" action (solo boards and individual projects; organisations use
+    // a real DELETE instead, see WorkspaceSettings.tsx).
+    const clearWorkspaceData = useCallback(async () => {
+        if (!user) return;
+        const key = storageKey(activeWorkspace, activeBoard, user.id);
+        const cleared: WorkspaceData = {
+            ...data,
+            tasks: [], gddDocs: [], balancingTables: [], dialogueTrees: [],
+            assets: [], translationKeys: [], glossary: [], activities: [],
+        };
+        await api.post('/workspace-state/', { key, data: cleared, tool: 'settings' });
+        setData(cleared);
+        try { localStorage.setItem(key, JSON.stringify(cleared)); } catch { /* quota */ }
+    }, [activeWorkspace, activeBoard, user, data]);
+
     // ── Load workspace data from localStorage & backend when workspace or board changes ─
     useEffect(() => {
         const key = storageKey(activeWorkspace, activeBoard, user?.id);
@@ -404,7 +471,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 if (!parsed.categories?.length) parsed.categories = ['code', 'art', 'audio', 'qa', 'other'];
                 if (!parsed.gddCategories?.length) parsed.gddCategories = DEFAULT_GDD_CATEGORIES;
                 if (!parsed.assetCategories?.length) parsed.assetCategories = DEFAULT_ASSET_CATEGORIES;
-                setData(parsed);
+                setData(ensureKanbanCategories(parsed));
             } else {
                 if (activeBoard.startsWith('project_')) {
                     const emptyData = buildDefaultData();
@@ -416,12 +483,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     emptyData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     emptyData.gddCategories = DEFAULT_GDD_CATEGORIES;
                     emptyData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    emptyData.kanbanCategories = DEFAULT_KANBAN_CATEGORIES;
                     setData(emptyData);
                 } else {
                     const defaultData = buildDefaultData();
                     defaultData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     defaultData.gddCategories = DEFAULT_GDD_CATEGORIES;
                     defaultData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    defaultData.kanbanCategories = DEFAULT_KANBAN_CATEGORIES;
                     setData(defaultData);
                 }
             }
@@ -430,6 +499,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             defaultData.categories = ['code', 'art', 'audio', 'qa', 'other'];
             defaultData.gddCategories = DEFAULT_GDD_CATEGORIES;
             defaultData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+            defaultData.kanbanCategories = DEFAULT_KANBAN_CATEGORIES;
             setData(defaultData);
         }
 
@@ -552,9 +622,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setData((d) => ({ ...d, glossary: typeof g === 'function' ? g(d.glossary) : g }));
     };
 
-    const setCategories = (cats: string[] | ((prev: string[]) => string[])) => {
+    const setKanbanCategories = (cats: KanbanCategoryItem[] | ((prev: KanbanCategoryItem[]) => KanbanCategoryItem[])) => {
         lastToolRef.current = 'kanban';
-        setData((d) => ({ ...d, categories: typeof cats === 'function' ? cats(d.categories ?? ['code', 'art', 'audio', 'qa', 'other']) : cats }));
+        setData((d) => ({ ...d, kanbanCategories: typeof cats === 'function' ? cats(d.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES) : cats }));
     };
 
     const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => {
@@ -600,6 +670,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 hasPermission,
                 data,
                 refreshWorkspaceData,
+                clearWorkspaceData,
                 setColumns,
                 setTasks,
                 setGDDDocs,
@@ -607,7 +678,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 setAssets,
                 setTranslationKeys,
                 setGlossary,
-                setCategories,
+                setKanbanCategories,
                 setGDDCategories,
                 setAssetCategories,
                 logActivity,

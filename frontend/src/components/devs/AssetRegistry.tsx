@@ -10,18 +10,7 @@ import { Asset, AssetCategoryItem, DEFAULT_ASSET_CATEGORIES } from './WorkspaceT
 import { cn } from '@/lib/utils';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import BoardSwitcher from './BoardSwitcher';
-
-const COLOR_PRESETS = [
-    { name: 'Blue',     color: 'text-blue-400',    bg: 'bg-blue-500/10 border-blue-500/20' },
-    { name: 'Violet',   color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
-    { name: 'Amber',    color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
-    { name: 'Pink',     color: 'text-pink-400',    bg: 'bg-pink-500/10 border-pink-500/20' },
-    { name: 'Emerald',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-    { name: 'Cyan',     color: 'text-cyan-400',    bg: 'bg-cyan-500/10 border-cyan-500/20' },
-    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-700/20 border-zinc-700/30' },
-    { name: 'Red',      color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/20' },
-    { name: 'Orange',   color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/20' },
-];
+import CategoryManager from './CategoryManager';
 
 const getTextColorOnly = (colorStr: string) => {
     if (!colorStr) return '';
@@ -168,219 +157,6 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
-    );
-}
-
-interface CategoryManagerModalProps {
-    categories: AssetCategoryItem[];
-    onSave: (categories: AssetCategoryItem[]) => void;
-    onClose: () => void;
-}
-
-function CategoryManagerModal({ categories: initialCategories, onSave, onClose }: CategoryManagerModalProps) {
-    const [cats, setCats] = useState<AssetCategoryItem[]>(initialCategories);
-    const [view, setView] = useState<'manage' | 'add_category' | 'edit_category'>('manage');
-    
-    // Subform states
-    const [catName, setCatName] = useState('');
-    const [catEmoji, setCatEmoji] = useState('📌');
-    const [catColorIdx, setCatColorIdx] = useState(0);
-    const [editingCatId, setEditingCatId] = useState<string | null>(null);
-
-    const handleOpenAdd = () => {
-        setCatName('');
-        setCatEmoji('📌');
-        setCatColorIdx(0);
-        setEditingCatId(null);
-        setView('add_category');
-    };
-
-    const handleOpenEdit = (cat: AssetCategoryItem) => {
-        setCatName(cat.label);
-        setCatEmoji(cat.emoji || '📌');
-        
-        const idx = COLOR_PRESETS.findIndex(p => p.color === cat.color);
-        setCatColorIdx(idx >= 0 ? idx : 0);
-        
-        setEditingCatId(cat.id);
-        setView('edit_category');
-    };
-
-    const handleSaveCategory = () => {
-        if (!catName.trim()) return;
-        const colorPreset = COLOR_PRESETS[catColorIdx] || COLOR_PRESETS[0];
-        
-        if (view === 'add_category') {
-            const newCat: AssetCategoryItem = {
-                id: `cat-${Date.now()}`,
-                label: catName.trim(),
-                color: colorPreset.color,
-                bg: colorPreset.bg,
-                emoji: catEmoji.trim() || '📌',
-            };
-            setCats([...cats, newCat]);
-        } else if (view === 'edit_category' && editingCatId) {
-            setCats(cats.map(c => c.id === editingCatId ? {
-                ...c,
-                label: catName.trim(),
-                color: colorPreset.color,
-                bg: colorPreset.bg,
-                emoji: catEmoji.trim() || '📌',
-            } : c));
-        }
-        setView('manage');
-    };
-
-    const handleDeleteCategory = (id: string) => {
-        if (cats.length <= 1) return;
-        setCats(cats.filter(c => c.id !== id));
-    };
-
-    return (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
-             onClick={(e) => { if (e.target === e.currentTarget && view === 'manage') onClose(); }}>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]">
-                
-                {/* ── Manage Categories View ── */}
-                {view === 'manage' && (
-                    <>
-                        <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
-                            <h3 className="text-sm font-extrabold text-white uppercase tracking-wider font-sans">Manage Categories</h3>
-                            <button onClick={onClose} className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all">
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
-                        
-                        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 scrollbar-thin-dark">
-                            <div className="space-y-2">
-                                {cats.map((cat) => (
-                                    <div key={cat.id} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-lg">{cat.emoji || '📌'}</span>
-                                            <span className={cn("text-sm font-bold", getTextColorOnly(cat.color))}>{cat.label}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenEdit(cat)}
-                                                className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-all cursor-pointer"
-                                                title="Edit category"
-                                            >
-                                                <Pencil className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDeleteCategory(cat.id)}
-                                                className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
-                                                title="Delete category"
-                                                disabled={cats.length <= 1}
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            
-                            <button
-                                type="button"
-                                onClick={handleOpenAdd}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all cursor-pointer"
-                            >
-                                <Plus className="w-4 h-4" /> Add Custom Category
-                            </button>
-                        </div>
-                        
-                        <div className="p-5 border-t border-zinc-800 flex gap-3 flex-shrink-0">
-                            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-800 transition-all">
-                                Cancel
-                            </button>
-                            <button onClick={() => { onSave(cats); onClose(); }} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-900/20">
-                                Save Changes
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* ── Add / Edit Category Subform ── */}
-                {(view === 'add_category' || view === 'edit_category') && (
-                    <>
-                        <div className="flex items-center justify-between p-5 border-b border-zinc-800 flex-shrink-0">
-                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Tag className="w-4 h-4 text-blue-400" /> {view === 'add_category' ? 'Add Category' : 'Edit Category'}
-                            </h2>
-                            <button onClick={() => setView('manage')} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
-                        
-                        <form onSubmit={(e) => { e.preventDefault(); handleSaveCategory(); }} className="p-5 space-y-4 flex-1 overflow-y-auto">
-                            <div className="flex gap-3">
-                                <div className="w-16">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Emoji</label>
-                                    <input
-                                        value={catEmoji}
-                                        onChange={(e) => setCatEmoji(e.target.value)}
-                                        placeholder="📌"
-                                        maxLength={2}
-                                        className="w-full text-center bg-zinc-900 border border-zinc-700 rounded-xl px-2 py-2.5 text-xl focus:outline-none focus:border-blue-500 transition-all text-white"
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Category Name *</label>
-                                    <input
-                                        autoFocus
-                                        value={catName}
-                                        onChange={(e) => setCatName(e.target.value)}
-                                        placeholder="e.g. Combat"
-                                        required
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">Color Theme</label>
-                                <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5">
-                                    {COLOR_PRESETS.map((preset, idx) => (
-                                        <button
-                                            key={preset.name}
-                                            type="button"
-                                            onClick={() => setCatColorIdx(idx)}
-                                            className={cn(
-                                                'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer',
-                                                preset.bg,
-                                                catColorIdx === idx ? 'border-white scale-110' : 'border-transparent'
-                                            )}
-                                            title={preset.name}
-                                        >
-                                            <span className={cn('w-3.5 h-3.5 rounded-full bg-current', preset.color)} />
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            <div className="flex gap-3 pt-4 border-t border-zinc-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setView('manage')}
-                                    className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all cursor-pointer"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!catName.trim()}
-                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40 cursor-pointer"
-                                >
-                                    {view === 'add_category' ? 'Add Category' : 'Save Changes'}
-                                </button>
-                            </div>
-                        </form>
-                    </>
-                )}
             </div>
         </div>
     );
@@ -855,9 +631,13 @@ export default function AssetRegistry() {
 
             {/* Manage Categories Modal */}
             {showCategoryManager && (
-                <CategoryManagerModal
+                <CategoryManager
+                    title="Manage Asset Categories"
                     categories={categories}
-                    onSave={(updatedCats) => setAssetCategories(updatedCats)}
+                    onSave={(updatedCats) => setAssetCategories(updatedCats as AssetCategoryItem[])}
+                    onDeleteReassign={(deletedId, fallbackId) => {
+                        setAssets(prevAssets => prevAssets.map(a => a.category === deletedId ? { ...a, category: fallbackId } : a));
+                    }}
                     onClose={() => setShowCategoryManager(false)}
                 />
             )}

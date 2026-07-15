@@ -18,7 +18,7 @@ from django.utils.html import strip_tags
 from django.conf import settings
 from api.services.email_service import send_verification_email, send_support_ticket_email
 
-from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
+from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission, OrganisationAccessPermission
 from api.authentication import set_auth_cookie, clear_auth_cookie
 
 from rest_framework.throttling import ScopedRateThrottle
@@ -912,7 +912,15 @@ class LogoutView(generics.GenericAPIView):
 
     Only the browser cookie is cleared; the DRF token itself is left intact so that
     header-based clients (mobile / other devices) sharing the token stay logged in.
+
+    Deliberately runs with no authentication: the endpoint only deletes a cookie from the
+    caller's own browser, so it needs no identity. Authenticating here would make logout
+    fail (401) for exactly the case that needs it most — an expired or revoked token —
+    leaving an httpOnly cookie the frontend cannot delete itself. That strands the user,
+    because the Next.js middleware gates routes on the cookie's presence. Being
+    auth-exempt also makes logout idempotent and safe to call defensively on a 401.
     """
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
@@ -2344,6 +2352,17 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return Response({"error": "You are not following this project."}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"message": f"Unfollowed {project.title}"}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='ensure-build-token', permission_classes=[permissions.IsAuthenticated])
+    def ensure_build_token(self, request, pk=None):
+        # self.get_object() runs the same object-level permission check as a PATCH would
+        # (ProjectAccessPermission — owner/admin/editor), since POST isn't a SAFE_METHOD.
+        project = self.get_object()
+        if not project.ci_build_token:
+            import secrets
+            project.ci_build_token = secrets.token_urlsafe(24)
+            project.save(update_fields=['ci_build_token'])
+        return Response(ProjectSerializer(project, context={'request': request}).data, status=status.HTTP_200_OK)
+
 class JobPostingViewSet(viewsets.ModelViewSet):
     queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')
     serializer_class = JobPostingSerializer
@@ -2583,7 +2602,7 @@ class FeedViewSet(viewsets.ViewSet):
 class OrganisationViewSet(viewsets.ModelViewSet):
     queryset = Organisation.objects.all().order_by('-created_at')
     serializer_class = OrganisationSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, OrganisationAccessPermission]
     lookup_field = 'slug'
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'slug', 'description']
@@ -2600,11 +2619,18 @@ class OrganisationViewSet(viewsets.ModelViewSet):
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
         try:
-            return get_object_or_404(queryset, **filter_kwargs)
+            obj = get_object_or_404(queryset, **filter_kwargs)
         except Exception:
             if self.kwargs[lookup_url_kwarg].isdigit():
-                return get_object_or_404(queryset, id=int(self.kwargs[lookup_url_kwarg]))
-            raise
+                obj = get_object_or_404(queryset, id=int(self.kwargs[lookup_url_kwarg]))
+            else:
+                raise
+        # The base ModelViewSet.get_object() calls this automatically — this override replaced
+        # that default (to add the slug-or-id fallback lookup above) but had been skipping the
+        # object-level permission check ever since, silently letting OrganisationAccessPermission
+        # never actually run for update/destroy requests.
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def perform_create(self, serializer):
         from api.serializers import RESERVED_USERNAMES
@@ -2632,6 +2658,33 @@ class OrganisationViewSet(viewsets.ModelViewSet):
             )
             from .permission_catalog import create_default_roles
             create_default_roles(organisation)
+
+    def destroy(self, request, *args, **kwargs):
+        organisation = self.get_object()
+        # Projects survive org deletion (Project.organisation is on_delete=SET_NULL), but their
+        # WorkspaceState rows are FK'd to the organisation with on_delete=CASCADE — without this
+        # step every surviving project would silently lose its entire Kanban/GDD/Asset workspace
+        # data the instant the org is deleted. Migrate each project's row to the same solo-project
+        # key format _project_workspace_state() already uses for orgless projects, before the
+        # organisation (and its CASCADE-linked rows) is actually removed.
+        from core.models import WorkspaceState
+        for project in organisation.projects.all():
+            old_key = f"workspace__org_{organisation.id}_board_project_{project.id}"
+            new_key = f"workspace__solo_board_project_{project.id}"
+            old_state = WorkspaceState.objects.filter(key=old_key, organisation=organisation).first()
+            if not old_state:
+                continue
+            if WorkspaceState.objects.filter(key=new_key, user_id=project.owner_id).exclude(pk=old_state.pk).exists():
+                # A solo-scoped row already exists at the destination (shouldn't normally happen
+                # for a still-org-linked project, but guard against violating the unique
+                # constraint rather than crashing the whole deletion).
+                old_state.delete()
+            else:
+                old_state.key = new_key
+                old_state.organisation = None
+                old_state.user_id = project.owner_id
+                old_state.save(update_fields=['key', 'organisation', 'user'])
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, slug=None):
