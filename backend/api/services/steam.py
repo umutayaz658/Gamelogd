@@ -291,15 +291,33 @@ def fetch_steam_library(user_id, steam_id):
                     elif existing_entry.status == 'unplayed' and new_status == 'dropped':
                         final_status = 'dropped'
 
-                LibraryEntry.objects.update_or_create(
+                entry, created = LibraryEntry.objects.get_or_create(
                     user=user,
                     game=game,
                     defaults={
+                        'steam_playtime': playtime_forever,
                         'playtime_forever': playtime_forever,
                         'platform': 'Steam',
                         'status': final_status
                     }
                 )
+                
+                if not created:
+                    entry.steam_playtime = playtime_forever
+                    entry.playtime_forever = entry.steam_playtime + entry.xbox_playtime
+                    if final_status != new_status:
+                        # User overrode status, keep it. But if new_status is 'playing', maybe update? 
+                        # We already calculated final_status above, so just update it.
+                        pass
+                    entry.status = final_status
+                    
+                    if not entry.platform:
+                        entry.platform = 'Steam'
+                    elif 'Steam' not in entry.platform:
+                        entry.platform = 'Steam, ' + entry.platform
+                        
+                    entry.save()
+
                 stats['synced'] += 1
                 
             except Exception as game_error:

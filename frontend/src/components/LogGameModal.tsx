@@ -12,6 +12,7 @@ interface Game {
     title: string;
     cover_image: string;
     release_date: string;
+    platforms?: string[];
 }
 
 interface LogGameModalProps {
@@ -44,6 +45,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [nextPlaythrough, setNextPlaythrough] = useState(2);
+    const [playtimeHours, setPlaytimeHours] = useState<number | ''>('');
+    const [selectedPlatform, setSelectedPlatform] = useState<string>('');
 
     // Reset state on open/close
     useEffect(() => {
@@ -58,6 +61,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsCompleted(false);
             setContainsSpoilers(false);
             setSubmitError(null);
+            setPlaytimeHours('');
+            setSelectedPlatform('');
         } else if (isReplay && initialGame) {
             // Replay mode: fresh form but with game pre-selected
             setSelectedGame(initialGame);
@@ -67,6 +72,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsLiked(false);
             setIsCompleted(false);
             setContainsSpoilers(false);
+            setPlaytimeHours('');
+            setSelectedPlatform('');
             // Fetch how many playthroughs exist to determine next number
             const username = user?.username || '';
             api.get(`/reviews/?game_id=${initialGame.id}&username=${username}`).then(res => {
@@ -129,6 +136,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                 is_completed: isCompleted,
                 contains_spoilers: containsSpoilers
             };
+            if (playtimeHours !== '') payload.playtime_hours = playtimeHours;
+            if (selectedPlatform) payload.platform = selectedPlatform;
 
             if (isReplay) {
                 payload.playthrough_number = nextPlaythrough;
@@ -332,6 +341,44 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         <span>0.0</span>
                                         <span>5.0</span>
                                         <span>10.0</span>
+                                    </div>
+                                </div>
+
+                                {/* Playtime & Platform */}
+                                <div className="grid grid-cols-2 gap-4 shrink-0">
+                                    <div>
+                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Playtime (Hours)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="50000"
+                                            value={playtimeHours}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === '') { setPlaytimeHours(''); return; }
+                                                const num = Number(val);
+                                                if (num < 0 || num > 50000) return;
+                                                setPlaytimeHours(num);
+                                            }}
+                                            placeholder="e.g. 10"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-600 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Platform</label>
+                                        <select
+                                            value={selectedPlatform}
+                                            onChange={(e) => setSelectedPlatform(e.target.value)}
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all appearance-none text-sm"
+                                        >
+                                            <option value="">Select Platform</option>
+                                            {(selectedGame?.platforms && selectedGame.platforms.length > 0
+                                                ? selectedGame.platforms
+                                                : ['PC', 'PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'Mobile']
+                                            ).map((platform: string) => (
+                                                <option key={platform} value={platform}>{platform}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 

@@ -256,9 +256,11 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                 </div>
 
                                                 {/* Playtime Badge */}
-                                                <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-xs font-bold text-white shadow-lg">
-                                                    {entry.playtime_hours}h
-                                                </div>
+                                                {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) && (
+                                                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-xs font-bold text-white shadow-lg">
+                                                        {entry.playtime_hours}h
+                                                    </div>
+                                                )}
 
                                                 {/* Hover Overlay */}
                                                 <div className={`absolute inset-0 bg-black/90 transition-opacity duration-300 flex flex-col items-center justify-center p-4 text-center ${editingId === entry.id ? 'opacity-100 z-20' : 'opacity-0 group-hover:opacity-100'}`}>
@@ -326,8 +328,14 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <div className="text-right px-4">
-                                                    <div className="font-bold text-white">{entry.playtime_hours}h</div>
-                                                    <div className="text-xs text-zinc-500">{t('playedLabel')}</div>
+                                                    {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) ? (
+                                                        <>
+                                                            <div className="font-bold text-white">{entry.playtime_hours}h</div>
+                                                            <div className="text-xs text-zinc-500">{t('playedLabel')}</div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="font-bold text-zinc-600">--</div>
+                                                    )}
                                                 </div>
                                                 {isOwnProfile && (
                                                     <button
