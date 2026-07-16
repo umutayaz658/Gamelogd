@@ -7,17 +7,19 @@ import LeftSidebar from "@/components/LeftSidebar";
 import ProjectCard from "@/components/ProjectCard";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
-import { Organisation, Project, Post } from '@/types';
+import { Organisation, OrganisationInvitation, Project, Post } from '@/types';
 import { getImageUrl } from '@/lib/utils';
+import { sanitizeUrl } from '@/lib/url';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import {
-    Check, Users, Globe, Twitter, Youtube, Calendar,
+    Check, Users, Globe, Twitter, Youtube, Calendar, Link2,
     FolderKanban, Layout, Users2, Settings, Plus, CheckSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import MemberManager from '@/components/team/MemberManager';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function OrganisationProfilePage() {
     const { slug } = useParams() as { slug: string };
@@ -25,6 +27,7 @@ export default function OrganisationProfilePage() {
     const { user } = useAuth();
     const router = useRouter();
     const toast = useToast();
+    const confirm = useConfirm();
 
     const [organisation, setOrganisation] = useState<Organisation | null>(null);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -32,6 +35,8 @@ export default function OrganisationProfilePage() {
     const [loading, setLoading] = useState(true);
     const [followLoading, setFollowLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'projects' | 'devlogs' | 'team'>('projects');
+    const [pendingInvitation, setPendingInvitation] = useState<OrganisationInvitation | null>(null);
+    const [isInviteActionLoading, setIsInviteActionLoading] = useState(false);
 
     const fetchOrganisationData = async () => {
         if (!slug) return;
@@ -52,11 +57,60 @@ export default function OrganisationProfilePage() {
         }
     };
 
+    const fetchPendingInvitation = async () => {
+        if (!user) { setPendingInvitation(null); return; }
+        try {
+            // No organisation_slug param here on purpose: that filter is admin-only server-side
+            // (see OrganisationInvitationViewSet.get_queryset) and a plain invitee is not yet an
+            // org member, so it would 403. The unfiltered endpoint already scopes results to
+            // "invitations sent to me" — just narrow to this organisation client-side.
+            const res = await api.get('/organisation-invitations/');
+            const invitations: OrganisationInvitation[] = res.data.results ?? res.data;
+            const mine = invitations.find((inv) => inv.organisation_details.slug === slug && inv.user.id === user.id);
+            setPendingInvitation(mine ?? null);
+        } catch (error) {
+            console.error("Failed to fetch pending invitation:", error);
+        }
+    };
+
     useEffect(() => {
         setLoading(true);
         fetchOrganisationData().finally(() => setLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug]);
+
+    useEffect(() => {
+        fetchPendingInvitation();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [slug, user]);
+
+    const handleAcceptOrgInvite = async () => {
+        if (!pendingInvitation || isInviteActionLoading) return;
+        setIsInviteActionLoading(true);
+        try {
+            await api.post(`/organisation-invitations/${pendingInvitation.id}/accept/`);
+            setPendingInvitation(null);
+            await fetchOrganisationData();
+        } catch (error) {
+            console.error("Failed to accept invite:", error);
+        } finally {
+            setIsInviteActionLoading(false);
+        }
+    };
+
+    const handleDeclineOrgInvite = async () => {
+        if (!pendingInvitation || isInviteActionLoading) return;
+        if (!(await confirm({ message: "Are you sure you want to decline this invitation?", confirmText: 'Decline', isDanger: true }))) return;
+        setIsInviteActionLoading(true);
+        try {
+            await api.post(`/organisation-invitations/${pendingInvitation.id}/decline/`);
+            setPendingInvitation(null);
+        } catch (error) {
+            console.error("Failed to decline invite:", error);
+        } finally {
+            setIsInviteActionLoading(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -182,38 +236,59 @@ export default function OrganisationProfilePage() {
 
                                 {/* Action Buttons */}
                                 <div className="flex items-center gap-3 self-start md:self-end">
-                                    {canManage && (
-                                        <Link 
-                                            href={`/organisations/${organisation.slug}/dashboard`}
-                                            className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-white px-4 py-2.5 rounded-xl font-bold transition-all text-sm"
-                                        >
-                                            <Settings className="h-4 w-4" />
-                                            <span>{t('manage' as any) || 'Yönet'}</span>
-                                        </Link>
-                                    )}
+                                    {pendingInvitation ? (
+                                        <>
+                                            <button
+                                                onClick={handleAcceptOrgInvite}
+                                                disabled={isInviteActionLoading}
+                                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
+                                            >
+                                                Accept Invite
+                                            </button>
+                                            <button
+                                                onClick={handleDeclineOrgInvite}
+                                                disabled={isInviteActionLoading}
+                                                className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200"
+                                            >
+                                                Decline
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {canManage && (
+                                                <Link
+                                                    href={`/organisations/${organisation.slug}/dashboard`}
+                                                    className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-white px-4 py-2.5 rounded-xl font-bold transition-all text-sm"
+                                                >
+                                                    <Settings className="h-4 w-4" />
+                                                    <span>{t('manage')}</span>
+                                                </Link>
+                                            )}
 
-                                    {/* Follow toggle button */}
-                                    <button
-                                        onClick={handleFollowToggle}
-                                        disabled={followLoading}
-                                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all text-sm border ${
-                                            organisation.is_following
-                                                ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
-                                                : 'bg-blue-600 border-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/15'
-                                        }`}
-                                    >
-                                        {organisation.is_following ? (
-                                            <>
-                                                <CheckSquare className="h-4 w-4" />
-                                                <span>{t('following') || 'Takip Ediliyor'}</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Plus className="h-4 w-4" />
-                                                <span>{t('follow') || 'Takip Et'}</span>
-                                            </>
-                                        )}
-                                    </button>
+                                            {/* Follow toggle button */}
+                                            <button
+                                                onClick={handleFollowToggle}
+                                                disabled={followLoading}
+                                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all text-sm border ${
+                                                    organisation.is_following
+                                                        ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
+                                                        : 'bg-blue-600 border-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/15'
+                                                }`}
+                                            >
+                                                {organisation.is_following ? (
+                                                    <>
+                                                        <CheckSquare className="h-4 w-4" />
+                                                        <span>{t('following') || 'Takip Ediliyor'}</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Plus className="h-4 w-4" />
+                                                        <span>{t('follow') || 'Takip Et'}</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
@@ -225,23 +300,29 @@ export default function OrganisationProfilePage() {
 
                                 <div className="flex items-center gap-4 text-zinc-500 border-t md:border-t-0 border-zinc-850 pt-3 md:pt-0">
                                     {organisation.website && (
-                                        <a href={organisation.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
+                                        <a href={sanitizeUrl(organisation.website)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Globe className="h-4 w-4" />
                                             <span className="hidden md:inline">Website</span>
                                         </a>
                                     )}
                                     {organisation.twitter && (
-                                        <a href={organisation.twitter} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
+                                        <a href={sanitizeUrl(organisation.twitter)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Twitter className="h-4 w-4" />
                                             <span className="hidden md:inline">Twitter</span>
                                         </a>
                                     )}
                                     {organisation.youtube && (
-                                        <a href={organisation.youtube} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
+                                        <a href={sanitizeUrl(organisation.youtube)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Youtube className="h-4 w-4" />
                                             <span className="hidden md:inline">YouTube</span>
                                         </a>
                                     )}
+                                    {(organisation.extra_links ?? []).map((link, i) => (
+                                        <a key={i} href={sanitizeUrl(link.url)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
+                                            <Link2 className="h-4 w-4" />
+                                            <span className="hidden md:inline">{link.label}</span>
+                                        </a>
+                                    ))}
                                     <div className="w-px h-4 bg-zinc-800 hidden md:block" />
                                     <span className="flex items-center gap-1 text-zinc-400 font-semibold text-sm">
                                         <Users className="h-4 w-4 text-zinc-550" />

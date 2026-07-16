@@ -73,8 +73,13 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.gamelogd.net",
 ]
 
+# Vercel preview deployments for THIS project. Anchored to the exact project family
+# (gamelogd-coral) rather than "gamelogd.*", which would also match an attacker-registered
+# gamelogd-<anything>.vercel.app and — with CORS_ALLOW_CREDENTIALS — let it read authenticated
+# responses. For full safety, prefer anchoring on the Vercel team slug or dropping the regex and
+# listing preview URLs explicitly.
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://gamelogd.*\.vercel\.app$",
+    r"^https://gamelogd-coral(-[a-z0-9]+)*\.vercel\.app$",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -213,17 +218,24 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
-    # Rate limiting. Only ScopedRateThrottle is enabled globally, so throttling activates
-    # solely on the credential/OTP endpoints that set `throttle_scope` (below). This blunts
-    # brute-force and credential-stuffing without capping normal, request-heavy browsing.
+    # Rate limiting:
+    #  - ScopedRateThrottle: tight per-endpoint caps on the credential/OTP endpoints (below).
+    #  - AnonRateThrottle: caps unauthenticated abuse — bulk scraping of the public feed/explore/
+    #    user-search surfaces (e.g. harvesting) and hammering the AllowAny endpoints.
+    #  - UserRateThrottle: a generous backstop against runaway automated activity (message/follow/
+    #    post spam) set high enough that normal, request-heavy SPA browsing never hits it.
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.ScopedRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'login': '10/min',
         'verify_email': '10/min',
         'resend_verification': '3/min',
         'register': '5/min',
+        'anon': '120/min',
+        'user': '600/min',
     },
 }
 

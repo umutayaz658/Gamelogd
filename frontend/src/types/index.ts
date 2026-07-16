@@ -83,13 +83,16 @@ export interface Project {
     title: string;
     description: string;
     cover_image: string | null;
+    logo: string | null;
     tech_stack: string[];
     status: 'in_dev' | 'alpha' | 'beta' | 'released';
+    website?: string;
+    twitter?: string;
+    youtube?: string;
+    extra_links?: { label: string; url: string }[];
     members?: ProjectMember[];
     followers_count?: number;
     is_following?: boolean;
-    github_repo_url?: string;
-    ci_build_token?: string | null;
     created_at: string;
 }
 
@@ -366,6 +369,7 @@ export interface Organisation {
     website?: string;
     twitter?: string;
     youtube?: string;
+    extra_links?: { label: string; url: string }[];
     is_verified?: boolean;
     members?: OrganisationMember[];
     followers_count?: number;

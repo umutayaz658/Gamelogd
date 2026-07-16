@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 # User and Interest are now in api.models
 # We import them or use settings.AUTH_USER_MODEL where appropriate
@@ -33,22 +34,33 @@ class Game(models.Model):
 class Review(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='reviews')
-    rating = models.DecimalField(max_digits=3, decimal_places=1)
+    rating = models.DecimalField(
+        max_digits=3, decimal_places=1,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+    )
     content = models.TextField(blank=True)
-    
+
     # Flags
     is_liked = models.BooleanField(default=False)
     is_completed = models.BooleanField(default=False)
     contains_spoilers = models.BooleanField(default=False)
-    
+
     # Replay tracking
     playthrough_number = models.PositiveIntegerField(default=1)
-    
+
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ('user', 'game', 'playthrough_number')
         ordering = ['-timestamp']
+        constraints = [
+            # Ratings are on a 0–10 scale; without this a client/import could store e.g. 99.9
+            # and skew every average-rating aggregation.
+            models.CheckConstraint(
+                condition=models.Q(rating__gte=0) & models.Q(rating__lte=10),
+                name='review_rating_between_0_and_10',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.game.title} ({self.rating})"
@@ -65,7 +77,9 @@ class Organisation(models.Model):
     website = models.URLField(blank=True, default='')
     twitter = models.URLField(blank=True, default='')
     youtube = models.URLField(blank=True, default='')
-    
+    # Arbitrary user-added links beyond the three standard ones above, e.g. [{"label": "Discord", "url": "..."}]
+    extra_links = models.JSONField(default=list, blank=True)
+
     # Verification
     is_verified = models.BooleanField(default=False)
     
@@ -159,13 +173,17 @@ class Project(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     cover_image = models.ImageField(upload_to='projects/', blank=True, null=True)
+    logo = models.ImageField(upload_to='projects/logos/', blank=True, null=True)
     tech_stack = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_dev')
-    # Devs workspace "Integrations" settings — deliberately real Project fields (not the
-    # WorkspaceState JSON blob) so a future webhook receiver can look up the owning project by
-    # token without reaching into an opaque per-board blob. See WorkspaceSettings.tsx.
-    github_repo_url = models.CharField(max_length=255, blank=True, default='')
-    ci_build_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+
+    # Social Links — mirrors Organisation's social fields so a project's public profile can
+    # carry its own links independent of any parent organisation.
+    website = models.URLField(blank=True, default='')
+    twitter = models.URLField(blank=True, default='')
+    youtube = models.URLField(blank=True, default='')
+    extra_links = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -334,8 +352,34 @@ class Post(models.Model):
     category = models.CharField(max_length=20, choices=POST_CATEGORIES, default='general', db_index=True)
     trending_score = models.FloatField(default=0.0, db_index=True)
 
+    class Meta:
+        indexes = [
+            # Backs the Explore "popular" ordering (root posts, recent, by score). The individual
+            # db_index on trending_score/timestamp can't serve the combined sort in one scan.
+            models.Index(fields=['-trending_score', '-timestamp'], name='post_trending_recent_idx'),
+        ]
+
     def __str__(self):
         return f"Post by {self.user.username} at {self.timestamp}"
+
+    def save(self, *args, **kwargs):
+        # A Post is exactly one shape: a normal post, a reply (parent / review_parent /
+        # news_parent), a devlog (project_parent), or a repost (repost_parent /
+        # repost_parent_review). Enforce that at most one parent/target pointer is set so
+        # structurally inconsistent rows (e.g. a "reply that is also a repost") can't be created
+        # by any code path, import or buggy client — the exclusivity was previously only implied
+        # by elif chains in the signals/categorization.
+        from django.core.exceptions import ValidationError
+        parent_refs = [
+            self.parent_id, self.review_parent_id, self.news_parent_id,
+            self.project_parent_id, self.repost_parent_id, self.repost_parent_review_id,
+        ]
+        if sum(1 for ref in parent_refs if ref is not None) > 1:
+            raise ValidationError("A Post may reference at most one parent, target or repost source.")
+        # Organisation/project authorship only makes sense on a devlog attached to a project.
+        if self.author_identity != 'user' and self.project_parent_id is None:
+            raise ValidationError("Organisation/project authorship requires a project_parent.")
+        super().save(*args, **kwargs)
 
 class PostMedia(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='media')
@@ -360,6 +404,19 @@ class Like(models.Model):
 
     class Meta:
         unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news'], ['user', 'playtest_feedback']]
+        constraints = [
+            # Exactly one target must be set. The nullable FKs + NULL-permeable unique_together
+            # otherwise permit an all-NULL "like" that inflates counts while pointing at nothing.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(post__isnull=False, review__isnull=True, news__isnull=True, playtest_feedback__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=False, news__isnull=True, playtest_feedback__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=False, playtest_feedback__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=True, playtest_feedback__isnull=False)
+                ),
+                name='like_exactly_one_target',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user} liked something"
@@ -494,6 +551,10 @@ class WorkspaceState(models.Model):
     )
     key = models.CharField(max_length=255)
     data = models.JSONField(default=dict)
+    # Monotonically incremented on every successful write. Clients send the version they loaded
+    # and the server rejects the write (409) if it has moved on — otherwise two members editing
+    # the same shared board simultaneously silently clobber each other (last-write-wins).
+    version = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
