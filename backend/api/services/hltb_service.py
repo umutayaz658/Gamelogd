@@ -1,3 +1,4 @@
+import concurrent.futures
 from howlongtobeatpy import HowLongToBeat
 
 def fetch_hltb_times(game_title: str) -> dict:
@@ -7,7 +8,15 @@ def fetch_hltb_times(game_title: str) -> dict:
     If not found, values will be None.
     """
     try:
-        results = HowLongToBeat().search(game_title)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(HowLongToBeat().search, game_title)
+        
+        try:
+            results = future.result(timeout=3)
+        except concurrent.futures.TimeoutError:
+            print(f"HLTB timeout for {game_title}")
+            results = None
+            
         if results is not None and len(results) > 0:
             # We take the best match, typically the first one
             best_match = max(results, key=lambda element: element.similarity)
