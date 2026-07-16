@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import Switch from "@/components/Switch";
-import api from "@/lib/api";
+import api, { setAccessToken } from "@/lib/api";
 import { getImageUrl } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -1379,17 +1379,22 @@ function SettingsContent() {
         }
         setIsSubmittingPassword(true);
         try {
-            await api.post('/users/change-password/', {
+            const res = await api.post('/users/change-password/', {
                 current_password: currentPassword,
                 new_password: newPassword
             });
+            // The backend rotates the auth token on password change; adopt the new one so this
+            // session keeps working instead of 401-ing on the next request (header mode).
+            if (res.data?.token) setAccessToken(res.data.token);
             toast.success(t('successPasswordChange'));
             setChangePasswordOpen(false);
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
         } catch (error: any) {
-            console.error("Change password error:", error);
+            // Log only the server message — the full axios error carries config.data (the
+            // submitted passwords) which must not reach the console.
+            console.error("Change password error:", error?.response?.data ?? error?.message);
             toast.error(t('errorPasswordChange'));
         } finally {
             setIsSubmittingPassword(false);

@@ -1,12 +1,69 @@
 from rest_framework import serializers
+from django.db.models import Count, OuterRef, Subquery, IntegerField
+from django.db.models.functions import Coalesce
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
+
+def count_subquery(related_model, fk_name, **extra_filters):
+    """A correlated-subquery COUNT for annotating list querysets.
+
+    Lets feed/list views precompute engagement counts in one query instead of the serializer /
+    ranking loop issuing a per-object `.count()` (the N+1 that made the feed fire hundreds of
+    queries). A subquery is used rather than stacking `Count()` annotations because multiple
+    Count()s over different relations JOIN-multiply the rows (catastrophic for a viral post with
+    tens of thousands of likes and replies).
+    """
+    sub = (
+        related_model.objects
+        .filter(**{fk_name: OuterRef('pk')}, **extra_filters)
+        .order_by().values(fk_name).annotate(c=Count('*')).values('c')
+    )
+    return Coalesce(Subquery(sub, output_field=IntegerField()), 0)
+
 RESERVED_USERNAMES = [
-    'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
-    'notifications', 'bookmarks', 'login', 'register', 'api', 'media', 
+    'admin', 'administrator', 'root', 'settings', 'explore', 'messages',
+    'notifications', 'bookmarks', 'login', 'register', 'api', 'media',
     'static', 'home', 'news', 'devs', 'invest', 'u', 'user'
 ]
+
+
+def validate_public_url(value):
+    """Reject anything but an http(s) URL for user-supplied links (website/twitter/youtube).
+
+    The client sanitizes these on render, but values can be POSTed straight to the API, so this
+    is the authoritative guard against `javascript:`/`data:` XSS payloads being stored.
+    """
+    if value in (None, ''):
+        return value
+    if not isinstance(value, str):
+        raise serializers.ValidationError("Must be a URL string.")
+    trimmed = value.strip()
+    if not trimmed:
+        return trimmed
+    if not trimmed.lower().startswith(('http://', 'https://')):
+        raise serializers.ValidationError("Link must start with http:// or https://.")
+    return trimmed
+
+
+def validate_extra_links_value(value):
+    """Validate the extra_links JSON: a list of {label, url} with http(s) urls only."""
+    if value in (None, ''):
+        return []
+    if not isinstance(value, list):
+        raise serializers.ValidationError("extra_links must be a list.")
+    if len(value) > 20:
+        raise serializers.ValidationError("Too many links (max 20).")
+    cleaned = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise serializers.ValidationError("Each link must be an object with 'label' and 'url'.")
+        label = str(item.get('label', '')).strip()
+        url = validate_public_url(item.get('url', ''))
+        if not url:
+            continue
+        cleaned.append({'label': label[:100], 'url': url})
+    return cleaned
 
 def get_request_cache(request):
     if not request:
@@ -90,30 +147,43 @@ class UserSerializer(serializers.ModelSerializer):
                     except Exception:
                         pass
 
-        # Privacy Enforcement: strip private details if the requesting user is not authorized
+        # Privacy enforcement, two tiers:
+        #  - Contact info (email, phone) and the raw settings blob belong to the account owner
+        #    ONLY, always. These were previously returned for every non-private user in every
+        #    nested/list response (feed authors, search results, follower lists), which allowed
+        #    bulk harvesting of the whole user base's emails and phone numbers.
+        #  - Semi-private profile details are visible to followers but hidden from strangers when
+        #    the profile is private.
         is_private = instance.settings.get('privateProfile', False)
-        is_owner = request and request.user.is_authenticated and request.user.id == instance.id
+        is_owner = bool(request and request.user.is_authenticated and request.user.id == instance.id)
         is_following = False
         cache = get_request_cache(request)
         if cache:
             is_following = instance.id in cache['following_ids']
 
-        if is_private and not is_owner and not is_following:
-            sensitive_fields = [
-                'email', 'phone_number', 'location', 'birth_date', 'gender', 
-                'steam_id', 'social_links', 'top_favorites', 'platforms', 
-                'interests', 'show_birth_date'
-            ]
-            for f in sensitive_fields:
-                if f in representation:
-                    if f in ['social_links', 'top_favorites', 'platforms', 'interests']:
-                        representation[f] = []
-                    elif f == 'settings':
-                        representation[f] = {'privateProfile': True}
-                    else:
-                        representation[f] = None
+        if not is_owner:
+            representation.pop('email', None)
+            representation.pop('phone_number', None)
+            # Expose only the display-privacy flags the UI legitimately needs about another user
+            # (whether the profile / Steam status is private) — never the full settings object
+            # (notification prefs, dnd, connected accounts, blocked terms, etc.).
             if 'settings' in representation:
-                representation['settings'] = {'privateProfile': True}
+                public_flags = ('privateProfile', 'steamStatusPrivate')
+                representation['settings'] = {
+                    k: instance.settings.get(k, False) for k in public_flags
+                }
+
+            # Respect the user's birthday-visibility toggle for everyone but the owner.
+            if not representation.get('show_birth_date'):
+                representation['birth_date'] = None
+
+            if is_private and not is_following:
+                for f in ['location', 'birth_date', 'gender', 'steam_id']:
+                    if f in representation:
+                        representation[f] = None
+                for f in ['social_links', 'top_favorites', 'platforms', 'interests']:
+                    if f in representation:
+                        representation[f] = []
 
         return representation
 
@@ -171,13 +241,6 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.id in cache['requested_me_ids']
         return False
 
-    def get_is_liked(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            # Check if request.user has blocked obj
-            from api.models import Block
-            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
-
     def get_is_blocked(self, obj):
         request = self.context.get('request')
         cache = get_request_cache(request)
@@ -234,6 +297,9 @@ class NotificationSerializer(serializers.ModelSerializer):
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
+                    organisation = getattr(obj.target, 'organisation', None)
+                    if organisation:
+                        return f"/organisations/{organisation.slug}"
 
                 elif 'quoted' in obj.verb or 'reposted' in obj.verb:
                     if model_name == 'post':
@@ -243,6 +309,9 @@ class NotificationSerializer(serializers.ModelSerializer):
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
+                    organisation = getattr(obj.target, 'organisation', None)
+                    if organisation:
+                        return f"/organisations/{organisation.slug}"
 
                 elif 'followed' in obj.verb and model_name == 'project':
                     return f"/projects/{obj.target.id}"
@@ -399,9 +468,18 @@ class ReviewSerializer(serializers.ModelSerializer):
     game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
     type = serializers.CharField(default='review', read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
-    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    bookmarks_count = serializers.SerializerMethodField()
     is_liked_by_user = serializers.SerializerMethodField()
-    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    likes_count = serializers.SerializerMethodField()
+
+    def get_likes_count(self, obj):
+        # Prefer the queryset annotation (feed/list views set it) to avoid a per-object COUNT.
+        ann = getattr(obj, 'likes_count_ann', None)
+        return ann if ann is not None else obj.likes.count()
+
+    def get_bookmarks_count(self, obj):
+        ann = getattr(obj, 'bookmarks_count_ann', None)
+        return ann if ann is not None else obj.bookmarks.count()
 
     class Meta:
         model = Review
@@ -533,17 +611,17 @@ class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     author_details = serializers.SerializerMethodField()
     reply_to_username = serializers.SerializerMethodField()
-    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
-    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    replies_count = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
-    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    bookmarks_count = serializers.SerializerMethodField()
     parent_details = serializers.SerializerMethodField()
     review_details = serializers.SerializerMethodField()
     news_details = serializers.SerializerMethodField()
     project_details = serializers.SerializerMethodField()
     type = serializers.CharField(default='post', read_only=True)
-    reposts_count = serializers.IntegerField(source='reposts.count', read_only=True)
+    reposts_count = serializers.SerializerMethodField()
     is_reposted = serializers.SerializerMethodField()
     repost_details = serializers.SerializerMethodField()
     repost_review_details = serializers.SerializerMethodField()
@@ -560,7 +638,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             'id', 'user', 'author_identity', 'author_details', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
-            'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
+            'timestamp', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
             'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted',
@@ -625,6 +703,26 @@ class PostSerializer(serializers.ModelSerializer):
         if cache:
             return obj.id in cache['liked_post_ids']
         return False
+
+    def get_replies_count(self, obj):
+        # Prefer the queryset annotation (feed/list views set it) to avoid a per-object COUNT.
+        ann = getattr(obj, 'replies_count_ann', None)
+        return ann if ann is not None else obj.replies.count()
+
+    def get_likes_count(self, obj):
+        ann = getattr(obj, 'likes_count_ann', None)
+        return ann if ann is not None else obj.likes.count()
+
+    def get_bookmarks_count(self, obj):
+        ann = getattr(obj, 'bookmarks_count_ann', None)
+        return ann if ann is not None else obj.bookmarks.count()
+
+    def get_reposts_count(self, obj):
+        # Count only direct reposts (content='') so this matches the repost toggle action
+        # (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are separate
+        # posts with their own content and are not part of this counter.
+        ann = getattr(obj, 'reposts_count_ann', None)
+        return ann if ann is not None else obj.reposts.filter(content='').count()
 
     def get_is_reposted(self, obj):
         request = self.context.get('request')
@@ -730,8 +828,6 @@ class PostSerializer(serializers.ModelSerializer):
             representation['is_private_restricted'] = True
             
             # Hide nested comments/parent details
-            representation['replies'] = []
-            representation['likes'] = []
             representation['replies_count'] = 0
             representation['likes_count'] = 0
             representation['is_liked'] = False
@@ -778,10 +874,23 @@ class ConversationSerializer(serializers.ModelSerializer):
             representation['avatar'] = request.build_absolute_uri(avatar)
         return representation
 
+    def _my_membership(self, obj):
+        # Reads the prefetched `members__user` cache (set by ConversationViewSet.get_queryset)
+        # instead of issuing a fresh query — this one lookup backs both is_pending_invite and
+        # my_membership_status, which previously ran the same query twice per conversation.
+        request = self.context.get('request')
+        if not (request and request.user.is_authenticated):
+            return None
+        for m in obj.members.all():
+            if m.user_id == request.user.id:
+                return m
+        return None
+
     def get_other_user(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            other_user = obj.participants.exclude(id=request.user.id).first()
+            # obj.participants is prefetched by the viewset; filter in Python to use that cache.
+            other_user = next((u for u in obj.participants.all() if u.id != request.user.id), None)
             if other_user:
                 return UserSerializer(other_user, context=self.context).data
         return None
@@ -807,20 +916,12 @@ class ConversationSerializer(serializers.ModelSerializer):
         return 0
 
     def get_is_pending_invite(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            membership = obj.members.filter(user=request.user).first()
-            if membership:
-                return membership.status == 'pending'
-        return False
+        membership = self._my_membership(obj)
+        return membership.status == 'pending' if membership else False
 
     def get_my_membership_status(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            membership = obj.members.filter(user=request.user).first()
-            if membership:
-                return membership.status
-        return None
+        membership = self._my_membership(obj)
+        return membership.status if membership else None
 
 
 
@@ -1037,11 +1138,20 @@ class ProjectSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Project
-        fields = ['id', 'owner', 'organisation', 'organisation_details', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'followers_count', 'is_following', 'github_repo_url', 'ci_build_token', 'created_at', 'updated_at']
-        # ci_build_token is never client-writable — it's only ever generated by the dedicated
-        # ensure_build_token action (ProjectViewSet), so a client can't set it to an arbitrary
-        # (possibly colliding, possibly guessable) value via a plain PATCH.
-        read_only_fields = ['id', 'owner', 'created_at', 'updated_at', 'organisation_details', 'ci_build_token']
+        fields = ['id', 'owner', 'organisation', 'organisation_details', 'title', 'description', 'cover_image', 'logo', 'tech_stack', 'status', 'website', 'twitter', 'youtube', 'extra_links', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at', 'organisation_details']
+
+    def validate_website(self, value):
+        return validate_public_url(value)
+
+    def validate_twitter(self, value):
+        return validate_public_url(value)
+
+    def validate_youtube(self, value):
+        return validate_public_url(value)
+
+    def validate_extra_links(self, value):
+        return validate_extra_links_value(value)
 
     def get_followers_count(self, obj):
         return obj.followers.count()
@@ -1172,9 +1282,21 @@ class OrganisationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Organisation
-        fields = ['id', 'name', 'slug', 'description', 'logo', 'banner', 'website', 'twitter', 'youtube', 'is_verified', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'slug', 'description', 'logo', 'banner', 'website', 'twitter', 'youtube', 'extra_links', 'is_verified', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
-        
+
+    def validate_website(self, value):
+        return validate_public_url(value)
+
+    def validate_twitter(self, value):
+        return validate_public_url(value)
+
+    def validate_youtube(self, value):
+        return validate_public_url(value)
+
+    def validate_extra_links(self, value):
+        return validate_extra_links_value(value)
+
     def validate_slug(self, value):
         slug = value.strip().lower()
         if not slug:
@@ -1238,7 +1360,7 @@ from core.models import WorkspaceState
 class WorkspaceStateSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkspaceState
-        fields = ['key', 'data', 'updated_at']
+        fields = ['key', 'data', 'version', 'updated_at']
 
 class BlockedUserSerializer(serializers.ModelSerializer):
     blocker = UserSerializer(read_only=True)

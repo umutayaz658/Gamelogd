@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronRight, Lock, Plus, Search, Settings2, X } from 'lucide-react';
+import { ChevronRight, Lock, Search, Settings2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import type { OrganisationMember, PermissionHierarchy, ProjectMember, Role, User } from '@/types';
 import ConfirmDeleteModal from '@/components/devs/ConfirmDeleteModal';
-import InviteModal from './InviteModal';
+import InviteMemberButton from './InviteMemberButton';
 import RolesManagerModal from './RolesManagerModal';
 import RoleSelectDrawer from './RoleSelectDrawer';
 import { useToast } from '@/context/ToastContext';
@@ -107,7 +107,6 @@ export default function MemberManager({
     const [permissions, setPermissions] = useState<string[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [hierarchy, setHierarchy] = useState<PermissionHierarchy>({});
-    const [showInviteModal, setShowInviteModal] = useState(false);
     const [showRolesModal, setShowRolesModal] = useState(false);
     const [confirmRemove, setConfirmRemove] = useState<DisplayMember | null>(null);
     const [roleDrawerFor, setRoleDrawerFor] = useState<DisplayMember | null>(null);
@@ -196,18 +195,6 @@ export default function MemberManager({
             .finally(() => setConfirmTransferTo(null));
     };
 
-    const handleInvite = (targetUser: { id: number; username: string }, roleId: number, legacyRole: string) => {
-        if (scope === 'project') {
-            api.post('/project-members/', { project: projectId, user_id: targetUser.id, role: legacyRole, custom_role: roleId })
-                .then(() => { onRefresh(); setShowInviteModal(false); })
-                .catch((err) => toast.error(err.response?.data?.detail || err.response?.data?.error || (Array.isArray(err.response?.data) ? err.response.data[0] : null) || 'Failed to invite.'));
-        } else if (organisationSlug) {
-            api.post(`/organisations/${organisationSlug}/invite/`, { user_id: targetUser.id, role: legacyRole, custom_role: roleId })
-                .then(() => setShowInviteModal(false))
-                .catch((err) => toast.error(err.response?.data?.error || 'Failed to invite.'));
-        }
-    };
-
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -225,10 +212,14 @@ export default function MemberManager({
                             </button>
                         )}
                         {showInviteButton && canInvite && (
-                            <button onClick={() => setShowInviteModal(true)}
-                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20">
-                                <Plus className="w-4 h-4" /> Invite Member
-                            </button>
+                            <InviteMemberButton
+                                scope={scope}
+                                organisationId={organisationId}
+                                organisationSlug={organisationSlug}
+                                projectId={projectId}
+                                excludeUserIds={displayMembers.map((m) => m.user.id)}
+                                onInvited={onRefresh}
+                            />
                         )}
                     </div>
                 )}
@@ -292,18 +283,6 @@ export default function MemberManager({
                     </p>
                 )}
             </div>
-
-            {showInviteModal && (
-                <InviteModal
-                    scope={scope === 'project' ? 'project' : 'org'}
-                    legacyRoleOptions={scope === 'project' ? ['participant', 'editor', 'admin'] : ['member', 'admin']}
-                    roles={roles}
-                    quickAddOrganisationId={scope === 'project' ? organisationId ?? undefined : undefined}
-                    excludeUserIds={[...displayMembers.map((m) => m.user.id), ...(currentUser ? [currentUser.id] : [])]}
-                    onClose={() => setShowInviteModal(false)}
-                    onInvite={handleInvite}
-                />
-            )}
 
             {showRolesModal && roleManagementScopeId && (
                 <RolesManagerModal

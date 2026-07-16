@@ -93,6 +93,19 @@ class User(AbstractUser):
     settings = models.JSONField(default=default_user_settings, blank=True)
     dnd_mode = models.BooleanField(default=False)
 
+    # Denormalized mirror of settings['privateProfile'], kept in sync in save(). Indexed so the
+    # feed/list "exclude private profiles I don't follow" filter can use a plain boolean column
+    # instead of a settings__privateProfile JSON lookup that full-scans the users table on every
+    # feed/post request.
+    is_private = models.BooleanField(default=False, db_index=True)
+
+    def save(self, *args, **kwargs):
+        self.is_private = bool((self.settings or {}).get('privateProfile', False))
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'settings' in update_fields and 'is_private' not in update_fields:
+            kwargs['update_fields'] = list(update_fields) + ['is_private']
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.username
 
@@ -187,22 +200,35 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 target=instance
             )
         
-        # 3. Handle mentions
+        # 3. Handle mentions — resolve all usernames in one query and bulk-create the
+        # notifications, instead of a User.objects.get() + Notification.objects.create() pair
+        # per @mention (an unbounded query loop on a long post with many mentions).
         import re
-        mentions = re.findall(r'@([a-zA-Z0-9_-]+)', instance.content or '')
-        for username in set(mentions):
-            if username.lower() == instance.user.username.lower():
-                continue
-            try:
-                mentioned_user = User.objects.get(username__iexact=username)
-                Notification.objects.create(
-                    recipient=mentioned_user,
+        from django.db.models import Q
+        from django.contrib.contenttypes.models import ContentType
+        mentions = set(re.findall(r'@([a-zA-Z0-9_-]+)', instance.content or ''))
+        mentions.discard(instance.user.username)
+        # Cap so a post crafted with dozens of @mentions can't be used to spam notifications.
+        mentions = list(mentions)[:20]
+        if mentions:
+            username_filter = Q()
+            for username in mentions:
+                username_filter |= Q(username__iexact=username)
+            mentioned_users = User.objects.filter(username_filter).exclude(
+                username__iexact=instance.user.username
+            ).distinct()
+
+            content_type = ContentType.objects.get_for_model(instance)
+            Notification.objects.bulk_create([
+                Notification(
+                    recipient=u,
                     actor=instance.user,
                     verb='mentioned you in a post',
-                    target=instance
+                    target_type=content_type,
+                    target_id=instance.id,
                 )
-            except User.DoesNotExist:
-                pass
+                for u in mentioned_users
+            ])
 
 @receiver(post_save, sender='core.Like')
 def create_like_notification(sender, instance, created, **kwargs):
