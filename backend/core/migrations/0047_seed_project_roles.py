@@ -2,14 +2,29 @@ from django.db import migrations
 
 
 def seed_project_roles(apps, schema_editor):
-    # Same rationale as 0045_seed_default_roles: use the real models, not
-    # apps.get_model, since create_default_project_roles imports the real
-    # Role model internally.
-    from core.models import Project, ProjectMember
-    from api.permission_catalog import create_default_project_roles
+    # Must use the historical models (apps.get_model), not the real ones — see 0045's comment
+    # for why: the real model classes reflect columns added by migrations that run after this
+    # one, and querying with them breaks a from-scratch replay (fresh env / CI / `manage.py
+    # test`). PROJECT_ROLE_SEEDS is plain data (no model import), so it's reused directly instead
+    # of calling create_default_project_roles (which internally imports the real Role model).
+    from api.permission_catalog import PROJECT_ROLE_SEEDS
+
+    Project = apps.get_model('core', 'Project')
+    Role = apps.get_model('core', 'Role')
+    ProjectMember = apps.get_model('core', 'ProjectMember')
 
     for project in Project.objects.filter(organisation__isnull=False):
-        create_default_project_roles(project)
+        for name, default_for, perms in PROJECT_ROLE_SEEDS:
+            Role.objects.get_or_create(
+                organisation_id=project.organisation_id,
+                project_id=project.pk,
+                is_default_for=default_for,
+                defaults={
+                    "is_system": True,
+                    "name": name,
+                    "permissions": perms,
+                },
+            )
 
     # Any ProjectMember.custom_role pointing at an organisation-scoped role
     # (project IS NULL) is no longer valid now that project roles are their

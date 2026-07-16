@@ -3,15 +3,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
-import api, { isCookieAuth } from '@/lib/api';
+import api, { isCookieAuth, setAccessToken as setTokenCookie } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
-
-// Store the JS token cookie with the strongest flags the current protocol allows.
-// (Only used in header mode — cookie mode never exposes the token to JS.)
-const setTokenCookie = (token: string) => {
-    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    Cookies.set('access_token', token, { expires: 7, secure, sameSite: 'strict' });
-};
 
 // Define User Interface based on backend response
 interface User {

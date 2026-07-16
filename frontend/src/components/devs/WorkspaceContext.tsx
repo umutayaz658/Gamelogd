@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Organisation } from '@/types';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import {
     WorkspaceData,
     DEFAULT_COLUMNS,
@@ -352,8 +353,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [data, setData] = useState<WorkspaceData>(buildDefaultData);
     const [permissions, setPermissions] = useState<string[]>([]);
 
+    const toast = useToast();
+
     // Track if we already initialised from URL params
     const initialised = useRef(false);
+
+    // Optimistic-concurrency token for the currently-loaded board. Holds the { key, version }
+    // last seen from the backend so a save can prove it wasn't based on stale data; when the key
+    // doesn't match the active board (or is null) we send no version and fall back to a plain
+    // create. Kept in a ref so it survives re-renders without retriggering effects.
+    const versionRef = useRef<{ key: string; version: number | null } | null>(null);
 
     // ── Load from URL params on first mount ──────────────────────────────────
     useEffect(() => {
@@ -422,6 +431,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const fetchWorkspaceDataFromBackend = useCallback((key: string) => {
         return api.get(`/workspace-state/${key}/`)
             .then((res) => {
+                // Remember the version we loaded so the next save can detect a concurrent edit.
+                versionRef.current = { key, version: typeof res.data?.version === 'number' ? res.data.version : null };
                 let backendData = res.data?.data;
                 if (backendData && backendData.columns?.length) {
                     if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
@@ -432,6 +443,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 }
             })
             .catch((err) => {
+                // No row yet (or load failed): we have no known version, so the next save creates
+                // the row unconditionally.
+                versionRef.current = { key, version: null };
                 console.log('No backend workspace state found or failed to load. Using local state.', err);
             });
     }, []);
@@ -526,8 +540,33 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 //  (M4) writing demo/seed data for a brand-new user who changed nothing.
                 if (user && tool) {
                     lastToolRef.current = null;
-                    api.post('/workspace-state/', { key, data, tool })
-                        .catch((err) => console.error('Failed to sync workspace state to backend:', err));
+                    // Send the version we loaded (only if it belongs to this board) so the server
+                    // can reject the write with 409 when a teammate saved in the meantime, instead
+                    // of silently overwriting their change on this shared board.
+                    const knownVersion = versionRef.current?.key === key ? versionRef.current.version : null;
+                    api.post('/workspace-state/', { key, data, tool, base_version: knownVersion })
+                        .then((res) => {
+                            if (typeof res.data?.version === 'number') {
+                                versionRef.current = { key, version: res.data.version };
+                            }
+                        })
+                        .catch((err) => {
+                            if (err.response?.status === 409) {
+                                // Someone else saved first. Adopt the server's current board so this
+                                // client stops diverging, rather than clobbering their work. The local
+                                // in-progress change is dropped — surfaced to the user so it isn't silent.
+                                const current = err.response.data?.current;
+                                if (current?.data) {
+                                    const merged = ensureKanbanCategories(current.data);
+                                    setData(merged);
+                                    try { localStorage.setItem(key, JSON.stringify(merged)); } catch {}
+                                }
+                                versionRef.current = { key, version: typeof current?.version === 'number' ? current.version : null };
+                                toast.error('This board was updated by someone else — reloaded the latest version.');
+                            } else {
+                                console.error('Failed to sync workspace state to backend:', err);
+                            }
+                        });
                 }
             } catch { /* quota */ }
         }, 400); // debounce 400ms

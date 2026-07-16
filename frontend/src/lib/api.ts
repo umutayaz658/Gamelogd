@@ -11,6 +11,14 @@ import Cookies from 'js-cookie';
 //   same-site subdomain (e.g. api.gamelogd.net) by setting NEXT_PUBLIC_AUTH_MODE=cookie.
 export const isCookieAuth = process.env.NEXT_PUBLIC_AUTH_MODE === 'cookie';
 
+// Store the auth token for header mode (no-op in cookie mode, where the httpOnly cookie carries
+// auth). Centralised so login and password-rotation stay consistent about cookie flags.
+export const setAccessToken = (token: string) => {
+    if (isCookieAuth) return;
+    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    Cookies.set('access_token', token, { expires: 7, secure, sameSite: 'lax' });
+};
+
 // NEXT_PUBLIC_* is inlined at build time, so a missing API URL in a production build
 // silently ships a localhost baseURL and every request fails for real users. Warn loudly.
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
