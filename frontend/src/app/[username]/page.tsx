@@ -7,6 +7,7 @@ import GameDNA from "@/components/Profile/GameDNA";
 import Feed from "@/components/Feed";
 import GameSearchModal from "@/components/GameSearchModal";
 import { getImageUrl } from "@/lib/utils";
+import { sanitizeUrl } from "@/lib/url";
 import api from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X, Clock, Lock, UserX } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
@@ -521,18 +522,6 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const handleProfileUpdate = (updatedUser: any) => {
         setProfileUser(updatedUser);
         setIsEditProfileOpen(false);
-    };
-
-    const sanitizeUrl = (urlStr: string): string => {
-        if (!urlStr) return '#';
-        const trimmed = urlStr.trim();
-        if (/^(javascript|data|vbscript):/i.test(trimmed)) {
-            return '#';
-        }
-        if (!/^[a-z0-9+.-]+:\/\//i.test(trimmed)) {
-            return `https://${trimmed}`;
-        }
-        return trimmed;
     };
 
     // Helper for Social Icons

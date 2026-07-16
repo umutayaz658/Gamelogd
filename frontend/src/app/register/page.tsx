@@ -362,8 +362,6 @@ export default function RegisterPage() {
             roles: formData.roles
         };
 
-        console.log('Submitting Registration Payload:', payload);
-
         try {
             // 2. API Call
             await api.post('/register/', payload);

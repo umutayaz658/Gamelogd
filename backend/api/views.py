@@ -1,3 +1,4 @@
+import logging
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, permissions, filters, generics
@@ -14,6 +15,8 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+
+logger = logging.getLogger(__name__)
 from django.utils.html import strip_tags
 from django.conf import settings
 from api.services.email_service import send_verification_email, send_support_ticket_email
@@ -91,6 +94,11 @@ class GoogleLoginView(generics.CreateAPIView):
                 settings.GOOGLE_CLIENT_ID,
                 clock_skew_in_seconds=10
             )
+
+            # Only trust the email if Google itself has verified it. An unverified email in the
+            # token could otherwise be used to log into a local account that shares that address.
+            if idinfo.get('email_verified') is not True:
+                return Response({"error": "Google account email is not verified."}, status=status.HTTP_400_BAD_REQUEST)
 
             email = idinfo.get('email')
             first_name = idinfo.get('given_name', '')
@@ -355,7 +363,16 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'error': list(e.messages) if hasattr(e, 'messages') else str(e)}, status=status.HTTP_400_BAD_REQUEST)
         user.set_password(new_password)
         user.save()
-        return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+        # Rotate the auth token so a previously-issued (possibly stolen) token can't outlive the
+        # password change — DRF tokens otherwise never expire. Return the fresh token and refresh
+        # the httpOnly cookie so the caller's own session stays valid without a re-login.
+        Token.objects.filter(user=user).delete()
+        new_token = Token.objects.create(user=user)
+        response = Response(
+            {'message': 'Password changed successfully', 'token': new_token.key},
+            status=status.HTTP_200_OK,
+        )
+        return set_auth_cookie(response, new_token.key)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='delete-account')
     def delete_account(self, request):
@@ -1125,12 +1142,12 @@ class ReviewViewSet(viewsets.ModelViewSet):
             
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         
@@ -1208,12 +1225,12 @@ class PostViewSet(viewsets.ModelViewSet):
             
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
             queryset = queryset.exclude(Q(user_id__in=private_ids) & Q(project_parent__isnull=True))
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             queryset = queryset.exclude(Q(user_id__in=private_ids) & Q(project_parent__isnull=True))
             
@@ -1267,15 +1284,15 @@ class PostViewSet(viewsets.ModelViewSet):
         try:
             serializer = self.get_serializer(data=request.data)
             if not serializer.is_valid():
-                print("VALIDATION ERROR:", serializer.errors)
+                logger.info("Post creation validation error: %s", serializer.errors)
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             self.perform_create(serializer)
             headers = self.get_success_headers(serializer.data)
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            print("ERROR IN POST CREATION:", tb)  # server logs only — never returned to clients
+        except Exception:
+            # Full traceback goes to structured logging (picked up by any log aggregator) —
+            # never returned to clients.
+            logger.exception("Error creating post for user %s", request.user.pk)
             return Response({"error": "Failed to create post. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_create(self, serializer):
@@ -1414,12 +1431,23 @@ class ConversationViewSet(viewsets.ModelViewSet):
         member_conversations = ConversationMember.objects.filter(
             user=self.request.user
         ).exclude(status__in=['declined', 'left', 'blocked']).values_list('conversation_id', flat=True)
-        
+
         qs = Conversation.objects.filter(id__in=member_conversations).order_by('-updated_at')
-        # Backfill memberships
-        for c in qs:
-            ConversationMember.objects.get_or_create(conversation=c, user=self.request.user)
-        return qs
+
+        # Backfill any legacy conversations missing this user's membership row — previously this
+        # ran a get_or_create per conversation on every single list request (an N+1 that alone
+        # could account for ~200 queries on a 200-conversation inbox); now it's one existence
+        # check per legacy conversation, and zero once every membership exists (the normal case).
+        conv_ids = list(qs.values_list('id', flat=True))
+        if conv_ids:
+            existing_ids = set(ConversationMember.objects.filter(
+                conversation_id__in=conv_ids, user=self.request.user
+            ).values_list('conversation_id', flat=True))
+            missing_ids = [cid for cid in conv_ids if cid not in existing_ids]
+            for cid in missing_ids:
+                ConversationMember.objects.get_or_create(conversation_id=cid, user=self.request.user)
+
+        return qs.prefetch_related('members__user', 'members__invited_by', 'participants')
 
     @action(detail=False, methods=['post'])
     def start_chat(self, request):
@@ -1989,12 +2017,12 @@ class LibraryViewSet(viewsets.ModelViewSet):
             
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         return queryset
@@ -2352,17 +2380,6 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return Response({"error": "You are not following this project."}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"message": f"Unfollowed {project.title}"}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'], url_path='ensure-build-token', permission_classes=[permissions.IsAuthenticated])
-    def ensure_build_token(self, request, pk=None):
-        # self.get_object() runs the same object-level permission check as a PATCH would
-        # (ProjectAccessPermission — owner/admin/editor), since POST isn't a SAFE_METHOD.
-        project = self.get_object()
-        if not project.ci_build_token:
-            import secrets
-            project.ci_build_token = secrets.token_urlsafe(24)
-            project.save(update_fields=['ci_build_token'])
-        return Response(ProjectSerializer(project, context={'request': request}).data, status=status.HTTP_200_OK)
-
 class JobPostingViewSet(viewsets.ModelViewSet):
     queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')
     serializer_class = JobPostingSerializer
@@ -2441,14 +2458,36 @@ class FeedViewSet(viewsets.ViewSet):
             # Exclude private profiles the user does not follow, unless it's their own profile
             following_ids = list(user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=user.id).values_list('id', flat=True)
             exclude_ids.update(private_ids)
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             exclude_ids.update(private_ids)
+
+        # Precompute engagement counts in the query (single subquery each) so the scoring loop
+        # and the serializer don't fire a per-item .count() — the N+1 that made this endpoint
+        # issue hundreds of queries per request.
+        from .serializers import count_subquery
+        post_anns = dict(
+            likes_count_ann=count_subquery(Like, 'post'),
+            replies_count_ann=count_subquery(Post, 'parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            bookmarks_count_ann=count_subquery(Bookmark, 'post'),
+        )
+        review_anns = dict(
+            likes_count_ann=count_subquery(Like, 'review'),
+            replies_count_ann=count_subquery(Post, 'review_parent'),
+            bookmarks_count_ann=count_subquery(Bookmark, 'review'),
+        )
+
+        # select_related('user') alone still leaves the author's M2M interests (UserSerializer's
+        # StringRelatedField) and each post's media set to be fetched with one query per item —
+        # prefetch both so the whole feed resolves those in 2 queries total, not 2 per item.
+        post_prefetch = ('user__interests', 'media')
+        review_prefetch = ('user__interests',)
 
         posts = Post.objects.filter(
             parent__isnull=True,
@@ -2458,8 +2497,8 @@ class FeedViewSet(viewsets.ViewSet):
         )
         if exclude_ids:
             posts = posts.exclude(user_id__in=exclude_ids)
-        posts = posts.select_related('user').order_by('-timestamp')[:80]
-        
+        posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
+
         if posts.count() < 40:
             posts = Post.objects.filter(
                 parent__isnull=True,
@@ -2468,18 +2507,18 @@ class FeedViewSet(viewsets.ViewSet):
             )
             if exclude_ids:
                 posts = posts.exclude(user_id__in=exclude_ids)
-            posts = posts.select_related('user').order_by('-timestamp')[:80]
-            
+            posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
+
         reviews = Review.objects.filter(timestamp__gte=time_limit)
         if exclude_ids:
             reviews = reviews.exclude(user_id__in=exclude_ids)
-        reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
+        reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
 
         if reviews.count() < 40:
             reviews = Review.objects.all()
             if exclude_ids:
                 reviews = reviews.exclude(user_id__in=exclude_ids)
-            reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
+            reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
 
         followed_users_ids = set()
         library_game_ids = set()
@@ -2515,10 +2554,10 @@ class FeedViewSet(viewsets.ViewSet):
             recency_multiplier = 1.0 / (1.0 + age_in_days * 0.5)
             score *= recency_multiplier
             
-            # Social / Engagement factor
-            likes = item.likes.count() if hasattr(item, 'likes') else 0
-            replies = item.replies.count() if hasattr(item, 'replies') else 0
-            
+            # Social / Engagement factor (read the annotations set above; no per-item queries)
+            likes = getattr(item, 'likes_count_ann', 0) or 0
+            replies = getattr(item, 'replies_count_ann', 0) or 0
+
             score += likes * 0.5
             score += replies * 0.8
             
@@ -2576,14 +2615,26 @@ class FeedViewSet(viewsets.ViewSet):
         if exclude_ids:
             followed_users_ids = [uid for uid in followed_users_ids if uid not in exclude_ids]
         
+        # Annotate engagement counts so the serializers below read them instead of firing a
+        # per-item .count() (see for_you / count_subquery).
+        from .serializers import count_subquery
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
-        ).select_related('user').order_by('-timestamp')[:50]
-        
-        reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').order_by('-timestamp')[:50]
+        ).select_related('user').prefetch_related('user__interests', 'media').annotate(
+            likes_count_ann=count_subquery(Like, 'post'),
+            replies_count_ann=count_subquery(Post, 'parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            bookmarks_count_ann=count_subquery(Bookmark, 'post'),
+        ).order_by('-timestamp')[:50]
+
+        reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').prefetch_related('user__interests').annotate(
+            likes_count_ann=count_subquery(Like, 'review'),
+            replies_count_ann=count_subquery(Post, 'review_parent'),
+            bookmarks_count_ann=count_subquery(Bookmark, 'review'),
+        ).order_by('-timestamp')[:50]
         
         merged_items = []
         for p in posts:
@@ -2827,6 +2878,29 @@ class OrganisationMemberViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(organisation_id=organisation_id)
         return queryset
 
+    def perform_create(self, serializer):
+        # Without this guard any authenticated user could POST themselves (or anyone) straight
+        # into any organisation as admin/owner — the serializer exposes organisation/user_id/role
+        # as writable. Membership additions must go through an org owner/admin, mirroring the
+        # privileged OrganisationViewSet.invite action and ProjectMemberViewSet.perform_create.
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        organisation = serializer.validated_data['organisation']
+        if not organisation.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+            raise PermissionDenied("Only organisation owners and admins can add members.")
+
+        # Ownership is only ever granted via the transfer-ownership action, never by creating a row.
+        if serializer.validated_data.get('role') == 'owner':
+            raise ValidationError("Use the ownership transfer action to make someone the owner.")
+        custom_role = serializer.validated_data.get('custom_role')
+        if custom_role and custom_role.is_default_for == 'owner':
+            raise ValidationError("The Owner role can't be assigned directly. Use ownership transfer instead.")
+
+        target_user = serializer.validated_data['user']
+        if organisation.members.filter(user=target_user).exists():
+            raise ValidationError("This user is already a member of the organisation.")
+
+        serializer.save()
+
     def update(self, request, *args, **kwargs):
         member = self.get_object()
         requesting_member = member.organisation.members.filter(user=request.user).first()
@@ -2898,6 +2972,29 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
             is_active=True,
         ).distinct().order_by('-created_at')
 
+    def perform_create(self, serializer):
+        # Same class of hole as OrganisationMemberViewSet: without this, a user could POST an
+        # invitation to themselves with role='admin' and then accept it. Only org owners/admins
+        # may create invitations, and invited_by is always the requester (never client-supplied).
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        organisation = serializer.validated_data['organisation']
+        if not organisation.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+            raise PermissionDenied("Only organisation owners and admins can invite members.")
+
+        if serializer.validated_data.get('role') == 'owner':
+            raise ValidationError("The Owner role can't be assigned through an invite. Use ownership transfer instead.")
+        custom_role = serializer.validated_data.get('custom_role')
+        if custom_role and custom_role.is_default_for == 'owner':
+            raise ValidationError("The Owner role can't be assigned through an invite.")
+
+        target_user = serializer.validated_data['user']
+        if target_user == self.request.user:
+            raise ValidationError("You can't invite yourself.")
+        if organisation.members.filter(user=target_user).exists():
+            raise ValidationError("This user is already a member of the organisation.")
+
+        serializer.save(invited_by=self.request.user, is_active=True)
+
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
         invitation = self.get_object()
@@ -2927,7 +3024,8 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
             Notification.objects.create(
                 recipient=invitation.invited_by,
                 actor=request.user,
-                verb=f'accepted your invitation to join {invitation.organisation.name}'
+                verb=f'accepted your invitation to join {invitation.organisation.name}',
+                target=invitation,
             )
 
         return Response({"message": f"Successfully joined {invitation.organisation.name}."}, status=status.HTTP_200_OK)
@@ -2979,7 +3077,17 @@ class RoleViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Role.objects.all()
+        from django.db.models import Q
+        user = self.request.user
+        # Only roles for organisations/projects the requester actually belongs to are visible.
+        # Without this scoping, any authenticated user could enumerate every organisation's role
+        # names, descriptions and exact granular permission sets (list or retrieve-by-id).
+        queryset = Role.objects.filter(
+            Q(organisation__members__user=user)
+            | Q(project__members__user=user)
+            | Q(project__owner=user)
+            | Q(project__organisation__members__user=user)
+        ).distinct()
         project_id = self.request.query_params.get('project')
         organisation_id = self.request.query_params.get('organisation')
         if project_id:
@@ -3157,6 +3265,35 @@ def _project_workspace_state(project):
     return obj
 
 
+def _versioned_workspace_upsert(*, key, data, base_version, user=None, organisation=None, user_id=None):
+    """Upsert a WorkspaceState row with optimistic-concurrency protection.
+
+    Returns (obj, conflict). If base_version is provided and doesn't match the stored row's
+    version, nothing is written and conflict=True — the caller returns 409 with the current
+    state so the client reconciles instead of silently clobbering a teammate's change on a
+    shared board. When base_version is None the write proceeds unconditionally (legacy
+    last-write-wins), so older clients that don't send a version keep working. The read-modify-
+    write runs under select_for_update so concurrent writers serialise rather than race.
+    """
+    identity = {'key': key, 'organisation': organisation}
+    if user_id is not None:
+        identity['user_id'] = user_id
+    else:
+        identity['user'] = user
+
+    with transaction.atomic():
+        obj = WorkspaceState.objects.select_for_update().filter(**identity).first()
+        if obj is None:
+            obj = WorkspaceState.objects.create(data=data, version=1, **identity)
+            return obj, False
+        if base_version is not None and base_version != obj.version:
+            return obj, True
+        obj.data = data
+        obj.version = obj.version + 1
+        obj.save()
+        return obj, False
+
+
 class WorkspaceStateViewSet(viewsets.ModelViewSet):
     queryset = WorkspaceState.objects.all()
     serializer_class = WorkspaceStateSerializer
@@ -3228,6 +3365,24 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
         if not key:
             return Response({"error": "key is required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Optimistic-concurrency token (the version the client last loaded). Optional so older
+        # clients that omit it fall back to last-write-wins; malformed values are ignored.
+        base_version = request.data.get('base_version')
+        try:
+            base_version = int(base_version) if base_version is not None else None
+        except (TypeError, ValueError):
+            base_version = None
+
+        def conflict_response(obj):
+            return Response(
+                {
+                    "error": "conflict",
+                    "detail": "This board was updated by someone else. Reload before saving.",
+                    "current": self.get_serializer(obj).data,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         user = request.user
         if key.startswith('workspace__org_'):
             try:
@@ -3247,15 +3402,11 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
                     if write_perms and not user_has_any_permission(user, write_perms, organisation=org, project=project):
                         return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
 
-                obj, created = WorkspaceState.objects.update_or_create(
-                    key=key,
-                    organisation=org,
-                    user=None,
-                    defaults={'data': data}
+                obj, conflict = _versioned_workspace_upsert(
+                    key=key, data=data, base_version=base_version, organisation=org, user=None,
                 )
-                if not created:
-                    obj.data = data
-                    obj.save()
+                if conflict:
+                    return conflict_response(obj)
             except ValueError:
                 return Response({"error": "Invalid workspace key format."}, status=status.HTTP_400_BAD_REQUEST)
         else:
@@ -3275,25 +3426,17 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
                         return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
 
                 # Write to the canonical owner row so all members share one board.
-                obj, created = WorkspaceState.objects.update_or_create(
-                    key=key,
-                    user_id=project.owner_id,
-                    organisation=None,
-                    defaults={'data': data}
+                obj, conflict = _versioned_workspace_upsert(
+                    key=key, data=data, base_version=base_version, user_id=project.owner_id, organisation=None,
                 )
-                if not created:
-                    obj.data = data
-                    obj.save()
+                if conflict:
+                    return conflict_response(obj)
             else:
-                obj, created = WorkspaceState.objects.update_or_create(
-                    key=key,
-                    user=user,
-                    organisation=None,
-                    defaults={'data': data}
+                obj, conflict = _versioned_workspace_upsert(
+                    key=key, data=data, base_version=base_version, user=user, organisation=None,
                 )
-                if not created:
-                    obj.data = data
-                    obj.save()
+                if conflict:
+                    return conflict_response(obj)
 
         serializer = self.get_serializer(obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -3528,11 +3671,22 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         page = int(request.query_params.get('page', 1))
         page_size = min(int(request.query_params.get('page_size', 20)), 50)
         
+        from api.serializers import count_subquery
+        from core.models import Like, Bookmark
         posts = Post.objects.filter(
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
-        ).select_related('user').prefetch_related('likes', 'replies', 'reposts', 'bookmarks', 'media')
+        ).select_related('user').prefetch_related('user__interests', 'media').annotate(
+            # Counts only, not the full related objects — prefetching the actual likes/replies/
+            # reposts/bookmarks rows here fetched (and discarded) every row of engagement for
+            # every post on the page, which is unbounded for a viral post. The serializer no
+            # longer renders those relations, only their counts.
+            likes_count_ann=count_subquery(Like, 'post'),
+            replies_count_ann=count_subquery(Post, 'parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            bookmarks_count_ann=count_subquery(Bookmark, 'post'),
+        )
         
         if ordering == 'popular' or not ordering:
             cutoff = timezone.now() - timedelta(days=7)
@@ -3544,10 +3698,13 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         if hashtag:
             if hashtag.startswith('#'):
                 hashtag = hashtag[1:]
+            import re
             from django.db import connection
             # PostgreSQL case-insensitive regex word boundary matches with \y, others with \b
             boundary = '\\y' if connection.vendor == 'postgresql' else '\\b'
-            posts = posts.filter(content__iregex=rf'#{hashtag}{boundary}')
+            # Escape the user input before it goes into a DB-side regex — otherwise a crafted
+            # pattern (e.g. "(a+)+$") causes catastrophic backtracking / a CPU-exhaustion DoS.
+            posts = posts.filter(content__iregex=rf'#{re.escape(hashtag)}{boundary}')
             
         if ordering == 'newest':
             posts = posts.order_by('-timestamp')
