@@ -88,8 +88,10 @@ class User(AbstractUser):
     platforms = models.JSONField(default=list, blank=True)  # Stores ['PC', 'PS5', etc.]
     top_favorites = models.JSONField(default=list, blank=True)  # Stores [{'slot': 0, 'game_id': 123, ...}]
 
-    # Steam Integration
+    # Steam & Xbox Integration
     steam_id = models.CharField(max_length=20, blank=True)
+    xbox_gamertag = models.CharField(max_length=50, blank=True, null=True)
+    
     settings = models.JSONField(default=default_user_settings, blank=True)
     dnd_mode = models.BooleanField(default=False)
 
@@ -120,8 +122,10 @@ class LibraryEntry(models.Model):
     )
     user = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='library', on_delete=models.CASCADE)
     game = models.ForeignKey('core.Game', related_name='library_entries', on_delete=models.CASCADE)
-    playtime_forever = models.IntegerField(default=0) # In minutes
-    platform = models.CharField(max_length=50, default='Steam')
+    steam_playtime = models.IntegerField(default=0) # In minutes
+    xbox_playtime = models.IntegerField(default=0) # In minutes
+    playtime_forever = models.IntegerField(default=0) # Total combined playtime
+    platform = models.CharField(max_length=100, default='Steam')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='unplayed', db_index=True)
     added_at = models.DateTimeField(auto_now_add=True, db_index=True)
 

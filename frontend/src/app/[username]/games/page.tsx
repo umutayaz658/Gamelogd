@@ -335,9 +335,11 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                 </div>
 
                                                 {/* Playtime Badge */}
-                                                <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-xs font-bold text-white shadow-lg">
-                                                    {entry.playtime_hours}h
-                                                </div>
+                                                {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) && (
+                                                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-xs font-bold text-white shadow-lg">
+                                                        {entry.playtime_hours}h
+                                                    </div>
+                                                )}
 
                                                 {/* Reveal overlay: desktop hover, or mobile tap (revealedId/editingId) */}
                                                 <div
@@ -419,7 +421,11 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <div className="text-right">
-                                                    <div className="font-bold text-zinc-400 text-sm">{entry.playtime_hours}h</div>
+                                                    {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) ? (
+                                                        <div className="font-bold text-zinc-400 text-sm">{entry.playtime_hours}h</div>
+                                                    ) : (
+                                                        <div className="font-bold text-zinc-600 text-sm">--</div>
+                                                    )}
                                                 </div>
                                                 {isOwnProfile && (
                                                     <button
