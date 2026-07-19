@@ -4,13 +4,14 @@ import { useState, use, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import FilterDropdown from "@/components/FilterDropdown";
-import { Filter, ArrowUpDown, LayoutGrid, List, Gamepad2, Monitor, Play, Loader2 } from 'lucide-react';
+import { Filter, ArrowUpDown, ArrowLeft, LayoutGrid, List, Gamepad2, Monitor, Play, Loader2 } from 'lucide-react';
 import { getImageUrl } from "@/lib/utils";
 import api from "@/lib/api";
 import Link from 'next/link';
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { useToast } from "@/context/ToastContext";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface Game {
     id: number;
@@ -35,6 +36,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
     const { t } = useTranslation();
     const toast = useToast();
     const isOwnProfile = currentUser?.username?.toLowerCase() === username?.toLowerCase();
+    const isMobile = useIsMobile();
     // State
     const [games, setGames] = useState<LibraryEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -45,6 +47,9 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
     const [filterPlatform, setFilterPlatform] = useState('all');
     const [sortBy, setSortBy] = useState('playtime');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    // Grid view isn't usable on narrow phones (only ~2 covers fit per row), so mobile
+    // is always forced to list view regardless of the (desktop-only) toggle's state.
+    const effectiveViewMode = isMobile ? 'list' : viewMode;
 
     // Fetch Data
     useEffect(() => {
@@ -92,6 +97,11 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
     const [editingId, setEditingId] = useState<number | null>(null);
     const [updatingId, setUpdatingId] = useState<number | null>(null);
 
+    // Grid card tap-to-reveal (touch equivalent of desktop's :hover reveal) — a tap
+    // opens the title/status/"Edit Status" overlay, a second tap elsewhere steps
+    // back one level (editing -> revealed -> closed) rather than closing outright.
+    const [revealedId, setRevealedId] = useState<number | null>(null);
+
     const handleStatusUpdate = async (entryId: number, newStatus: string) => {
         setUpdatingId(entryId);
         try {
@@ -124,7 +134,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar */}
                     <div className="hidden lg:block col-span-3">
@@ -136,79 +146,144 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
 
                         {/* Header */}
                         <div className="mb-8">
-                            <h1 className="text-3xl font-bold mb-2">{t('gamesLibraryTitle').replace('{username}', username)}</h1>
-                            <p className="text-zinc-400">
+                            <div className="flex items-center gap-3 mb-2">
+                                <Link
+                                    href={`/${username}`}
+                                    className="p-2 -ml-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+                                >
+                                    <ArrowLeft className="h-5 w-5" />
+                                </Link>
+                                <h1 className="text-2xl sm:text-3xl font-bold truncate">{t('gamesLibraryTitle').replace('{username}', username)}</h1>
+                            </div>
+                            <p className="text-zinc-400 pl-11">
                                 <span className="text-white font-bold">{totalGames}</span> {t('gamesInCollection')} • <span className="text-emerald-400 font-bold">{Math.round(totalHours)}h</span> {t('playedTotal')}
                             </p>
                         </div>
 
                         {/* Sticky Filters Bar */}
-                        <div className="sticky top-20 z-30 bg-zinc-950/80 backdrop-blur-md border border-zinc-800 rounded-xl p-4 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl shadow-black/20">
+                        <div className="sticky top-20 z-30 bg-zinc-950/80 backdrop-blur-md border border-zinc-800 rounded-xl p-4 mb-6 shadow-xl shadow-black/20">
 
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
-                                {/* Status Filter */}
-                                <FilterDropdown
-                                    label={t('status')}
-                                    allLabel={t('all')}
-                                    icon={<Filter className="h-4 w-4" />}
-                                    options={[
-                                        { value: 'unplayed', label: t('unplayed') },
-                                        { value: 'plan_to_play', label: t('planToPlay') },
-                                        { value: 'playing', label: t('playing') },
-                                        { value: 'replaying', label: t('replaying') },
-                                        { value: 'completed', label: t('completed') },
-                                        { value: 'dropped', label: t('dropped') }
-                                    ]}
-                                    value={filterStatus === 'all' ? '' : filterStatus}
-                                    onChange={(val) => setFilterStatus(val || 'all')}
-                                />
-
-                                {/* Platform Filter */}
-                                <FilterDropdown
-                                    label={t('platforms')}
-                                    allLabel={t('allPlatforms')}
-                                    icon={<Gamepad2 className="h-4 w-4" />}
-                                    options={[
-                                        { value: 'Steam', label: 'Steam' },
-                                        { value: 'PlayStation', label: 'PlayStation' },
-                                        { value: 'Xbox', label: 'Xbox' },
-                                        { value: 'EA', label: 'EA App' }
-                                    ]}
-                                    value={filterPlatform === 'all' ? '' : filterPlatform}
-                                    onChange={(val) => setFilterPlatform(val || 'all')}
-                                />
+                            {/* Mobile: every filter in one horizontally-scrollable row (no view
+                                toggle — mobile is always list view, see effectiveViewMode) */}
+                            <div className="lg:hidden flex items-center gap-3 overflow-x-auto -mx-1 px-1 no-scrollbar">
+                                <div className="flex-shrink-0">
+                                    <FilterDropdown
+                                        label={t('status')}
+                                        allLabel={t('all')}
+                                        icon={<Filter className="h-4 w-4" />}
+                                        options={[
+                                            { value: 'unplayed', label: t('unplayed') },
+                                            { value: 'plan_to_play', label: t('planToPlay') },
+                                            { value: 'playing', label: t('playing') },
+                                            { value: 'replaying', label: t('replaying') },
+                                            { value: 'completed', label: t('completed') },
+                                            { value: 'dropped', label: t('dropped') }
+                                        ]}
+                                        value={filterStatus === 'all' ? '' : filterStatus}
+                                        onChange={(val) => setFilterStatus(val || 'all')}
+                                    />
+                                </div>
+                                <div className="flex-shrink-0">
+                                    <FilterDropdown
+                                        label={t('platforms')}
+                                        allLabel={t('allPlatforms')}
+                                        icon={<Gamepad2 className="h-4 w-4" />}
+                                        options={[
+                                            { value: 'Steam', label: 'Steam' },
+                                            { value: 'PlayStation', label: 'PlayStation' },
+                                            { value: 'Xbox', label: 'Xbox' },
+                                            { value: 'EA', label: 'EA App' }
+                                        ]}
+                                        value={filterPlatform === 'all' ? '' : filterPlatform}
+                                        onChange={(val) => setFilterPlatform(val || 'all')}
+                                    />
+                                </div>
+                                <div className="flex-shrink-0">
+                                    <FilterDropdown
+                                        label={t('sortBy')}
+                                        icon={<ArrowUpDown className="h-4 w-4" />}
+                                        options={[
+                                            { value: 'playtime', label: t('playtime') },
+                                            { value: 'name', label: t('name') }
+                                        ]}
+                                        value={sortBy}
+                                        onChange={(val) => setSortBy(val)}
+                                        showAllOption={false}
+                                        showSelectionAccent={false}
+                                        align="right"
+                                    />
+                                </div>
                             </div>
 
-                            <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                                {/* Sort */}
-                                <FilterDropdown
-                                    label={t('sortBy')}
-                                    icon={<ArrowUpDown className="h-4 w-4" />}
-                                    options={[
-                                        { value: 'playtime', label: t('playtime') },
-                                        { value: 'name', label: t('name') }
-                                    ]}
-                                    value={sortBy}
-                                    onChange={(val) => setSortBy(val)}
-                                    showAllOption={false}
-                                />
+                            {/* Desktop: two groups side by side, plus the grid/list view toggle */}
+                            <div className="hidden lg:flex lg:items-center lg:justify-between lg:gap-4">
+                                <div className="flex flex-row flex-wrap items-center gap-3">
+                                    {/* Status Filter */}
+                                    <FilterDropdown
+                                        label={t('status')}
+                                        allLabel={t('all')}
+                                        icon={<Filter className="h-4 w-4" />}
+                                        options={[
+                                            { value: 'unplayed', label: t('unplayed') },
+                                            { value: 'plan_to_play', label: t('planToPlay') },
+                                            { value: 'playing', label: t('playing') },
+                                            { value: 'replaying', label: t('replaying') },
+                                            { value: 'completed', label: t('completed') },
+                                            { value: 'dropped', label: t('dropped') }
+                                        ]}
+                                        value={filterStatus === 'all' ? '' : filterStatus}
+                                        onChange={(val) => setFilterStatus(val || 'all')}
+                                    />
 
-                                <div className="h-6 w-px bg-zinc-800" />
+                                    {/* Platform Filter */}
+                                    <FilterDropdown
+                                        label={t('platforms')}
+                                        allLabel={t('allPlatforms')}
+                                        icon={<Gamepad2 className="h-4 w-4" />}
+                                        options={[
+                                            { value: 'Steam', label: 'Steam' },
+                                            { value: 'PlayStation', label: 'PlayStation' },
+                                            { value: 'Xbox', label: 'Xbox' },
+                                            { value: 'EA', label: 'EA App' }
+                                        ]}
+                                        value={filterPlatform === 'all' ? '' : filterPlatform}
+                                        onChange={(val) => setFilterPlatform(val || 'all')}
+                                    />
+                                </div>
 
-                                {/* View Mode */}
-                                <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-                                    <button
-                                        onClick={() => setViewMode('grid')}
-                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-                                    >
-                                        <LayoutGrid className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => setViewMode('list')}
-                                        className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-                                    >
-                                        <List className="h-4 w-4" />
-                                    </button>
+                                <div className="flex flex-wrap items-center gap-3 justify-end">
+                                    {/* Sort */}
+                                    <FilterDropdown
+                                        label={t('sortBy')}
+                                        icon={<ArrowUpDown className="h-4 w-4" />}
+                                        options={[
+                                            { value: 'playtime', label: t('playtime') },
+                                            { value: 'name', label: t('name') }
+                                        ]}
+                                        value={sortBy}
+                                        onChange={(val) => setSortBy(val)}
+                                        showAllOption={false}
+                                        showSelectionAccent={false}
+                                        align="right"
+                                    />
+
+                                    <div className="h-6 w-px bg-zinc-800" />
+
+                                    {/* View Mode */}
+                                    <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+                                        <button
+                                            onClick={() => setViewMode('grid')}
+                                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                                        >
+                                            <LayoutGrid className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('list')}
+                                            className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                                        >
+                                            <List className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -232,11 +307,15 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                 </Link>
                             </div>
                         ) : (
-                            <div className={`grid gap-4 ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5' : 'grid-cols-1'}`}>
+                            <div className={`grid gap-4 ${effectiveViewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5' : 'grid-cols-1'}`}>
                                 {games.map((entry) => (
-                                    viewMode === 'grid' ? (
+                                    effectiveViewMode === 'grid' ? (
                                         // Grid Card
-                                        <div key={entry.id} className="group bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all hover:shadow-xl hover:shadow-emerald-900/10 relative">
+                                        <div
+                                            key={entry.id}
+                                            onClick={() => { if (revealedId !== entry.id) setRevealedId(entry.id); }}
+                                            className="group bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all hover:shadow-xl hover:shadow-emerald-900/10 relative cursor-pointer lg:cursor-default"
+                                        >
                                             <div className="aspect-[3/4] relative overflow-hidden bg-zinc-950">
                                                 {entry.game.cover_image ? (
                                                     <img
@@ -262,9 +341,23 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                     </div>
                                                 )}
 
-                                                {/* Hover Overlay */}
-                                                <div className={`absolute inset-0 bg-black/90 transition-opacity duration-300 flex flex-col items-center justify-center p-4 text-center ${editingId === entry.id ? 'opacity-100 z-20' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                    <Link href={`/games/${entry.game.id}`} className="font-bold text-white mb-2 line-clamp-2 hover:text-emerald-400 hover:underline transition-colors">{entry.game.title}</Link>
+                                                {/* Reveal overlay: desktop hover, or mobile tap (revealedId/editingId) */}
+                                                <div
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (editingId === entry.id) {
+                                                            setEditingId(null); // editing -> revealed
+                                                        } else {
+                                                            setRevealedId(null); // revealed -> closed
+                                                        }
+                                                    }}
+                                                    className={`absolute inset-0 bg-black/90 transition-opacity duration-300 flex flex-col items-center justify-center p-4 text-center ${(editingId === entry.id || revealedId === entry.id) ? 'flex opacity-100 z-20' : 'hidden lg:flex opacity-0 lg:group-hover:opacity-100'}`}
+                                                >
+                                                    <Link
+                                                        href={`/games/${entry.game.id}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="font-bold text-white mb-2 line-clamp-2 hover:text-emerald-400 hover:underline transition-colors"
+                                                    >{entry.game.title}</Link>
                                                     {isOwnProfile && editingId === entry.id ? (
                                                         <div className="flex flex-col gap-2 w-full animate-in zoom-in-95 duration-200">
                                                             <div className="text-xs text-zinc-400 mb-1">{t('selectStatus')}</div>
@@ -292,7 +385,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                             <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4">{statusMap[entry.status] || entry.status}</span>
                                                             {isOwnProfile && (
                                                                 <button
-                                                                    onClick={() => setEditingId(entry.id)}
+                                                                    onClick={(e) => { e.stopPropagation(); setEditingId(entry.id); }}
                                                                     className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-bold hover:bg-zinc-200 transition-colors"
                                                                 >
                                                                     {t('editStatus')}
@@ -305,7 +398,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                         </div>
                                     ) : (
                                         // List Card
-                                        <div key={entry.id} className="flex items-center gap-4 p-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-800/50 transition-colors group">
+                                        <div key={entry.id} className="relative flex items-center gap-4 p-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-800/50 transition-colors group">
                                             <div className="h-16 w-12 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-950">
                                                 {entry.game.cover_image ? (
                                                     <img src={getImageUrl(entry.game.cover_image)} alt={entry.game.title} className="w-full h-full object-cover" />
@@ -326,21 +419,18 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                     <span className="capitalize text-emerald-400 text-xs font-bold">{statusMap[entry.status] || entry.status}</span>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <div className="text-right px-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-right">
                                                     {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) ? (
-                                                        <>
-                                                            <div className="font-bold text-white">{entry.playtime_hours}h</div>
-                                                            <div className="text-xs text-zinc-500">{t('playedLabel')}</div>
-                                                        </>
+                                                        <div className="font-bold text-zinc-400 text-sm">{entry.playtime_hours}h</div>
                                                     ) : (
-                                                        <div className="font-bold text-zinc-600">--</div>
+                                                        <div className="font-bold text-zinc-600 text-sm">--</div>
                                                     )}
                                                 </div>
                                                 {isOwnProfile && (
                                                     <button
                                                         onClick={() => setEditingId(editingId === entry.id ? null : entry.id)}
-                                                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors"
                                                     >
                                                         <Filter className="h-4 w-4" />
                                                     </button>

@@ -28,6 +28,7 @@ interface User {
     date_joined?: string;
     gender?: string;
     steam_id?: string;
+    xbox_gamertag?: string | null;
     dnd_mode?: boolean;
     settings?: any;
     phone_number?: string;

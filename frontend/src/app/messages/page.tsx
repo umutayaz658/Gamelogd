@@ -21,6 +21,23 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
+
+// `shared_post_details` on a Message is typed `any` (comes straight from a nested
+// serializer), so this mirrors PostCard.tsx's getPostMediaItems without a shared Post type.
+const getSharedPostMediaItems = (post: any): GridMediaItem[] => {
+    if (post.media && post.media.length > 0) {
+        return post.media.map((m: any) => ({ url: getImageUrl(m.file), type: m.media_type }));
+    }
+    if (post.media_file || post.image) {
+        return [{ url: getImageUrl(post.media_file || post.image || ''), type: post.media_type === 'video' ? 'video' : 'image' }];
+    }
+    if (post.gif_url) {
+        return [{ url: post.gif_url, type: 'image' }];
+    }
+    return [];
+};
 
 // API Data Types
 interface MessageReaction {
@@ -37,6 +54,7 @@ interface Message {
         id: number;
         username: string;
         avatar: string | null;
+        real_name?: string;
     };
     content: string;
     is_read: boolean;
@@ -101,6 +119,7 @@ interface Conversation {
 }
 
 function MessageAttachment({ msg }: { msg: Message }) {
+    const router = useRouter();
     if (msg.image) {
         return (
             <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800 bg-black max-w-sm max-h-60 cursor-pointer" onClick={() => window.open(getImageUrl(msg.image), '_blank')}>
@@ -144,24 +163,19 @@ function MessageAttachment({ msg }: { msg: Message }) {
                     </div>
                     {post.title && <h4 className="font-bold text-xs text-white mb-1.5 leading-snug">{post.title}</h4>}
                     <p className="text-zinc-300 text-[11px] line-clamp-4 whitespace-pre-wrap leading-relaxed">{post.content}</p>
-                    {(post.media_file || post.image) && (
-                        <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800/50 max-h-36">
-                            <img 
-                                src={getImageUrl(post.media_file || post.image || '')} 
-                                className="w-full h-full object-cover" 
-                                alt="Shared Media" 
-                            />
-                        </div>
-                    )}
-                    {post.gif_url && (
-                        <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800/50 max-h-36">
-                            <img 
-                                src={post.gif_url} 
-                                className="w-full h-full object-cover" 
-                                alt="Shared GIF" 
-                            />
-                        </div>
-                    )}
+                    {(() => {
+                        const sharedMediaItems = getSharedPostMediaItems(post);
+                        if (sharedMediaItems.length === 0) return null;
+                        return (
+                            <div className="mt-2">
+                                <PostMediaGrid
+                                    items={sharedMediaItems}
+                                    compact
+                                    onItemClick={() => router.push(`/${post.user.username}/status/${post.id}`)}
+                                />
+                            </div>
+                        );
+                    })()}
                 </div>
             </Link>
         );
@@ -237,7 +251,7 @@ function ReactionButton({ msg, onReact }: { msg: Message; onReact: (msgId: numbe
             <button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850 transition-all focus:outline-none"
+                className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-all focus:outline-none"
                 title="React to message"
             >
                 <Smile className="h-4 w-4" />
@@ -268,16 +282,22 @@ function ReactionButton({ msg, onReact }: { msg: Message; onReact: (msgId: numbe
 function MessagesContent() {
     const { user, login } = useAuth();
     const router = useRouter();
-    const { markMessagesRead } = useNotifications();
+    const { markMessagesRead, setChatFullscreen } = useNotifications();
     const searchParams = useSearchParams();
     const initialChatId = searchParams.get('chatId');
     const { t, language } = useTranslation();
     const toast = useToast();
     const confirm = useConfirm();
+    const isMobile = useIsMobile();
 
     const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [conversationSearchQuery, setConversationSearchQuery] = useState('');
     const [selectedChatId, setSelectedChatId] = useState<number | null>(initialChatId ? parseInt(initialChatId) : null);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+    const [activePinIndex, setActivePinIndex] = useState(0);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isMessagesLoading, setIsMessagesLoading] = useState(false);
@@ -328,6 +348,14 @@ function MessagesContent() {
     const [editingMessage, setEditingMessage] = useState<Message | null>(null);
     const [editContent, setEditContent] = useState('');
 
+    // Mobile long-press message action sheet (touch equivalent of hover-reveal + right-click menu)
+    const [mobileActionMsg, setMobileActionMsg] = useState<Message | null>(null);
+    const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+
+    // Pin banner long-press-to-unpin (mobile) — desktop uses a hover-reveal unpin button instead
+    const pinLongPressTimer = useRef<NodeJS.Timeout | null>(null);
+    const pinLongPressFiredRef = useRef(false);
+
     const scrollToMessage = (msgId: number) => {
         const element = document.getElementById(`msg-${msgId}`);
         if (element) {
@@ -339,9 +367,26 @@ function MessagesContent() {
         }
     };
 
+    // Renders `text` with the (case-insensitive) matched part of `query` in white/bold,
+    // for the in-conversation search results list.
+    const highlightMatch = (text: string, query: string) => {
+        if (!query.trim()) return text;
+        const idx = text.toLowerCase().indexOf(query.toLowerCase());
+        if (idx === -1) return text;
+        return (
+            <>
+                {text.slice(0, idx)}
+                <span className="text-white font-semibold">{text.slice(idx, idx + query.length)}</span>
+                {text.slice(idx + query.length)}
+            </>
+        );
+    };
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+    const lastMessageIdRef = useRef<number | null>(null);
+    const prevLastIdRef = useRef<number | null>(null);
 
     // Fetch Conversations
     const fetchConversations = async () => {
@@ -355,6 +400,35 @@ function MessagesContent() {
         }
     };
 
+    // Locks the document body itself so it can never scroll — without this, a touch-drag
+    // starting over a non-scrolling element (the header, composer, pinned banner) has no
+    // scroll container to consume it, so it falls through to the browser's own viewport,
+    // which mobile Safari/Chrome interpret as a page scroll and react to by animating
+    // their address bar, dragging this "fixed" chrome along with it. The conversation
+    // list and message list keep scrolling normally since they're independent overflow
+    // containers positioned inside this now-fixed body, unaffected by the lock.
+    useEffect(() => {
+        const scrollY = window.scrollY;
+        const original = {
+            position: document.body.style.position,
+            top: document.body.style.top,
+            width: document.body.style.width,
+            overflow: document.body.style.overflow,
+        };
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollY}px`;
+        document.body.style.width = '100%';
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.position = original.position;
+            document.body.style.top = original.top;
+            document.body.style.width = original.width;
+            document.body.style.overflow = original.overflow;
+            window.scrollTo(0, scrollY);
+        };
+    }, []);
+
     useEffect(() => {
         if (user) {
             fetchConversations();
@@ -363,32 +437,113 @@ function MessagesContent() {
         }
     }, [user]);
 
-    // Fetch Messages when chat is selected (with Polling)
+    // On mobile, an open chat thread takes over the whole screen — hide the global
+    // Navbar/MobileTabBar (the in-chat header already provides its own back button).
+    useEffect(() => {
+        setChatFullscreen(isMobile && !!selectedChatId);
+        return () => setChatFullscreen(false);
+    }, [isMobile, selectedChatId, setChatFullscreen]);
+
+    // Pinned messages banner — fetched separately from the scrolled/paginated message
+    // list so a pinned message stays visible even if it's older than what's loaded.
+    const fetchPinnedMessages = async () => {
+        if (!selectedChatId) return;
+        try {
+            const res = await api.get(`/messages/?conversation_id=${selectedChatId}&pinned=true`);
+            setPinnedMessages(res.data.results);
+            setActivePinIndex(0);
+        } catch (error) {
+            console.error("Failed to fetch pinned messages:", error);
+        }
+    };
+
+    useEffect(() => {
+        if (!selectedChatId) {
+            setPinnedMessages([]);
+            return;
+        }
+        fetchPinnedMessages();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedChatId]);
+
+    // Fetch Messages when chat is selected (initial page + delta polling)
     useEffect(() => {
         if (!selectedChatId) return;
 
-        const fetchMessages = async (isInitial = false) => {
-            if (isInitial) setIsMessagesLoading(true);
+        lastMessageIdRef.current = null;
+        prevLastIdRef.current = null;
+
+        const fetchInitial = async () => {
+            setIsMessagesLoading(true);
             try {
                 const res = await api.get(`/messages/?conversation_id=${selectedChatId}`);
-                setMessages(res.data);
+                const results: Message[] = res.data.results;
+                setMessages(results);
+                setHasMoreMessages(res.data.has_more);
+                lastMessageIdRef.current = results.length > 0 ? results[results.length - 1].id : null;
             } catch (error) {
                 console.error("Failed to fetch messages:", error);
             } finally {
-                if (isInitial) setIsMessagesLoading(false);
+                setIsMessagesLoading(false);
             }
         };
 
-        fetchMessages(true);
+        // Polling only fetches messages newer than the last one we know about — a chat's
+        // full history used to be refetched wholesale every 3 seconds.
+        const fetchNewMessages = async () => {
+            try {
+                const url = lastMessageIdRef.current != null
+                    ? `/messages/?conversation_id=${selectedChatId}&after_id=${lastMessageIdRef.current}`
+                    : `/messages/?conversation_id=${selectedChatId}`;
+                const res = await api.get(url);
+                const newOnes: Message[] = res.data.results;
+                if (newOnes.length > 0) {
+                    setMessages(prev => {
+                        if (lastMessageIdRef.current == null) return newOnes;
+                        // Defensive dedup — guards against ever double-appending a message
+                        // that was already added optimistically (e.g. by a local send).
+                        const existingIds = new Set(prev.map(m => m.id));
+                        return [...prev, ...newOnes.filter(m => !existingIds.has(m.id))];
+                    });
+                    lastMessageIdRef.current = newOnes[newOnes.length - 1].id;
+                }
+            } catch (error) {
+                console.error("Failed to poll messages:", error);
+            }
+        };
 
-        const intervalId = setInterval(() => fetchMessages(false), 3000); // Poll every 3s
+        fetchInitial();
+
+        const intervalId = setInterval(fetchNewMessages, 3000); // Poll every 3s
 
         return () => clearInterval(intervalId);
     }, [selectedChatId]);
 
-    // Scroll to bottom on new message
+    const loadEarlierMessages = async () => {
+        if (!selectedChatId || messages.length === 0 || isLoadingMore) return;
+        setIsLoadingMore(true);
+        try {
+            const oldestId = messages[0].id;
+            const res = await api.get(`/messages/?conversation_id=${selectedChatId}&before_id=${oldestId}`);
+            const older: Message[] = res.data.results;
+            setMessages(prev => [...older, ...prev]);
+            setHasMoreMessages(res.data.has_more);
+        } catch (error) {
+            console.error("Failed to load earlier messages:", error);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    };
+
+    // Scroll to bottom only when a message was appended (send/poll) — not when older
+    // messages are prepended via "Load earlier", which would otherwise jump the user
+    // back down to the bottom right after they asked to see older history.
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        const newLastId = messages.length > 0 ? messages[messages.length - 1].id : null;
+        if (newLastId !== prevLastIdRef.current) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+        prevLastIdRef.current = newLastId;
     }, [messages]);
 
     // Search users to add inside group
@@ -412,6 +567,26 @@ function MessagesContent() {
         return () => clearTimeout(delayDebounceFn);
     }, [addMemberQuery]);
 
+    // Search messages within the conversation — hits the backend so it covers the
+    // whole history, not just whatever page of messages is currently loaded client-side.
+    useEffect(() => {
+        if (!selectedChatId) return;
+        const delayDebounceFn = setTimeout(async () => {
+            if (searchMessagesQuery.trim()) {
+                try {
+                    const res = await api.get(`/messages/?conversation_id=${selectedChatId}&search=${encodeURIComponent(searchMessagesQuery)}`);
+                    setSearchResults(res.data.results);
+                } catch (error) {
+                    console.error("Failed to search messages:", error);
+                }
+            } else {
+                setSearchResults([]);
+            }
+        }, 400);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchMessagesQuery, selectedChatId]);
+
     // DND Toggle
     const handleToggleDnd = async () => {
         try {
@@ -431,6 +606,11 @@ function MessagesContent() {
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error("File size must be less than 10MB");
+            return;
+        }
 
         setSelectedGif(null);
         setShowGifPicker(false);
@@ -487,6 +667,7 @@ function MessagesContent() {
             });
 
             setMessages([...messages, res.data]);
+            lastMessageIdRef.current = res.data.id;
             setInputText('');
             clearMedia();
             setReplyingTo(null);
@@ -692,17 +873,30 @@ function MessagesContent() {
         setGroupAvatarPreview(URL.createObjectURL(file));
     };
 
-    // Search messages client-side
     const handleSearchMessages = (query: string) => {
         setSearchMessagesQuery(query);
-        if (!query.trim()) {
-            setSearchResults([]);
+    };
+
+    // Jump to a message (e.g. a search result) that may be outside the currently-loaded
+    // page — fetches a window around it first if it isn't already rendered, WhatsApp-style.
+    const jumpToMessage = async (messageId: number) => {
+        if (document.getElementById(`msg-${messageId}`)) {
+            scrollToMessage(messageId);
             return;
         }
-        const results = messages.filter(m =>
-            m.content?.toLowerCase().includes(query.toLowerCase())
-        );
-        setSearchResults(results);
+        if (!selectedChatId) return;
+        try {
+            const res = await api.get(`/messages/?conversation_id=${selectedChatId}&around_id=${messageId}`);
+            const windowMessages: Message[] = res.data.results;
+            setMessages(windowMessages);
+            setHasMoreMessages(res.data.has_more);
+            const newLastId = windowMessages.length > 0 ? windowMessages[windowMessages.length - 1].id : null;
+            lastMessageIdRef.current = newLastId;
+            prevLastIdRef.current = newLastId; // suppress the scroll-to-bottom effect for this replace
+            requestAnimationFrame(() => scrollToMessage(messageId));
+        } catch (error) {
+            console.error("Failed to jump to message:", error);
+        }
     };
 
     // Block user (individual chats)
@@ -753,7 +947,13 @@ function MessagesContent() {
     const handlePinMessage = async (messageId: number) => {
         try {
             const res = await api.post(`/messages/${messageId}/pin/`);
-            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_pinned: res.data.is_pinned } : m));
+            const evictedId: number | null = res.data.evicted_message_id;
+            setMessages(prev => prev.map(m => {
+                if (m.id === messageId) return { ...m, is_pinned: res.data.is_pinned };
+                if (evictedId && m.id === evictedId) return { ...m, is_pinned: false };
+                return m;
+            }));
+            fetchPinnedMessages();
         } catch (error) {
             console.error('Failed to pin message:', error);
         }
@@ -827,6 +1027,43 @@ function MessagesContent() {
         setContextMenu({ x: e.clientX, y: e.clientY, msg });
     };
 
+    // Long-press handlers (mobile touch equivalent of the hover-reveal + right-click menu above)
+    const handleMessageTouchStart = (msg: Message) => {
+        if (msg.is_deleted) return;
+        longPressTimer.current = setTimeout(() => setMobileActionMsg(msg), 500);
+    };
+    const cancelLongPress = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
+    // Pin banner: tap cycles through pins, long-press (mobile) unpins the shown one
+    const handlePinTouchStart = (messageId: number) => {
+        pinLongPressFiredRef.current = false;
+        pinLongPressTimer.current = setTimeout(() => {
+            pinLongPressFiredRef.current = true;
+            handlePinMessage(messageId);
+        }, 500);
+    };
+    const cancelPinLongPress = () => {
+        if (pinLongPressTimer.current) {
+            clearTimeout(pinLongPressTimer.current);
+            pinLongPressTimer.current = null;
+        }
+    };
+    const handlePinBannerClick = () => {
+        if (pinLongPressFiredRef.current) {
+            pinLongPressFiredRef.current = false;
+            return;
+        }
+        // Jump to the currently-shown pin, then advance so the next tap shows the next one.
+        jumpToMessage(pinnedMessages[activePinIndex].id);
+        setShowDetails(false);
+        setActivePinIndex(prev => (prev + 1) % pinnedMessages.length);
+    };
+
     const canEditMessage = (msg: Message) => {
         const fifteenMinutes = 15 * 60 * 1000;
         return msg.is_me && !msg.is_deleted && (Date.now() - new Date(msg.created_at).getTime()) < fifteenMinutes;
@@ -861,9 +1098,18 @@ function MessagesContent() {
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
 
+    // Filters the conversation list by participant display name/username — this is a
+    // client-side filter over the already-loaded conversation list, not a message search.
+    const filteredConversations = conversations.filter(chat => {
+        if (!conversationSearchQuery.trim()) return true;
+        const query = conversationSearchQuery.toLowerCase();
+        return getChatName(chat).toLowerCase().includes(query) ||
+            (chat.other_user?.username?.toLowerCase().includes(query) ?? false);
+    });
+
     return (
-        <div className="h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 flex flex-col overflow-hidden">
-            <Navbar />
+        <div className="h-dvh bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 flex flex-col overflow-hidden">
+            {!(isMobile && selectedChatId) && <Navbar />}
 
             <NewChatModal
                 isOpen={isNewChatOpen}
@@ -871,15 +1117,14 @@ function MessagesContent() {
                 onChatStarted={handleChatStarted}
             />
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden min-h-0">
                 {/* Sidebar - Conversation List */}
-                <div className={`w-full md:w-1/3 lg:w-1/4 border-r border-zinc-800 flex flex-col bg-zinc-950 ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
+                <div className={`w-full lg:w-1/3 xl:w-1/4 border-r border-zinc-800 flex flex-col bg-zinc-950 ${selectedChatId ? 'hidden lg:flex' : 'flex'}`}>
 
                     {/* Sidebar Header */}
                     <div className="p-4 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-950 z-10">
                         <h1 className="text-xl font-bold flex items-center gap-2">
                             {t('messages')}
-                            {dndMode && <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Do Not Disturb active" />}
                         </h1>
                         <div className="flex items-center gap-1">
                             <button
@@ -904,6 +1149,8 @@ function MessagesContent() {
                         <div className="relative">
                             <input
                                 type="text"
+                                value={conversationSearchQuery}
+                                onChange={(e) => setConversationSearchQuery(e.target.value)}
                                 placeholder={t('searchMessagesPlaceholder')}
                                 className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 transition-all"
                             />
@@ -912,20 +1159,24 @@ function MessagesContent() {
                     </div>
 
                     {/* Conversation List */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin-dark">
+                    <div className="flex-1 overflow-y-auto overscroll-contain scrollbar-thin-dark">
                         {conversations.length === 0 ? (
                             <div className="p-4 text-center text-zinc-500 text-sm">
                                 {t('noConversationsYet')}
                             </div>
+                        ) : filteredConversations.length === 0 ? (
+                            <div className="p-4 text-center text-zinc-500 text-sm">
+                                {t('noResultsFound')}
+                            </div>
                         ) : (
-                            conversations.map((chat) => (
+                            filteredConversations.map((chat) => (
                                 <button
                                     key={chat.id}
                                     onClick={() => handleChatClick(chat.id)}
                                     className={`w-full p-4 flex items-center gap-4 hover:bg-zinc-900/50 transition-colors border-b border-zinc-900/50 ${selectedChatId === chat.id ? 'bg-zinc-900' : ''}`}
                                 >
                                     <div className="relative">
-                                        <div className="h-12 w-12 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                        <div className="h-12 w-12 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
                                             <img
                                                 src={getChatAvatar(chat)}
                                                 alt={getChatName(chat)}
@@ -946,8 +1197,13 @@ function MessagesContent() {
                                     <div className="flex-1 text-left min-w-0">
                                         <div className="flex justify-between items-baseline mb-1">
                                             <span className="font-bold truncate text-sm">{getChatName(chat)}</span>
-                                            <span className="text-xs text-zinc-500 whitespace-nowrap ml-2">
-                                                {chat.last_message ? new Date(chat.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}
+                                            <span className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                                {chat.memberships?.find(m => m.user.id === user?.id)?.is_muted && (
+                                                    <BellOff className="h-3 w-3 text-zinc-500" />
+                                                )}
+                                                <span className="text-xs text-zinc-500 whitespace-nowrap">
+                                                    {chat.last_message ? new Date(chat.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}
+                                                </span>
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
@@ -958,7 +1214,7 @@ function MessagesContent() {
                                                         {chat.last_message.content || 'Sent an attachment'}
                                                     </>
                                                 ) : (
-                                                    <span className="italic text-zinc-650">{t('noMessagesYet')}</span>
+                                                    <span className="italic text-zinc-500">{t('noMessagesYet')}</span>
                                                 )}
                                             </p>
                                             {chat.unread_count > 0 && (
@@ -975,24 +1231,24 @@ function MessagesContent() {
                 </div>
 
                 {/* Chat Window */}
-                <div className={`flex-1 flex bg-zinc-900/30 ${!selectedChatId ? 'hidden md:flex' : 'flex'} overflow-hidden`}>
+                <div className={`flex-1 flex bg-zinc-900/30 ${!selectedChatId ? 'hidden lg:flex' : 'flex'} overflow-hidden min-h-0`}>
                     {activeChat ? (
                         <>
                             {/* Inner flex layout for Chat panel + Details sidebar */}
-                            <div className="flex-1 flex flex-col overflow-hidden relative">
+                            <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
                                 {/* Chat Header */}
-                                <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/80 backdrop-blur-md z-10">
+                                <div className="sticky top-0 z-20 p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/80 backdrop-blur-md">
                                     <div className="flex items-center gap-4 min-w-0">
                                         <button
                                             onClick={() => setSelectedChatId(null)}
-                                            className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-white"
+                                            className="lg:hidden p-2 -ml-2 text-zinc-400 hover:text-white"
                                         >
                                             ←
                                         </button>
                                         {activeChat.is_group ? (
                                             <div className="flex items-center gap-4 min-w-0">
                                                 <div className="relative">
-                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
                                                         <img
                                                             src={getChatAvatar(activeChat)}
                                                             alt={getChatName(activeChat)}
@@ -1013,7 +1269,7 @@ function MessagesContent() {
                                                 className="flex items-center gap-4 min-w-0 hover:opacity-85 transition-opacity"
                                             >
                                                 <div className="relative">
-                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-850 flex-shrink-0">
+                                                    <div className="h-10 w-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
                                                         <img
                                                             src={getChatAvatar(activeChat)}
                                                             alt={getChatName(activeChat)}
@@ -1044,8 +1300,47 @@ function MessagesContent() {
                                     </div>
                                 </div>
 
+                                {/* Pinned Messages Banner */}
+                                {pinnedMessages.length > 0 && (
+                                    <div
+                                        className="group/pin relative flex items-center gap-3 px-4 py-2 bg-zinc-900/80 border-b border-zinc-800 cursor-pointer"
+                                        onClick={handlePinBannerClick}
+                                        onTouchStart={() => handlePinTouchStart(pinnedMessages[activePinIndex].id)}
+                                        onTouchEnd={cancelPinLongPress}
+                                        onTouchMove={cancelPinLongPress}
+                                    >
+                                        {pinnedMessages.length > 1 && (
+                                            <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                                {pinnedMessages.map((_, i) => (
+                                                    <span
+                                                        key={i}
+                                                        className={`w-0.5 h-4 rounded-full transition-colors ${i === activePinIndex ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                        <Pin className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[10px] font-bold text-zinc-500">{t('pinnedMessage')}</p>
+                                            <p className="text-xs text-zinc-300 truncate">
+                                                {pinnedMessages[activePinIndex].content || (pinnedMessages[activePinIndex].image ? '📷 Photo' : pinnedMessages[activePinIndex].gif_url ? 'GIF' : 'Attachment')}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handlePinMessage(pinnedMessages[activePinIndex].id);
+                                            }}
+                                            className="hidden lg:flex opacity-0 group-hover/pin:opacity-100 p-1 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-white transition-all flex-shrink-0"
+                                            title={t('unpinMessage')}
+                                        >
+                                            <PinOff className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* Messages Area */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin-dark">
+                                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 scrollbar-thin-dark">
                                     {isMessagesLoading ? (
                                         <div className="flex justify-center py-4">
                                             <Loader2 className="h-6 w-6 text-emerald-500 animate-spin" />
@@ -1083,17 +1378,37 @@ function MessagesContent() {
                                             </div>
                                         </div>
                                     ) : (
-                                        messages.map((msg) => (
-                                            <div key={msg.id} id={`msg-${msg.id}`} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-150 group relative rounded-2xl transition-all duration-300`} onContextMenu={(e) => handleContextMenu(e, msg)}>
+                                        <>
+                                        {hasMoreMessages && (
+                                            <div className="flex justify-center pb-2">
+                                                <button
+                                                    onClick={loadEarlierMessages}
+                                                    disabled={isLoadingMore}
+                                                    className="px-4 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors disabled:opacity-50"
+                                                >
+                                                    {isLoadingMore ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('loadEarlierMessages')}
+                                                </button>
+                                            </div>
+                                        )}
+                                        {messages.map((msg) => (
+                                            <div
+                                                key={msg.id}
+                                                id={`msg-${msg.id}`}
+                                                className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-150 group relative rounded-2xl transition-all duration-300`}
+                                                onContextMenu={(e) => handleContextMenu(e, msg)}
+                                                onTouchStart={() => handleMessageTouchStart(msg)}
+                                                onTouchEnd={cancelLongPress}
+                                                onTouchMove={cancelLongPress}
+                                            >
                                                 <div className={`flex items-center gap-2 max-w-[75%] ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
-                                                    
+
                                                     {!msg.is_deleted && (
-                                                        <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-150 z-10 ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                        <div className={`hidden lg:flex items-center gap-0.5 lg:opacity-0 lg:group-hover:opacity-100 transition-all duration-150 z-10 ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
                                                             <ReactionButton msg={msg} onReact={handleMessageReact} />
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setReplyingTo(msg)}
-                                                                className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850 transition-colors"
+                                                                className="p-1 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                                                                 title="Reply to message"
                                                             >
                                                                 <CornerUpLeft className="h-4 w-4" />
@@ -1110,23 +1425,23 @@ function MessagesContent() {
 
                                                         {/* Pinned indicator */}
                                                         {msg.is_pinned && (
-                                                            <div className="flex items-center gap-1 text-[9px] text-amber-500 mb-0.5">
+                                                            <div className="flex items-center gap-1 text-[9px] text-zinc-500 mb-0.5">
                                                                 <Pin className="h-2.5 w-2.5" />
                                                                 <span>Pinned</span>
                                                             </div>
                                                         )}
-                                                        
+
                                                         {msg.is_deleted ? (
                                                             <div className={`rounded-2xl px-4 py-2 ${msg.is_me
                                                                 ? 'bg-zinc-800/50 rounded-tr-none'
-                                                                : 'bg-zinc-800/50 rounded-tl-none border border-zinc-750/50'
+                                                                : 'bg-zinc-800/50 rounded-tl-none'
                                                             }`}>
                                                                 <p className="text-sm italic text-zinc-500">This message was deleted</p>
                                                             </div>
                                                         ) : editingMessage?.id === msg.id ? (
                                                             <div className={`rounded-2xl px-4 py-2 ${msg.is_me
                                                                 ? 'bg-emerald-600 text-white rounded-tr-none shadow-lg shadow-emerald-950/20'
-                                                                : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-750'
+                                                                : 'bg-zinc-800 text-zinc-200 rounded-tl-none'
                                                             }`}>
                                                                 <input
                                                                     type="text"
@@ -1147,9 +1462,9 @@ function MessagesContent() {
                                                         ) : (
                                                         <div className={`rounded-2xl px-4 py-2 ${msg.is_me
                                                             ? 'bg-emerald-600 text-white rounded-tr-none shadow-lg shadow-emerald-950/20'
-                                                            : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-750'
+                                                            : 'bg-zinc-800 text-zinc-200 rounded-tl-none'
                                                             }`}>
-                                                            
+
                                                             {/* Reply Quote Preview */}
                                                             {msg.reply_to_details && (
                                                                 <button
@@ -1175,7 +1490,7 @@ function MessagesContent() {
                                                             {/* Attachment renderer */}
                                                             <MessageAttachment msg={msg} />
 
-                                                            <p className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${msg.is_me ? 'text-emerald-200' : 'text-zinc-550'}`}>
+                                                            <p className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${msg.is_me ? 'text-emerald-200' : 'text-zinc-500'}`}>
                                                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                                 {msg.is_edited && <span className="italic">(edited)</span>}
                                                                 {msg.is_me && (
@@ -1209,7 +1524,7 @@ function MessagesContent() {
                                                                         className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] transition-all border ${
                                                                             data.reactedByMe
                                                                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                                                                : 'bg-zinc-950 text-zinc-400 border-zinc-850 hover:border-zinc-700'
+                                                                                : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
                                                                         }`}
                                                                         title={data.users.join(', ')}
                                                                     >
@@ -1222,7 +1537,8 @@ function MessagesContent() {
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))
+                                        ))}
+                                        </>
                                     )}
 
                                     {/* Context Menu */}
@@ -1242,7 +1558,7 @@ function MessagesContent() {
                                                     className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
                                                 >
                                                     <Edit2 className="h-3.5 w-3.5" />
-                                                    Edit Message
+                                                    {t('editMessage')}
                                                 </button>
                                             )}
                                             <button
@@ -1253,7 +1569,7 @@ function MessagesContent() {
                                                 className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
                                             >
                                                 {contextMenu.msg.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                                                {contextMenu.msg.is_pinned ? 'Unpin Message' : 'Pin Message'}
+                                                {contextMenu.msg.is_pinned ? t('unpinMessage') : t('pinMessage')}
                                             </button>
                                             <button
                                                 onClick={() => {
@@ -1263,15 +1579,88 @@ function MessagesContent() {
                                                 className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
                                             >
                                                 <Trash2 className="h-3.5 w-3.5" />
-                                                Delete Message
+                                                {t('deleteMessage')}
                                             </button>
                                         </div>
+                                    )}
+
+                                    {/* Mobile Long-Press Action Sheet */}
+                                    {mobileActionMsg && (
+                                        <>
+                                            <div
+                                                className="lg:hidden fixed inset-0 z-[70] bg-black/60 animate-in fade-in duration-150"
+                                                onClick={() => setMobileActionMsg(null)}
+                                            />
+                                            <div className="lg:hidden fixed inset-x-0 bottom-0 z-[70] bg-zinc-900 border-t border-zinc-800 rounded-t-2xl shadow-2xl py-2 animate-in slide-in-from-bottom duration-200">
+                                                <div className="flex items-center justify-center gap-3 py-3 border-b border-zinc-800">
+                                                    {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                                                        <button
+                                                            key={emoji}
+                                                            onClick={() => {
+                                                                handleMessageReact(mobileActionMsg.id, emoji);
+                                                                setMobileActionMsg(null);
+                                                            }}
+                                                            className="text-2xl active:scale-90 transition-transform p-1"
+                                                        >
+                                                            {emoji}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        setReplyingTo(mobileActionMsg);
+                                                        setMobileActionMsg(null);
+                                                    }}
+                                                    className="w-full px-5 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-3 transition-colors"
+                                                >
+                                                    <CornerUpLeft className="h-4 w-4" />
+                                                    {t('reply')}
+                                                </button>
+                                                {mobileActionMsg.is_me && (
+                                                    <>
+                                                        {canEditMessage(mobileActionMsg) && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingMessage(mobileActionMsg);
+                                                                    setEditContent(mobileActionMsg.content);
+                                                                    setMobileActionMsg(null);
+                                                                }}
+                                                                className="w-full px-5 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-3 transition-colors"
+                                                            >
+                                                                <Edit2 className="h-4 w-4" />
+                                                                {t('editMessage')}
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => {
+                                                                handlePinMessage(mobileActionMsg.id);
+                                                                setMobileActionMsg(null);
+                                                            }}
+                                                            className="w-full px-5 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-3 transition-colors"
+                                                        >
+                                                            {mobileActionMsg.is_pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                                                            {mobileActionMsg.is_pinned ? t('unpinMessage') : t('pinMessage')}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                handleDeleteMessage(mobileActionMsg.id);
+                                                                setMobileActionMsg(null);
+                                                            }}
+                                                            className="w-full px-5 py-3 text-left text-sm text-red-400 hover:bg-zinc-800 flex items-center gap-3 transition-colors"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                            {t('deleteMessage')}
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </>
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
                                 {/* Input Composer Area */}
                                 {!activeChat.is_group && activeChat.other_user?.is_blocked ? (
-                                    <div className="flex flex-col items-center justify-center gap-2.5 p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-400 text-sm animate-in fade-in duration-200">
+                                    <div className="sticky bottom-0 z-20 flex flex-col items-center justify-center gap-2.5 p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-400 text-sm animate-in fade-in duration-200">
                                         <p className="font-semibold text-zinc-400">{t('youBlockedUserAlert').replace('{username}', activeChat.other_user.username)}</p>
                                         <button
                                             type="button"
@@ -1297,11 +1686,11 @@ function MessagesContent() {
                                         </button>
                                     </div>
                                 ) : !activeChat.is_group && activeChat.other_user?.has_blocked_me ? (
-                                    <div className="flex items-center justify-center p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-550 text-sm italic font-semibold animate-in fade-in duration-200">
+                                    <div className="sticky bottom-0 z-20 flex items-center justify-center p-6 bg-zinc-950 border-t border-zinc-800 text-zinc-500 text-sm italic font-semibold animate-in fade-in duration-200">
                                         {t('youCannotMessage')}
                                     </div>
                                 ) : (
-                                    <div className="p-4 border-t border-zinc-800 bg-zinc-950">
+                                    <div className="sticky bottom-0 z-20 p-4 border-t border-zinc-800 bg-zinc-950">
                                         <form onSubmit={handleSendMessage} className="flex flex-col gap-2 relative">
                                             
                                             {/* Replying To Preview */}
@@ -1318,7 +1707,7 @@ function MessagesContent() {
                                                     <button
                                                         type="button"
                                                         onClick={() => setReplyingTo(null)}
-                                                        className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white transition-colors ml-2"
+                                                        className="p-1 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white transition-colors ml-2"
                                                     >
                                                         <X className="h-4 w-4" />
                                                     </button>
@@ -1350,34 +1739,34 @@ function MessagesContent() {
                                                     onChange={handleFileSelect}
                                                 />
                                                 
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={() => fileInputRef.current?.click()}
-                                                    className="p-2 text-zinc-400 hover:text-white transition-colors"
+                                                    className="flex-shrink-0 p-2 text-zinc-400 hover:text-white transition-colors"
                                                     title={t('uploadImage')}
                                                 >
                                                     <ImageIcon className="h-5 w-5" />
                                                 </button>
-                                                
-                                                <button 
+
+                                                <button
                                                     type="button"
                                                     onClick={() => {
                                                         setShowGifPicker(!showGifPicker);
                                                         setShowEmojiPicker(false);
                                                     }}
-                                                    className={`p-2 transition-colors ${showGifPicker ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+                                                    className={`flex-shrink-0 p-2 transition-colors ${showGifPicker ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
                                                     title={t('selectGif')}
                                                 >
                                                     <FileImage className="h-5 w-5" />
                                                 </button>
 
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={() => {
                                                         setShowEmojiPicker(!showEmojiPicker);
                                                         setShowGifPicker(false);
                                                     }}
-                                                    className={`p-2 transition-colors ${showEmojiPicker ? 'text-yellow-500' : 'text-zinc-400 hover:text-yellow-500'}`}
+                                                    className={`flex-shrink-0 p-2 transition-colors ${showEmojiPicker ? 'text-yellow-500' : 'text-zinc-400 hover:text-yellow-500'}`}
                                                     title={t('addEmoji')}
                                                 >
                                                     <Smile className="h-5 w-5" />
@@ -1388,13 +1777,13 @@ function MessagesContent() {
                                                     value={inputText}
                                                     onChange={(e) => setInputText(e.target.value)}
                                                     placeholder={t('typeAMessage')}
-                                                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
+                                                    className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-full py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
                                                 />
-                                                
+
                                                 <button
                                                     type="submit"
                                                     disabled={isSending || (!inputText.trim() && !selectedFile && !selectedGif)}
-                                                    className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-950/20"
+                                                    className="flex-shrink-0 p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-950/20"
                                                 >
                                                     {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                                                 </button>
@@ -1433,10 +1822,13 @@ function MessagesContent() {
 
                             {/* Details & Settings Drawer */}
                             {showDetails && (
-                                <div className="w-80 border-l border-zinc-800 bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto scrollbar-thin-dark animate-in slide-in-from-right duration-300">
-                                    
+                                <div className={isMobile
+                                    ? "fixed inset-0 z-[60] bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto animate-in slide-in-from-right duration-300"
+                                    : "w-80 border-l border-zinc-800 bg-zinc-950 p-5 flex flex-col gap-6 overflow-y-auto scrollbar-thin-dark animate-in slide-in-from-right duration-300"
+                                }>
+
                                     {/* Drawer Header */}
-                                    <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+                                    <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                                         <h3 className="font-bold text-base text-white">{t('detailsTitle')}</h3>
                                         <button 
                                             onClick={() => setShowDetails(false)} 
@@ -1485,20 +1877,21 @@ function MessagesContent() {
                                                     autoFocus
                                                 />
                                                 {searchResults.length > 0 && (
-                                                    <div className="max-h-[200px] overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+                                                    <div className="max-h-[260px] overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
                                                         {searchResults.map(result => (
                                                             <button
                                                                 key={result.id}
                                                                 onClick={() => {
-                                                                    scrollToMessage(result.id);
+                                                                    jumpToMessage(result.id);
                                                                     setShowSearchMessages(false);
                                                                     setSearchMessagesQuery('');
                                                                     setSearchResults([]);
+                                                                    setShowDetails(false);
                                                                 }}
                                                                 className="w-full p-2 text-left bg-zinc-900/50 hover:bg-zinc-800 rounded-lg text-xs transition-colors"
                                                             >
-                                                                <span className="text-zinc-500">@{result.sender.username}</span>
-                                                                <p className="text-zinc-300 truncate">{result.content}</p>
+                                                                <span className="text-zinc-500">{result.sender.real_name || result.sender.username}</span>
+                                                                <p className="text-zinc-300 truncate">{highlightMatch(result.content, searchMessagesQuery)}</p>
                                                             </button>
                                                         ))}
                                                     </div>
@@ -1512,7 +1905,7 @@ function MessagesContent() {
 
                                     {/* Block User Setting (Only for direct messages) */}
                                     {!activeChat.is_group && activeChat.other_user && (
-                                        <div className="border-t border-zinc-850 pt-4">
+                                        <div className="border-t border-zinc-800 pt-4">
                                             <button
                                                 onClick={handleToggleBlock}
                                                 className={`w-full flex items-center justify-center gap-2.5 p-3.5 rounded-2xl font-semibold text-sm transition-all ${
@@ -1529,13 +1922,13 @@ function MessagesContent() {
 
                                     {/* Group customization (For Groups only) */}
                                     {activeChat.is_group && (
-                                        <div className="space-y-4 border-t border-zinc-850 pt-4">
+                                        <div className="space-y-4 border-t border-zinc-800 pt-4">
                                             <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('groupSettings')}</h4>
                                             
                                             {/* Avatar Edit */}
                                             <div className="flex flex-col items-center gap-3">
                                                 <div className="relative group">
-                                                    <div className="h-20 w-20 rounded-full overflow-hidden bg-zinc-850 border-2 border-zinc-800">
+                                                    <div className="h-20 w-20 rounded-full overflow-hidden bg-zinc-800 border-2 border-zinc-800">
                                                         <img 
                                                             src={groupAvatarPreview || getChatAvatar(activeChat)} 
                                                             className="w-full h-full object-cover" 
@@ -1545,7 +1938,7 @@ function MessagesContent() {
                                                     {isAdmin && (
                                                         <button 
                                                             onClick={() => groupAvatarInputRef.current?.click()}
-                                                            className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                                                            className="absolute inset-0 bg-black/60 rounded-full opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
                                                             title={t('changeGroupPhoto')}
                                                         >
                                                             <Edit2 className="h-5 w-5" />
@@ -1589,7 +1982,7 @@ function MessagesContent() {
 
                                     {/* Members Section (Groups only) */}
                                     {activeChat.is_group && (
-                                        <div className="space-y-4 border-t border-zinc-850 pt-4 flex-1 flex flex-col min-h-0">
+                                        <div className="space-y-4 border-t border-zinc-800 pt-4 flex-1 flex flex-col min-h-0">
                                             <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('groupMembers')} ({activeChat.memberships?.length || 0})</h4>
                                             
                                             {/* Add member (Admin only) */}
@@ -1631,7 +2024,7 @@ function MessagesContent() {
                                                             <img
                                                                 src={getImageUrl(member.user.avatar, member.user.username)}
                                                                 alt=""
-                                                                className="h-8 w-8 rounded-full object-cover bg-zinc-850 flex-shrink-0"
+                                                                className="h-8 w-8 rounded-full object-cover bg-zinc-800 flex-shrink-0"
                                                             />
                                                             <div className="min-w-0">
                                                                 <div className="font-semibold text-white text-xs truncate flex items-center gap-1.5">
@@ -1671,7 +2064,7 @@ function MessagesContent() {
 
                                     {/* Individual chat action buttons */}
                                     {!activeChat.is_group && (
-                                        <div className="space-y-2 border-t border-zinc-850 pt-4">
+                                        <div className="space-y-2 border-t border-zinc-800 pt-4">
                                             <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Conversation Actions</h4>
                                             <button
                                                 onClick={handleBlockUser}
@@ -1698,8 +2091,8 @@ function MessagesContent() {
                                     )}
 
                                     {/* Action button at bottom */}
-                                    <div className="border-t border-zinc-850 pt-4 mt-auto">
-                                        {activeChat.is_group ? (
+                                    {activeChat.is_group && (
+                                        <div className="border-t border-zinc-800 pt-4 mt-auto">
                                             <div className="space-y-2">
                                                 <button
                                                     onClick={handleLeaveGroup}
@@ -1725,12 +2118,8 @@ function MessagesContent() {
                                                     </button>
                                                 )}
                                             </div>
-                                        ) : (
-                                            <div className="text-center text-xs text-zinc-650">
-                                                Encrypted Direct Message
-                                            </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
 
                                 </div>
                             )}
@@ -1741,7 +2130,7 @@ function MessagesContent() {
                                 <Send className="h-8 w-8 text-zinc-600 animate-pulse" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-2">{t('yourMessages')}</h3>
-                            <p className="max-w-xs text-sm text-zinc-550">{t('selectConversationToChat')}</p>
+                            <p className="max-w-xs text-sm text-zinc-500">{t('selectConversationToChat')}</p>
                             <button
                                 onClick={() => setIsNewChatOpen(true)}
                                 className="mt-6 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold transition-all shadow-lg shadow-emerald-950/30"

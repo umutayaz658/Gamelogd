@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
-from api.models import User, Notification, SupportTicket, Interest, PendingRegistration
+from api.models import User, Notification, SupportTicket, Interest, PendingRegistration, PendingEmailChange
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer, OrganisationSerializer, OrganisationMemberSerializer, OrganisationInvitationSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
@@ -19,7 +19,7 @@ from django.template.loader import render_to_string
 logger = logging.getLogger(__name__)
 from django.utils.html import strip_tags
 from django.conf import settings
-from api.services.email_service import send_verification_email, send_support_ticket_email
+from api.services.email_service import send_verification_email, send_support_ticket_email, send_email_change_verification_email
 
 from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission, OrganisationAccessPermission
 from api.authentication import set_auth_cookie, clear_auth_cookie
@@ -502,8 +502,91 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='delete-account')
     def delete_account(self, request):
         user = request.user
+        password = request.data.get('password')
+        if not password:
+            return Response({'error': 'Password is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.check_password(password):
+            return Response({'error': 'Incorrect password'}, status=status.HTTP_400_BAD_REQUEST)
         user.delete()
         return Response({'message': 'Account deleted successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='request-email-change')
+    def request_email_change(self, request):
+        # Every account must map to exactly one real, reachable email — the actual
+        # `email` field on the model stays read-only everywhere else (see UserSerializer)
+        # so this verified request/confirm pair is the ONLY way it can ever change.
+        user = request.user
+        new_email = (request.data.get('new_email') or '').strip()
+
+        if not new_email:
+            return Response({'error': 'A new email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_email(new_email)
+        except DjangoValidationError:
+            return Response({'error': 'Enter a valid email address'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_email.lower() == (user.email or '').lower():
+            return Response({'error': 'This is already your current email address'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email__iexact=new_email).exclude(pk=user.pk).exists():
+            return Response({'error': 'A user with that email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+        code = PendingEmailChange.generate_code()
+        PendingEmailChange.objects.update_or_create(
+            user=user,
+            defaults={
+                'new_email': new_email,
+                'code': code,
+                'failed_attempts': 0,
+                'expires_at': timezone.now() + timedelta(minutes=5),
+            }
+        )
+        send_email_change_verification_email(new_email, code)
+
+        return Response({'status': 'verification_required', 'new_email': new_email}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='confirm-email-change')
+    def confirm_email_change(self, request):
+        user = request.user
+        code = request.data.get('code')
+
+        if not code:
+            return Response({'error': 'Verification code is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Uniform error for every failure case (no pending request, expired, wrong code)
+        # so a caller can't distinguish them — same principle as VerifyEmailView.
+        GENERIC_ERROR = 'Invalid or expired verification code.'
+
+        pending = PendingEmailChange.objects.filter(user=user).first()
+        if not pending:
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.is_expired():
+            pending.delete()
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.code != str(code).strip():
+            pending.failed_attempts += 1
+            if pending.failed_attempts >= PendingEmailChange.MAX_VERIFY_ATTEMPTS:
+                pending.delete()
+            else:
+                pending.save(update_fields=['failed_attempts'])
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Re-check uniqueness at confirm time too — a race where someone else claims
+        # the same address between the request and confirm steps.
+        if User.objects.filter(email__iexact=pending.new_email).exclude(pk=user.pk).exists():
+            pending.delete()
+            return Response({'error': 'That email address was just taken by another account'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.email = pending.new_email
+        user.save(update_fields=['email'])
+        pending.delete()
+
+        return Response({'email': user.email}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='steam-status')
     def steam_status(self, request, username=None):
@@ -666,21 +749,26 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             english_genre = translation_map.get(target_genre.lower(), target_genre)
             genre_query = Q(genres__icontains=target_genre) | Q(genres__icontains=english_genre)
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
-                
+
         elif not genre_counts:
             recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
         else:
             # Get top 3 genres
             top_genres = [g[0] for g in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]]
-            
+
             # 2. Query games that matching any of top genres
             # using Postgres jsonb array filtering or Q objects
             genre_query = Q()
             for genre in top_genres:
                 english_genre = translation_map.get(genre.lower(), genre)
                 genre_query |= Q(genres__icontains=genre) | Q(genres__icontains=english_genre)
-                
+
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
+
+        # Fallback — a user who has already played/reviewed every unplayed game matching
+        # their own top genres would otherwise see an empty shelf with no explanation.
+        if not recommended.exists():
+            recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
 
         # 3. Serialize output using GameSerializer for consistent URL handling
         from api.serializers import GameSerializer
@@ -1633,6 +1721,23 @@ class ConversationViewSet(viewsets.ModelViewSet):
             for cid in missing_ids:
                 ConversationMember.objects.get_or_create(conversation_id=cid, user=self.request.user)
 
+        # Annotate last-message fields and unread count via correlated subqueries/aggregation
+        # instead of letting the serializer query obj.messages per conversation (was 2 extra
+        # queries per row — get_last_message + get_unread_count — on top of the base query).
+        from django.db.models import OuterRef, Subquery, Count, Q
+        last_msg_qs = Message.objects.filter(conversation=OuterRef('pk')).order_by('-created_at')
+        qs = qs.annotate(
+            ann_last_content=Subquery(last_msg_qs.values('content')[:1]),
+            ann_last_created_at=Subquery(last_msg_qs.values('created_at')[:1]),
+            ann_last_sender=Subquery(last_msg_qs.values('sender__username')[:1]),
+            ann_last_is_deleted=Subquery(last_msg_qs.values('is_deleted')[:1]),
+            ann_unread_count=Count(
+                'messages',
+                filter=Q(messages__is_read=False) & ~Q(messages__sender=self.request.user),
+                distinct=True,
+            ),
+        )
+
         return qs.prefetch_related('members__user', 'members__invited_by', 'participants')
 
     @action(detail=False, methods=['post'])
@@ -2039,14 +2144,81 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         conversation_id = request.query_params.get('conversation_id')
-        if conversation_id:
-            # Mark unread messages from other users as read
-            Message.objects.filter(
-                conversation_id=conversation_id,
-                is_read=False
-            ).exclude(sender=request.user).update(is_read=True)
-        
-        return super().list(request, *args, **kwargs)
+        if not conversation_id:
+            return Response({'results': [], 'has_more': False})
+
+        if request.query_params.get('pinned') == 'true':
+            pinned_qs = self.filter_queryset(self.get_queryset()).filter(
+                is_pinned=True
+            ).order_by('pinned_at')
+            serializer = self.get_serializer(pinned_qs, many=True)
+            return Response({'results': serializer.data, 'has_more': False})
+
+        # Full-history search — the in-conversation search box used to filter only the
+        # ~30 messages already loaded client-side (a correctness regression once the main
+        # list became paginated), so it now searches the whole conversation server-side.
+        search_query = request.query_params.get('search')
+        if search_query:
+            matched_qs = self.filter_queryset(self.get_queryset()).filter(
+                content__icontains=search_query
+            ).order_by('-created_at')[:50]
+            serializer = self.get_serializer(matched_qs, many=True)
+            return Response({'results': serializer.data, 'has_more': False})
+
+        # Jump to an arbitrary message (e.g. from a search result) that may not be in the
+        # currently-loaded page — returns a window of messages around it so the frontend
+        # can render it in place, like tapping a search hit in WhatsApp.
+        around_id = request.query_params.get('around_id')
+        if around_id:
+            queryset = self.filter_queryset(self.get_queryset())
+            target = queryset.filter(id=around_id).first()
+            if not target:
+                return Response({'results': [], 'has_more': False})
+            before_full_qs = queryset.filter(id__lt=around_id)
+            before_page = list(before_full_qs.order_by('-created_at')[:15])
+            after_page = list(queryset.filter(id__gt=around_id).order_by('created_at')[:15])
+            combined = list(reversed(before_page)) + [target] + after_page
+            has_more = before_full_qs.count() > len(before_page)
+            serializer = self.get_serializer(combined, many=True)
+            return Response({'results': serializer.data, 'has_more': has_more})
+
+        # Mark unread messages from other users as read
+        Message.objects.filter(
+            conversation_id=conversation_id,
+            is_read=False
+        ).exclude(sender=request.user).update(is_read=True)
+
+        # Bounded pagination — a chat's full history used to be refetched on every single
+        # 3-second poll (unbounded, ever-growing payload). Three modes, all ordered oldest-
+        # to-newest in the response:
+        #   - neither param: latest `limit` messages (initial load)
+        #   - before_id: the `limit` messages immediately preceding before_id ("load earlier")
+        #   - after_id: only messages newer than after_id (polling delta, no history refetch)
+        queryset = self.filter_queryset(self.get_queryset())
+        try:
+            limit = int(request.query_params.get('limit', 30))
+        except (TypeError, ValueError):
+            limit = 30
+        after_id = request.query_params.get('after_id')
+        before_id = request.query_params.get('before_id')
+
+        if after_id:
+            newer = queryset.filter(id__gt=after_id)
+            serializer = self.get_serializer(newer, many=True)
+            return Response({'results': serializer.data, 'has_more': False})
+
+        if before_id:
+            older_qs = queryset.filter(id__lt=before_id)
+            page = list(older_qs.order_by('-created_at')[:limit])
+            has_more = older_qs.count() > len(page)
+            serializer = self.get_serializer(list(reversed(page)), many=True)
+            return Response({'results': serializer.data, 'has_more': has_more})
+
+        total_count = queryset.count()
+        page = list(queryset.order_by('-created_at')[:limit])
+        has_more = total_count > len(page)
+        serializer = self.get_serializer(list(reversed(page)), many=True)
+        return Response({'results': serializer.data, 'has_more': has_more})
 
     def perform_create(self, serializer):
         conversation = serializer.validated_data['conversation']
@@ -2109,12 +2281,42 @@ class MessageViewSet(viewsets.ModelViewSet):
             "message": serializer.data
         }, status=status.HTTP_200_OK)
 
+    # Matches the WhatsApp pin model: at most 3 pinned messages per conversation —
+    # pinning a 4th evicts whichever pin is oldest (by pinned_at, not by when the
+    # message itself was originally sent).
+    MAX_PINNED_MESSAGES = 3
+
     @action(detail=True, methods=['post'], url_path='pin')
     def pin(self, request, pk=None):
         message = self.get_object()
-        message.is_pinned = not message.is_pinned
-        message.save()
-        return Response({"status": "success", "is_pinned": message.is_pinned})
+        evicted_message_id = None
+
+        if message.is_pinned:
+            message.is_pinned = False
+            message.pinned_at = None
+            message.save(update_fields=['is_pinned', 'pinned_at'])
+        else:
+            message.is_pinned = True
+            message.pinned_at = timezone.now()
+            message.save(update_fields=['is_pinned', 'pinned_at'])
+
+            pinned_qs = Message.objects.filter(
+                conversation=message.conversation, is_pinned=True
+            ).order_by('pinned_at')
+            if pinned_qs.count() > self.MAX_PINNED_MESSAGES:
+                oldest = pinned_qs.first()
+                evicted_message_id = oldest.id
+                oldest.is_pinned = False
+                oldest.pinned_at = None
+                oldest.save(update_fields=['is_pinned', 'pinned_at'])
+
+        serializer = self.get_serializer(message)
+        return Response({
+            "status": "success",
+            "is_pinned": message.is_pinned,
+            "message": serializer.data,
+            "evicted_message_id": evicted_message_id,
+        })
 
     @action(detail=True, methods=['post'], url_path='edit')
     def edit(self, request, pk=None):
@@ -3016,15 +3218,21 @@ class OrganisationViewSet(viewsets.ModelViewSet):
             new_owner_membership.custom_role = None
             new_owner_membership.save()
 
+            from django.contrib.contenttypes.models import ContentType
+            org_content_type = ContentType.objects.get_for_model(organisation.__class__)
             Notification.objects.create(
                 recipient=new_owner_membership.user,
                 actor=request.user,
-                verb=f'transferred ownership of {organisation.name} to you'
+                verb=f'transferred ownership of {organisation.name} to you',
+                target_type=org_content_type,
+                target_id=organisation.id
             )
             Notification.objects.create(
                 recipient=request.user,
                 actor=request.user,
-                verb=f'transferred ownership of {organisation.name} to {new_owner_membership.user.username}'
+                verb=f'transferred ownership of {organisation.name} to {new_owner_membership.user.username}',
+                target_type=org_content_type,
+                target_id=organisation.id
             )
 
         return Response({"message": f"Ownership transferred to @{new_owner_membership.user.username}."}, status=status.HTTP_200_OK)

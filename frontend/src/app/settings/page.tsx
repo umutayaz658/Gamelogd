@@ -9,10 +9,14 @@ import { getImageUrl } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/context/ToastContext";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
+import CustomCountrySelect from '@/components/CustomCountrySelect';
 import {
-    User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe, 
-    FileText, HelpCircle, ChevronRight, ExternalLink, MessageCircle, Bug, Zap, Play, 
-    Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX, ChevronDown
+    User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe,
+    FileText, HelpCircle, ChevronRight, ChevronLeft, ExternalLink, MessageCircle, Bug, Zap, Play,
+    Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX, ChevronDown, Mail
 } from 'lucide-react';
 
 interface CustomSelectOption {
@@ -219,6 +223,19 @@ const translations = {
         deleteAccountConfirmDesc: "This operation cannot be undone. All your synced libraries, devlogs, game DNA profiles, and social follow networks will be deleted from Gamelogd server databases permanently.",
         keepAccount: "Keep My Account",
         yesDeleteAccount: "Yes, Delete My Account",
+        deleteAccountPasswordLabel: "Confirm your password to continue",
+        passwordRequired: "Password is required",
+        changeEmail: "Change Email",
+        newEmailLabel: "New email address",
+        newEmailPlaceholder: "you@example.com",
+        newEmailRequired: "A new email address is required",
+        sendVerificationCode: "Send Code",
+        emailChangeCodeSentDesc: "We sent a 6-digit code to",
+        verificationCodeLabel: "Verification code",
+        verificationCodePlaceholder: "6-digit code",
+        verificationCodeRequired: "Enter the 6-digit code",
+        confirmEmailChange: "Confirm",
+        successEmailChange: "Email address updated successfully.",
         connectTitle: "Connect",
         gamerIdLabel: "Gamer ID / Username",
         connectModalPlaceholder: "Enter your ID...",
@@ -248,6 +265,7 @@ const translations = {
         errorSteamSync: "Failed to sync Steam account. Please check your ID.",
         confirmSteamDisconnect: "Are you sure you want to disconnect Steam? This will remove your synced games.",
         successSteamDisconnect: "Steam disconnected successfully.",
+        steamSuccess: "Steam connected successfully. Library sync started in the background.",
         confirmUnblockTitle: "Unblock User",
         confirmUnblockMsg: "Are you sure you want to unblock @{username}?",
         successPlatformUpdate: "account updated successfully!",
@@ -373,6 +391,19 @@ const translations = {
         deleteAccountConfirmDesc: "Bu işlem geri alınamaz. Eşitlenen tüm kütüphaneleriniz, devlog'larınız, oyun DNA profilleriniz ve sosyal takip ağlarınız Gamelogd sunucu veritabanlarından kalıcı olarak silinecektir.",
         keepAccount: "Hesabımı Tut",
         yesDeleteAccount: "Evet, Hesabımı Sil",
+        deleteAccountPasswordLabel: "Devam etmek için şifrenizi onaylayın",
+        passwordRequired: "Şifre gerekli",
+        changeEmail: "E-postayı Değiştir",
+        newEmailLabel: "Yeni e-posta adresi",
+        newEmailPlaceholder: "siz@ornek.com",
+        newEmailRequired: "Yeni bir e-posta adresi gerekli",
+        sendVerificationCode: "Kodu Gönder",
+        emailChangeCodeSentDesc: "6 haneli bir kodu şu adrese gönderdik:",
+        verificationCodeLabel: "Doğrulama kodu",
+        verificationCodePlaceholder: "6 haneli kod",
+        verificationCodeRequired: "6 haneli kodu girin",
+        confirmEmailChange: "Onayla",
+        successEmailChange: "E-posta adresi başarıyla güncellendi.",
         connectTitle: "Bağlan",
         gamerIdLabel: "Oyuncu Kimliği / Kullanıcı Adı",
         connectModalPlaceholder: "Kimliğinizi girin...",
@@ -402,6 +433,7 @@ const translations = {
         errorSteamSync: "Steam hesabı eşitlenemedi. Lütfen ID'nizi kontrol edin.",
         confirmSteamDisconnect: "Steam bağlantısını kesmek istediğinizden emin misiniz? Bu işlem eşitlenmiş oyunlarınızı kaldıracaktır.",
         successSteamDisconnect: "Steam bağlantısı başarıyla kesildi.",
+        steamSuccess: "Steam başarıyla bağlandı. Kütüphane senkronizasyonu arka planda başladı.",
         confirmUnblockTitle: "Kullanıcı Engeli Kaldır",
         confirmUnblockMsg: "@{username} kullanıcısının engelini kaldırmak istediğinizden emin misiniz?",
         successPlatformUpdate: "hesabı başarıyla güncellendi!",
@@ -527,6 +559,19 @@ const translations = {
         deleteAccountConfirmDesc: "Esta operación no se puede deshacer. Todas sus bibliotecas sincronizadas se eliminarán de forma permanente.",
         keepAccount: "Conservar Mi Cuenta",
         yesDeleteAccount: "Sí, Eliminar Mi Cuenta",
+        deleteAccountPasswordLabel: "Confirma tu contraseña para continuar",
+        passwordRequired: "Se requiere contraseña",
+        changeEmail: "Cambiar Correo",
+        newEmailLabel: "Nueva dirección de correo",
+        newEmailPlaceholder: "tu@ejemplo.com",
+        newEmailRequired: "Se requiere una nueva dirección de correo",
+        sendVerificationCode: "Enviar Código",
+        emailChangeCodeSentDesc: "Enviamos un código de 6 dígitos a",
+        verificationCodeLabel: "Código de verificación",
+        verificationCodePlaceholder: "Código de 6 dígitos",
+        verificationCodeRequired: "Ingresa el código de 6 dígitos",
+        confirmEmailChange: "Confirmar",
+        successEmailChange: "Correo electrónico actualizado correctamente.",
         connectTitle: "Conectar",
         gamerIdLabel: "ID de Jugador / Nombre de usuario",
         connectModalPlaceholder: "Introduce tu ID...",
@@ -556,6 +601,7 @@ const translations = {
         errorSteamSync: "No se pudo sincronizar Steam.",
         confirmSteamDisconnect: "¿Desconectar Steam?",
         successSteamDisconnect: "Steam desconectado.",
+        steamSuccess: "Steam conectado correctamente. Sincronización de biblioteca iniciada en segundo plano.",
         confirmUnblockTitle: "Desbloquear Usuario",
         confirmUnblockMsg: "¿Está seguro de que desea desbloquear a @{username}?",
         successPlatformUpdate: "¡Actualizado con éxito!",
@@ -665,6 +711,19 @@ const translations = {
         deleteAccountConfirmDesc: "Cette opération est irréversible. Toutes vos données seront supprimées définitivement.",
         keepAccount: "Garder mon compte",
         yesDeleteAccount: "Oui, supprimer mon compte",
+        deleteAccountPasswordLabel: "Confirmez votre mot de passe pour continuer",
+        passwordRequired: "Le mot de passe est requis",
+        changeEmail: "Changer l'e-mail",
+        newEmailLabel: "Nouvelle adresse e-mail",
+        newEmailPlaceholder: "vous@exemple.com",
+        newEmailRequired: "Une nouvelle adresse e-mail est requise",
+        sendVerificationCode: "Envoyer le code",
+        emailChangeCodeSentDesc: "Nous avons envoyé un code à 6 chiffres à",
+        verificationCodeLabel: "Code de vérification",
+        verificationCodePlaceholder: "Code à 6 chiffres",
+        verificationCodeRequired: "Entrez le code à 6 chiffres",
+        confirmEmailChange: "Confirmer",
+        successEmailChange: "Adresse e-mail mise à jour avec succès.",
         connectTitle: "Connecter",
         gamerIdLabel: "Identifiant / Nom d'utilisateur",
         connectModalPlaceholder: "Entrez votre identifiant...",
@@ -694,6 +753,7 @@ const translations = {
         errorSteamSync: "Échec de la synchronisation Steam.",
         confirmSteamDisconnect: "Déconnecter Steam ?",
         successSteamDisconnect: "Steam déconnecté.",
+        steamSuccess: "Steam connecté avec succès. Synchronisation de la bibliothèque démarrée en arrière-plan.",
         confirmUnblockTitle: "Débloquer l'utilisateur",
         confirmUnblockMsg: "Êtes-vous sûr de vouloir débloquer @{username} ?",
         successPlatformUpdate: "Compte mis à jour avec succès !",
@@ -803,6 +863,19 @@ const translations = {
         deleteAccountConfirmDesc: "Dieser Vorgang kann nicht rückgängig gemacht werden. Alle Daten werden gelöscht.",
         keepAccount: "Mein Konto behalten",
         yesDeleteAccount: "Ja, mein Konto löschen",
+        deleteAccountPasswordLabel: "Bestätige dein Passwort, um fortzufahren",
+        passwordRequired: "Passwort ist erforderlich",
+        changeEmail: "E-Mail ändern",
+        newEmailLabel: "Neue E-Mail-Adresse",
+        newEmailPlaceholder: "du@beispiel.com",
+        newEmailRequired: "Eine neue E-Mail-Adresse ist erforderlich",
+        sendVerificationCode: "Code senden",
+        emailChangeCodeSentDesc: "Wir haben einen 6-stelligen Code gesendet an",
+        verificationCodeLabel: "Bestätigungscode",
+        verificationCodePlaceholder: "6-stelliger Code",
+        verificationCodeRequired: "Gib den 6-stelligen Code ein",
+        confirmEmailChange: "Bestätigen",
+        successEmailChange: "E-Mail-Adresse erfolgreich aktualisiert.",
         connectTitle: "Verbinden",
         gamerIdLabel: "Gamer ID / Benutzername",
         connectModalPlaceholder: "Geben Sie Ihre ID ein...",
@@ -832,6 +905,7 @@ const translations = {
         errorSteamSync: "Steam-Synchronisierung fehlgeschlagen.",
         confirmSteamDisconnect: "Steam-Verbindung trennen?",
         successSteamDisconnect: "Steam-Verbindung getrennt.",
+        steamSuccess: "Steam erfolgreich verbunden. Bibliothekssynchronisierung im Hintergrund gestartet.",
         confirmUnblockTitle: "Benutzer entsperren",
         confirmUnblockMsg: "Sind Sie sicher, dass Sie @{username} entsperren möchten?",
         successPlatformUpdate: "Konto erfolgreich aktualisiert!",
@@ -922,13 +996,22 @@ function SettingsContent() {
     const router = useRouter();
     const pathname = usePathname();
     const toast = useToast();
+    const isMobile = useIsMobile();
 
     const activeTab = searchParams.get('tab') || 'account';
+    // On mobile we drill down: no `tab` param means "show the category list",
+    // a `tab` param means "show that category's content" (with a back header).
+    // Desktop ignores this and always shows both columns side by side.
+    const hasTabParam = !!searchParams.get('tab');
 
     const setActiveTab = (tabId: string) => {
         const params = new URLSearchParams(searchParams);
         params.set('tab', tabId);
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    };
+
+    const goBackToCategoryList = () => {
+        router.push(pathname, { scroll: false });
     };
 
     // State for toggles
@@ -1052,6 +1135,14 @@ function SettingsContent() {
     // Dialog Modal States
     const [changePasswordOpen, setChangePasswordOpen] = useState(false);
     const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+    const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+    const [deleteAccountError, setDeleteAccountError] = useState('');
+    const [changeEmailOpen, setChangeEmailOpen] = useState(false);
+    const [changeEmailStep, setChangeEmailStep] = useState<'input' | 'code'>('input');
+    const [newEmailInput, setNewEmailInput] = useState('');
+    const [changeEmailCode, setChangeEmailCode] = useState('');
+    const [isChangeEmailSubmitting, setIsChangeEmailSubmitting] = useState(false);
+    const [changeEmailError, setChangeEmailError] = useState('');
     const [supportTicketOpen, setSupportTicketOpen] = useState(false);
     const [reportProblemOpen, setReportProblemOpen] = useState(false);
     const [faqsOpen, setFaqsOpen] = useState(false);
@@ -1211,7 +1302,7 @@ function SettingsContent() {
     const activeColor = colors[displaySettings.accentColor as keyof typeof colors] || colors.Emerald;
 
     const handleSaveProfile = async () => {
-        if (!username || !email) {
+        if (!username) {
             toast.error(t('errorFields'));
             return;
         }
@@ -1219,7 +1310,6 @@ function SettingsContent() {
         try {
             const res = await api.patch('/users/me/', {
                 username,
-                email,
                 real_name: realName,
                 bio,
                 location,
@@ -1235,7 +1325,7 @@ function SettingsContent() {
             toast.success(t('successSaveProfile'));
         } catch (error: any) {
             console.error("Failed to update profile:", error);
-            const errMsg = error.response?.data?.username?.[0] || error.response?.data?.email?.[0] || "Failed to save profile changes.";
+            const errMsg = error.response?.data?.username?.[0] || "Failed to save profile changes.";
             toast.error(errMsg);
         } finally {
             setIsSavingProfile(false);
@@ -1450,15 +1540,70 @@ function SettingsContent() {
     };
 
     const handleDeleteAccount = async () => {
+        if (!deleteAccountPassword) {
+            setDeleteAccountError(t('passwordRequired') || 'Password is required');
+            return;
+        }
+        setDeleteAccountError('');
         setIsSavingProfile(true);
         try {
-            await api.post('/users/delete-account/');
+            await api.post('/users/delete-account/', { password: deleteAccountPassword });
             toast.success(t('successDeleteAccount'));
             logout();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Delete account error:", error);
-            toast.error(t('errorDeleteAccount'));
+            const message = error.response?.data?.error;
+            if (message) {
+                setDeleteAccountError(message);
+            } else {
+                toast.error(t('errorDeleteAccount'));
+            }
             setIsSavingProfile(false);
+        }
+    };
+
+    const closeChangeEmailModal = () => {
+        setChangeEmailOpen(false);
+        setChangeEmailStep('input');
+        setNewEmailInput('');
+        setChangeEmailCode('');
+        setChangeEmailError('');
+    };
+
+    const handleRequestEmailChange = async () => {
+        if (!newEmailInput.trim()) {
+            setChangeEmailError(t('newEmailRequired'));
+            return;
+        }
+        setChangeEmailError('');
+        setIsChangeEmailSubmitting(true);
+        try {
+            await api.post('/users/request-email-change/', { new_email: newEmailInput.trim() });
+            setChangeEmailStep('code');
+        } catch (error: any) {
+            setChangeEmailError(error.response?.data?.error || 'Failed to send verification code.');
+        } finally {
+            setIsChangeEmailSubmitting(false);
+        }
+    };
+
+    const handleConfirmEmailChange = async () => {
+        if (!changeEmailCode.trim()) {
+            setChangeEmailError(t('verificationCodeRequired'));
+            return;
+        }
+        setChangeEmailError('');
+        setIsChangeEmailSubmitting(true);
+        try {
+            const res = await api.post('/users/confirm-email-change/', { code: changeEmailCode.trim() });
+            setEmail(res.data.email);
+            if (user) updateUser({ ...user, email: res.data.email });
+            toast.success(t('successEmailChange'));
+            closeChangeEmailModal();
+        } catch (error: any) {
+            setChangeEmailError(error.response?.data?.error || 'Failed to confirm email change.');
+        } finally {
+            setIsChangeEmailSubmitting(false);
         }
     };
 
@@ -1563,33 +1708,48 @@ function SettingsContent() {
         <div className={`min-h-screen bg-zinc-950 text-white font-sans ${activeColor.selection}`}>
             <Navbar />
 
-            <main className="container mx-auto px-4 py-8">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 py-8">
                 <div className="max-w-6xl mx-auto">
                     <h1 className="text-3xl font-bold mb-8">{t('settings')}</h1>
 
-                    <div className="flex flex-col md:flex-row gap-8">
-                        {/* Left Sidebar - Navigation */}
-                        <div className="w-full md:w-1/4">
-                            <nav className="flex flex-col gap-2">
-                                {categories.map((category) => (
-                                    <button
-                                        key={category.id}
-                                        onClick={() => setActiveTab(category.id)}
-                                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-left ${activeTab === category.id
-                                            ? 'bg-zinc-800 text-white border-l-4 border-emerald-500'
-                                            : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                                            }`}
-                                        style={activeTab === category.id ? { borderLeftColor: `var(--color-${displaySettings.accentColor.toLowerCase()}-500)` } : {}}
-                                    >
-                                        <category.icon className={`h-5 w-5 ${activeTab === category.id ? activeColor.text : 'text-zinc-400'}`} />
-                                        {category.label}
-                                    </button>
-                                ))}
-                            </nav>
-                        </div>
+                    <div className="flex flex-col lg:flex-row gap-8">
+                        {/* Left Sidebar - Navigation. On mobile this is the whole screen
+                            until a category is picked, then it's replaced by the content
+                            column below (drill-down); desktop always shows both. */}
+                        {(!isMobile || !hasTabParam) && (
+                            <div className="w-full lg:w-1/4">
+                                <nav className="flex flex-col gap-2">
+                                    {categories.map((category) => (
+                                        <button
+                                            key={category.id}
+                                            onClick={() => setActiveTab(category.id)}
+                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-left ${activeTab === category.id
+                                                ? 'bg-zinc-800 text-white border-l-4 border-emerald-500'
+                                                : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                                                }`}
+                                            style={activeTab === category.id ? { borderLeftColor: `var(--color-${displaySettings.accentColor.toLowerCase()}-500)` } : {}}
+                                        >
+                                            <category.icon className={`h-5 w-5 ${activeTab === category.id ? activeColor.text : 'text-zinc-400'}`} />
+                                            {category.label}
+                                            <ChevronRight className="h-4 w-4 ml-auto text-zinc-600 lg:hidden" />
+                                        </button>
+                                    ))}
+                                </nav>
+                            </div>
+                        )}
 
                         {/* Right Content - Settings Forms */}
-                        <div className="w-full md:w-3/4 bg-zinc-900 rounded-2xl border border-zinc-800 p-6 md:p-8 min-h-[500px]">
+                        {(!isMobile || hasTabParam) && (
+                        <div className="w-full lg:w-3/4 bg-zinc-900 rounded-2xl border border-zinc-800 p-6 lg:p-8 min-h-[500px]">
+                            {isMobile && (
+                                <button
+                                    onClick={goBackToCategoryList}
+                                    className="flex items-center gap-2 text-zinc-400 hover:text-white mb-6 -mt-1 font-medium transition-colors"
+                                >
+                                    <ChevronLeft className="h-5 w-5" />
+                                    {categories.find(c => c.id === activeTab)?.label}
+                                </button>
+                            )}
 
                             {/* My Account */}
                             {activeTab === 'account' && (
@@ -1608,12 +1768,21 @@ function SettingsContent() {
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('email')}</label>
-                                            <input
-                                                type="email"
-                                                value={email}
-                                                onChange={(e) => setEmail(e.target.value)}
-                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
-                                            />
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="email"
+                                                    value={email}
+                                                    disabled
+                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setChangeEmailOpen(true)}
+                                                    className="flex-shrink-0 whitespace-nowrap px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                                >
+                                                    {t('changeEmail')}
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('realName')}</label>
@@ -1644,11 +1813,14 @@ function SettingsContent() {
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('phoneNumber')}</label>
-                                            <input
-                                                type="text"
+                                            <PhoneInput
                                                 value={phoneNumber}
-                                                onChange={(e) => setPhoneNumber(e.target.value)}
-                                                className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-white focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                                onChange={(value?: string) => setPhoneNumber(value || '')}
+                                                countrySelectComponent={CustomCountrySelect}
+                                                numberInputProps={{
+                                                    className: "w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-white placeholder:text-zinc-600 pl-2 self-stretch"
+                                                }}
+                                                className="flex items-center gap-2 w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-2.5 pr-4 py-2 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all"
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -1801,14 +1973,14 @@ function SettingsContent() {
                                             
                                             return (
                                                 <div key={platform.id} className="flex flex-col p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className={`p-2 rounded-lg bg-zinc-900 ${platform.color}`}>
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-4 min-w-0">
+                                                            <div className={`p-2 rounded-lg bg-zinc-900 ${platform.color} flex-shrink-0`}>
                                                                 <platform.icon className="h-6 w-6" />
                                                             </div>
-                                                            <div>
-                                                                <div className="font-bold">{platform.name}</div>
-                                                                <div className="text-sm text-zinc-500">
+                                                            <div className="min-w-0">
+                                                                <div className="font-bold truncate">{platform.name}</div>
+                                                                <div className="text-sm text-zinc-500 truncate">
                                                                     {platform.connected
                                                                         ? `Connected (User: ${connUsername})`
                                                                         : platform.description}
@@ -1842,7 +2014,7 @@ function SettingsContent() {
                                                                     }
                                                                 }
                                                             }}
-                                                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${platform.connected
+                                                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors flex-shrink-0 whitespace-nowrap ${platform.connected
                                                                 ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30'
                                                                 : `${activeColor.bg} ${activeColor.hover} text-white`
                                                                 }`}
@@ -2170,6 +2342,7 @@ function SettingsContent() {
                             )}
 
                         </div>
+                        )}
                     </div>
                 </div>
             </main>
@@ -2245,8 +2418,12 @@ function SettingsContent() {
             {deleteAccountOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="w-full max-w-md bg-zinc-900 border border-red-500/20 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
-                        <button 
-                            onClick={() => setDeleteAccountOpen(false)}
+                        <button
+                            onClick={() => {
+                                setDeleteAccountOpen(false);
+                                setDeleteAccountPassword('');
+                                setDeleteAccountError('');
+                            }}
                             className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
                         >
                             <X className="h-5 w-5" />
@@ -2255,23 +2432,136 @@ function SettingsContent() {
                             <AlertTriangle />
                             {t('deleteAccountConfirmTitle')}
                         </h3>
-                        <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
+                        <p className="text-zinc-400 text-sm mb-4 leading-relaxed">
                             {t('deleteAccountConfirmDesc')}
                         </p>
-                        <div className="flex justify-end gap-3">
-                            <button 
-                                onClick={() => setDeleteAccountOpen(false)}
+                        <div className="space-y-1 mb-2">
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('deleteAccountPasswordLabel')}</label>
+                            <input
+                                type="password"
+                                value={deleteAccountPassword}
+                                onChange={(e) => {
+                                    setDeleteAccountPassword(e.target.value);
+                                    setDeleteAccountError('');
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !isSavingProfile) handleDeleteAccount();
+                                }}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30 transition-all"
+                            />
+                            {deleteAccountError && (
+                                <p className="text-red-500 text-xs pt-1">{deleteAccountError}</p>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button
+                                onClick={() => {
+                                    setDeleteAccountOpen(false);
+                                    setDeleteAccountPassword('');
+                                    setDeleteAccountError('');
+                                }}
                                 className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
                             >
                                 {t('keepAccount')}
                             </button>
-                            <button 
+                            <button
                                 onClick={handleDeleteAccount}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                disabled={isSavingProfile}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                             >
+                                {isSavingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                 {t('yesDeleteAccount')}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Change Email Modal */}
+            {changeEmailOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                        <button
+                            onClick={closeChangeEmailModal}
+                            className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                            <Mail className={activeColor.text} />
+                            {t('changeEmail')}
+                        </h3>
+
+                        {changeEmailStep === 'input' ? (
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('newEmailLabel')}</label>
+                                    <input
+                                        type="email"
+                                        value={newEmailInput}
+                                        onChange={(e) => { setNewEmailInput(e.target.value); setChangeEmailError(''); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !isChangeEmailSubmitting) handleRequestEmailChange(); }}
+                                        placeholder={t('newEmailPlaceholder')}
+                                        className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                    />
+                                    {changeEmailError && <p className="text-red-500 text-xs pt-1">{changeEmailError}</p>}
+                                </div>
+                                <div className="pt-2 flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={closeChangeEmailModal}
+                                        className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                        {t('cancel')}
+                                    </button>
+                                    <button
+                                        onClick={handleRequestEmailChange}
+                                        disabled={isChangeEmailSubmitting}
+                                        className={`px-4 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2`}
+                                    >
+                                        {isChangeEmailSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                        <span>{t('sendVerificationCode')}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <p className="text-zinc-400 text-sm leading-relaxed">
+                                    {t('emailChangeCodeSentDesc')} <span className="text-white font-medium">{newEmailInput}</span>
+                                </p>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('verificationCodeLabel')}</label>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        value={changeEmailCode}
+                                        onChange={(e) => { setChangeEmailCode(e.target.value.replace(/\D/g, '')); setChangeEmailError(''); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !isChangeEmailSubmitting) handleConfirmEmailChange(); }}
+                                        placeholder={t('verificationCodePlaceholder')}
+                                        className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 tracking-[0.3em] text-center text-lg focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                    />
+                                    {changeEmailError && <p className="text-red-500 text-xs pt-1">{changeEmailError}</p>}
+                                </div>
+                                <div className="pt-2 flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setChangeEmailStep('input'); setChangeEmailCode(''); setChangeEmailError(''); }}
+                                        className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                        {t('cancel')}
+                                    </button>
+                                    <button
+                                        onClick={handleConfirmEmailChange}
+                                        disabled={isChangeEmailSubmitting}
+                                        className={`px-4 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2`}
+                                    >
+                                        {isChangeEmailSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                        <span>{t('confirmEmailChange')}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -2436,139 +2726,99 @@ function SettingsContent() {
             {/* Contact Support Modal */}
             {supportTicketOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="w-full max-w-3xl bg-zinc-950/75 border border-white/10 rounded-[28px] p-8 md:p-10 shadow-[0_25px_60px_rgba(0,0,0,0.85)] relative animate-in zoom-in-95 duration-200 backdrop-blur-xl">
-                        
-                        {/* Top Light Edge */}
-                        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent"></div>
-                        
-                        <button 
+                    <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+                        <button
                             onClick={() => setSupportTicketOpen(false)}
-                            className="absolute top-6 right-6 text-zinc-400 hover:text-white hover:bg-white/10 p-2 rounded-full transition-all"
+                            className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
                         >
                             <X className="h-5 w-5" />
                         </button>
-
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-8 md:gap-10">
-                            
-                            {/* Left Side: Branding */}
-                            <div className="flex flex-col justify-between space-y-8 md:space-y-0 pr-0 md:pr-4 md:border-r border-zinc-800/60">
-                                <div className="space-y-4">
-                                    <div className="text-xl font-bold tracking-wider font-sans text-white">
-                                        ROARK <span className="text-zinc-600">|</span> <span className="font-light">Forge</span>
-                                    </div>
-                                    <h3 className="text-3xl font-extrabold text-white leading-tight font-sans mt-6">
-                                        Let's build <br />
-                                        <span className="bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">the future.</span>
-                                    </h3>
-                                    <p className="text-sm text-zinc-400 font-light leading-relaxed max-w-xs">
-                                        Have a question, partnership inquiry, or just want to explore the Roark Forge ecosystem? We're here to help forge your vision into reality.
-                                    </p>
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                            <MessageCircle className={activeColor.text} />
+                            {t('contactSupport')}
+                        </h3>
+                        <form onSubmit={handleContactSupport} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('realName')}</label>
+                                    <input
+                                        type="text"
+                                        disabled
+                                        value={user?.real_name || user?.username || ''}
+                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
+                                    />
                                 </div>
-                                
-                                <div className="space-y-6 pt-4">
-                                    <div className="space-y-1">
-                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Direct Inquiry</div>
-                                        <a href="mailto:contact@roarkforge.com" className="text-sm text-indigo-300 hover:text-white transition-colors hover:underline">contact@roarkforge.com</a>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Location</div>
-                                        <div className="text-sm text-zinc-400 font-medium">Digital Forward</div>
-                                    </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Email</label>
+                                    <input
+                                        type="email"
+                                        disabled
+                                        value={user?.email || ''}
+                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
+                                    />
                                 </div>
                             </div>
 
-                            {/* Right Side: Form */}
-                            <div>
-                                <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                    <MessageCircle className="h-5 w-5 text-indigo-300" />
-                                    {t('contactSupport')}
-                                </h4>
-                                <form onSubmit={handleContactSupport} className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-300">{t('realName')}</label>
-                                            <input 
-                                                type="text" 
-                                                disabled
-                                                value={user?.real_name || user?.username || ''}
-                                                className="w-full bg-zinc-900/50 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-300">Email</label>
-                                            <input 
-                                                type="email" 
-                                                disabled
-                                                value={user?.email || ''}
-                                                className="w-full bg-zinc-900/50 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-zinc-400 focus:outline-none cursor-not-allowed opacity-80"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-300">{t('categoryLabel')}</label>
-                                            <CustomSelect 
-                                                value={supportCategory} 
-                                                onChange={setSupportCategory} 
-                                                options={[
-                                                    { value: 'General', label: t('categoryGeneral') },
-                                                    { value: 'Account', label: t('categoryAccount') },
-                                                    { value: 'Billing', label: t('categoryBilling') },
-                                                    { value: 'Partnership', label: t('categoryPartnership') },
-                                                    { value: 'Feedback', label: t('categoryFeedback') }
-                                                ]}
-                                                activeColor={activeColor}
-                                                placeholder={t('categoryLabel') || 'Category'}
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-300">{t('subjectLabel')}</label>
-                                            <input 
-                                                type="text" 
-                                                required
-                                                value={supportSubject}
-                                                onChange={(e) => setSupportSubject(e.target.value)}
-                                                placeholder={t('subjectPlaceholder')}
-                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-zinc-300">{t('descriptionLabel')}</label>
-                                        <textarea 
-                                            rows={4}
-                                            required
-                                            value={supportDescription}
-                                            onChange={(e) => setSupportDescription(e.target.value)}
-                                            placeholder={t('descPlaceholder')}
-                                            className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all resize-none"
-                                        />
-                                    </div>
-
-                                    <div className="pt-2 flex justify-end gap-3">
-                                        <button 
-                                            type="button"
-                                            onClick={() => setSupportTicketOpen(false)}
-                                            className="px-4 py-2.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl text-sm font-medium transition-colors"
-                                        >
-                                            {t('cancel')}
-                                        </button>
-                                        <button 
-                                            type="submit"
-                                            disabled={isSubmittingSupport}
-                                            className="px-5 py-2.5 bg-white text-black hover:bg-zinc-200 disabled:opacity-50 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-100 shadow-lg shadow-white/5"
-                                        >
-                                            {isSubmittingSupport ? <Loader2 className="h-4 w-4 animate-spin text-black" /> : null}
-                                            <span>{t('submitRequest')}</span>
-                                            <Send className="h-3.5 w-3.5 text-black" />
-                                        </button>
-                                    </div>
-                                </form>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('categoryLabel')}</label>
+                                    <CustomSelect
+                                        value={supportCategory}
+                                        onChange={setSupportCategory}
+                                        options={[
+                                            { value: 'General', label: t('categoryGeneral') },
+                                            { value: 'Account', label: t('categoryAccount') },
+                                            { value: 'Billing', label: t('categoryBilling') },
+                                            { value: 'Partnership', label: t('categoryPartnership') },
+                                            { value: 'Feedback', label: t('categoryFeedback') }
+                                        ]}
+                                        activeColor={activeColor}
+                                        placeholder={t('categoryLabel') || 'Category'}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('subjectLabel')}</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={supportSubject}
+                                        onChange={(e) => setSupportSubject(e.target.value)}
+                                        placeholder={t('subjectPlaceholder')}
+                                        className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                    />
+                                </div>
                             </div>
-                        </div>
 
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('descriptionLabel')}</label>
+                                <textarea
+                                    rows={4}
+                                    required
+                                    value={supportDescription}
+                                    onChange={(e) => setSupportDescription(e.target.value)}
+                                    placeholder={t('descPlaceholder')}
+                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all resize-none`}
+                                />
+                            </div>
+
+                            <div className="pt-2 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSupportTicketOpen(false)}
+                                    className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    {t('cancel')}
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingSupport}
+                                    className={`px-5 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors`}
+                                >
+                                    {isSubmittingSupport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                    <span>{t('submitRequest')}</span>
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
@@ -2576,129 +2826,89 @@ function SettingsContent() {
             {/* Report a Problem Modal */}
             {reportProblemOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="w-full max-w-3xl bg-zinc-950/75 border border-white/10 rounded-[28px] p-8 md:p-10 shadow-[0_25px_60px_rgba(0,0,0,0.85)] relative animate-in zoom-in-95 duration-200 backdrop-blur-xl">
-                        
-                        {/* Top Light Edge */}
-                        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent"></div>
-                        
-                        <button 
+                    <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+                        <button
                             onClick={() => setReportProblemOpen(false)}
-                            className="absolute top-6 right-6 text-zinc-400 hover:text-white hover:bg-white/10 p-2 rounded-full transition-all"
+                            className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
                         >
                             <X className="h-5 w-5" />
                         </button>
-
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-8 md:gap-10">
-                            
-                            {/* Left Side: Branding */}
-                            <div className="flex flex-col justify-between space-y-8 md:space-y-0 pr-0 md:pr-4 md:border-r border-zinc-800/60">
-                                <div className="space-y-4">
-                                    <div className="text-xl font-bold tracking-wider font-sans text-white">
-                                        ROARK <span className="text-zinc-600">|</span> <span className="font-light">Forge</span>
-                                    </div>
-                                    <h3 className="text-3xl font-extrabold text-white leading-tight font-sans mt-6">
-                                        Let's build <br />
-                                        <span className="bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">the future.</span>
-                                    </h3>
-                                    <p className="text-sm text-zinc-400 font-light leading-relaxed max-w-xs">
-                                        Have a question, partnership inquiry, or just want to explore the Roark Forge ecosystem? We're here to help forge your vision into reality.
-                                    </p>
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                            <Bug className={activeColor.text} />
+                            {t('reportProblem')}
+                        </h3>
+                        <form onSubmit={handleReportProblem} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('bugTitleLabel')}</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={bugTitle}
+                                        onChange={(e) => setBugTitle(e.target.value)}
+                                        placeholder={t('bugTitlePlaceholder')}
+                                        className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all`}
+                                    />
                                 </div>
-                                
-                                <div className="space-y-6 pt-4">
-                                    <div className="space-y-1">
-                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Direct Inquiry</div>
-                                        <a href="mailto:contact@roarkforge.com" className="text-sm text-indigo-300 hover:text-white transition-colors hover:underline">contact@roarkforge.com</a>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Location</div>
-                                        <div className="text-sm text-zinc-400 font-medium">Digital Forward</div>
-                                    </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('severityLabel')}</label>
+                                    <CustomSelect
+                                        value={bugSeverity}
+                                        onChange={setBugSeverity}
+                                        options={[
+                                            { value: 'Low', label: t('severityLow') },
+                                            { value: 'Medium', label: t('severityMedium') },
+                                            { value: 'High', label: t('severityHigh') },
+                                            { value: 'Critical', label: t('severityCritical') }
+                                        ]}
+                                        activeColor={activeColor}
+                                        placeholder={t('severityLabel') || 'Severity'}
+                                    />
                                 </div>
                             </div>
 
-                            {/* Right Side: Form */}
-                            <div>
-                                <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                    <Bug className="h-5 w-5 text-indigo-300" />
-                                    {t('reportProblem')}
-                                </h4>
-                                <form onSubmit={handleReportProblem} className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-300">{t('bugTitleLabel')}</label>
-                                            <input 
-                                                type="text" 
-                                                required
-                                                value={bugTitle}
-                                                onChange={(e) => setBugTitle(e.target.value)}
-                                                placeholder={t('bugTitlePlaceholder')}
-                                                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-300">{t('severityLabel')}</label>
-                                            <CustomSelect 
-                                                value={bugSeverity} 
-                                                onChange={setBugSeverity} 
-                                                options={[
-                                                    { value: 'Low', label: t('severityLow') },
-                                                    { value: 'Medium', label: t('severityMedium') },
-                                                    { value: 'High', label: t('severityHigh') },
-                                                    { value: 'Critical', label: t('severityCritical') }
-                                                ]}
-                                                activeColor={activeColor}
-                                                placeholder={t('severityLabel') || 'Severity'}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-zinc-300">{t('stepsLabel')}</label>
-                                        <textarea 
-                                            rows={3}
-                                            required
-                                            value={bugSteps}
-                                            onChange={(e) => setBugSteps(e.target.value)}
-                                            placeholder={t('stepsPlaceholder')}
-                                            className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all resize-none"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-zinc-300">{t('descriptionLabel')}</label>
-                                        <textarea 
-                                            rows={3}
-                                            required
-                                            value={bugDescription}
-                                            onChange={(e) => setBugDescription(e.target.value)}
-                                            placeholder={t('bugDescPlaceholder')}
-                                            className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-650 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/25 transition-all resize-none"
-                                        />
-                                    </div>
-
-                                    <div className="pt-2 flex justify-end gap-3">
-                                        <button 
-                                            type="button"
-                                            onClick={() => setReportProblemOpen(false)}
-                                            className="px-4 py-2.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl text-sm font-medium transition-colors"
-                                        >
-                                            {t('cancel')}
-                                        </button>
-                                        <button 
-                                            type="submit"
-                                            disabled={isSubmittingBug}
-                                            className="px-5 py-2.5 bg-white text-black hover:bg-zinc-200 disabled:opacity-50 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-100 shadow-lg shadow-white/5"
-                                        >
-                                            {isSubmittingBug ? <Loader2 className="h-4 w-4 animate-spin text-black" /> : null}
-                                            <span>{t('submitBug')}</span>
-                                            <Send className="h-3.5 w-3.5 text-black" />
-                                        </button>
-                                    </div>
-                                </form>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('stepsLabel')}</label>
+                                <textarea
+                                    rows={3}
+                                    required
+                                    value={bugSteps}
+                                    onChange={(e) => setBugSteps(e.target.value)}
+                                    placeholder={t('stepsPlaceholder')}
+                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all resize-none`}
+                                />
                             </div>
-                        </div>
 
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('descriptionLabel')}</label>
+                                <textarea
+                                    rows={3}
+                                    required
+                                    value={bugDescription}
+                                    onChange={(e) => setBugDescription(e.target.value)}
+                                    placeholder={t('bugDescPlaceholder')}
+                                    className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none ${activeColor.borderFocus} focus:ring-1 ${activeColor.ring} transition-all resize-none`}
+                                />
+                            </div>
+
+                            <div className="pt-2 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setReportProblemOpen(false)}
+                                    className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    {t('cancel')}
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingBug}
+                                    className={`px-5 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors`}
+                                >
+                                    {isSubmittingBug ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                    <span>{t('submitBug')}</span>
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

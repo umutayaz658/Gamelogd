@@ -16,6 +16,7 @@ export interface User {
     show_birth_date?: boolean;
     dnd_mode?: boolean;
     steam_id?: string;
+    xbox_gamertag?: string | null;
     settings?: any;
     phone_number?: string;
     gender?: string;
@@ -260,6 +261,7 @@ export interface Notification {
     target_id?: number;
     is_read: boolean;
     created_at: string;
+    target_url?: string | null;
 }
 
 export interface ConversationMember {

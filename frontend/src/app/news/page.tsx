@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
+import FilterDropdown from "@/components/FilterDropdown";
 import { ExternalLink, Calendar, Newspaper, Search } from 'lucide-react';
 
 interface NewsItem {
@@ -47,7 +48,6 @@ export default function NewsPage() {
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
     const [ordering, setOrdering] = useState<'newest' | 'oldest'>('newest');
     const [currentPage, setCurrentPage] = useState(1);
-    const [isSortOpen, setIsSortOpen] = useState(false);
 
     const filterRef = useRef<HTMLDivElement>(null);
     const isFirstMount = useRef(true);
@@ -107,20 +107,6 @@ export default function NewsPage() {
             }
         };
         fetchNews();
-    }, []);
-
-    // Outside click detection for custom sort dropdown
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            const dropdown = document.getElementById('sort-dropdown');
-            if (dropdown && !dropdown.contains(event.target as Node)) {
-                setIsSortOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
     }, []);
 
     // Smooth scroll to news grid when page changes (ignoring first mount)
@@ -256,7 +242,7 @@ export default function NewsPage() {
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6 pb-20">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-20">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar - Hidden on mobile/tablet */}
                     <div className="hidden lg:block col-span-3">
@@ -276,9 +262,9 @@ export default function NewsPage() {
 
                         {/* Hero Section */}
                         {!loading && heroNews.length > 0 && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[400px]">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
                                 {/* Main Hero */}
-                                <div onClick={() => handleCardClick(heroNews[0].id)} className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block">
+                                <div onClick={() => handleCardClick(heroNews[0].id)} className="md:col-span-2 relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block h-56 md:h-[400px]">
                                     <img
                                         src={heroNews[0].image_url || "/placeholder-news.jpg"}
                                         alt={heroNews[0].title}
@@ -304,10 +290,10 @@ export default function NewsPage() {
                                     </div>
                                 </div>
 
-                                {/* Side Hero Stack */}
-                                <div className="grid grid-rows-2 gap-6 h-full">
+                                {/* Side Hero Stack — side-by-side on mobile, stacked on md+ */}
+                                <div className="grid grid-cols-2 gap-3 md:grid-cols-1 md:grid-rows-2 md:gap-6 md:h-[400px]">
                                     {heroNews.slice(1, 3).map((item) => (
-                                        <div key={item.id} onClick={() => handleCardClick(item.id)} className="relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block">
+                                        <div key={item.id} onClick={() => handleCardClick(item.id)} className="relative group rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer block h-32 md:h-auto">
                                             <img
                                                 src={item.image_url || "/placeholder-news.jpg"}
                                                 alt={item.title}
@@ -334,7 +320,51 @@ export default function NewsPage() {
 
                         {/* Filters & Sorting */}
                         <div ref={filterRef} className="flex flex-col gap-4 border-b border-zinc-800 pb-4">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            {/* Mobile row: Search (always fully open, fills remaining space) + Sort */}
+                            <div className="flex lg:hidden items-center gap-2">
+                                <div className="relative flex-1 min-w-0">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                        <Search className="h-4 w-4 text-zinc-500" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => {
+                                            setSearchQuery(e.target.value);
+                                            handlePageChange(1);
+                                        }}
+                                        placeholder={t('searchNewsPlaceholder')}
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-medium"
+                                    />
+                                    {searchQuery && (
+                                        <button
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                handlePageChange(1);
+                                            }}
+                                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-500 hover:text-zinc-300"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+
+                                <FilterDropdown
+                                    label={t('sortBy')}
+                                    options={[
+                                        { value: 'newest', label: t('newestFirst') },
+                                        { value: 'oldest', label: t('oldestFirst') },
+                                    ]}
+                                    value={ordering}
+                                    onChange={(v) => { setOrdering(v as 'newest' | 'oldest'); handlePageChange(1); }}
+                                    showAllOption={false}
+                                    showSelectionAccent={false}
+                                    align="right"
+                                />
+                            </div>
+
+                            {/* Desktop row: Search (fixed, always visible) + Sort */}
+                            <div className="hidden lg:flex lg:items-center justify-between gap-4">
                                 {/* Search Bar */}
                                 <div className="relative flex-1 max-w-md">
                                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -363,57 +393,22 @@ export default function NewsPage() {
                                     )}
                                 </div>
 
-                                {/* Date Ordering Custom Selector */}
-                                <div className="flex items-center gap-3 relative" id="sort-dropdown">
-                                    <span className="text-sm text-zinc-500">{t('sortBy')}</span>
-                                    <button
-                                        onClick={() => setIsSortOpen(!isSortOpen)}
-                                        className="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm text-white hover:border-zinc-700 hover:text-emerald-400 transition-all focus:outline-none focus:border-emerald-500 min-w-[140px]"
-                                    >
-                                        <span>{ordering === 'newest' ? t('newestFirst') : t('oldestFirst')}</span>
-                                        <svg
-                                            className={`w-4 h-4 text-zinc-400 transition-transform ${isSortOpen ? 'rotate-180 text-emerald-500' : ''}`}
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </button>
-
-                                    {isSortOpen && (
-                                        <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                                            <button
-                                                onClick={() => {
-                                                    setOrdering('newest');
-                                                    handlePageChange(1);
-                                                    setIsSortOpen(false);
-                                                }}
-                                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
-                                                    ordering === 'newest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
-                                                }`}
-                                            >
-                                                {t('newestFirst')}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setOrdering('oldest');
-                                                    handlePageChange(1);
-                                                    setIsSortOpen(false);
-                                                }}
-                                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-855 ${
-                                                    ordering === 'oldest' ? 'text-emerald-500 font-bold bg-emerald-500/5' : 'text-zinc-300 hover:text-white'
-                                                }`}
-                                            >
-                                                {t('oldestFirst')}
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
+                                <FilterDropdown
+                                    label={t('sortBy')}
+                                    options={[
+                                        { value: 'newest', label: t('newestFirst') },
+                                        { value: 'oldest', label: t('oldestFirst') },
+                                    ]}
+                                    value={ordering}
+                                    onChange={(v) => { setOrdering(v as 'newest' | 'oldest'); handlePageChange(1); }}
+                                    showAllOption={false}
+                                    showSelectionAccent={false}
+                                    align="right"
+                                />
                             </div>
 
                             {/* Category Tabs (Multi-Select) */}
-                            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
+                            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
                                 {CATEGORIES.map(cat => {
                                     const isSelected = cat.id === 'all'
                                         ? selectedCategories.includes('all')
@@ -443,7 +438,39 @@ export default function NewsPage() {
                             </div>
                         ) : (
                             <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Mobile: compact horizontal list cards */}
+                                <div className="grid grid-cols-1 gap-3 lg:hidden">
+                                    {gridNews.map((item) => (
+                                        <div key={item.id} onClick={() => handleCardClick(item.id)} className="flex gap-3 p-3 bg-zinc-900 rounded-xl border border-zinc-800 active:bg-zinc-800/50 transition-colors cursor-pointer">
+                                            <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
+                                                <img
+                                                    src={item.image_url || "/placeholder-news.jpg"}
+                                                    alt={item.title}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            </div>
+                                            <div className="flex-1 min-w-0 flex flex-col justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold uppercase text-emerald-500">
+                                                        {getTranslatedCategory(item.category)}
+                                                    </span>
+                                                    <h3 className="text-sm font-bold leading-snug line-clamp-2 mt-0.5">
+                                                        {item.title}
+                                                    </h3>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-xs text-zinc-500 mt-1">
+                                                    {item.source_icon && <img src={item.source_icon} className="w-3.5 h-3.5 rounded-full flex-shrink-0" />}
+                                                    <span className="truncate">{item.source_name}</span>
+                                                    <span className="flex-shrink-0">•</span>
+                                                    <span className="flex-shrink-0">{new Date(item.pub_date).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Desktop: large cards with image, description, and external link */}
+                                <div className="hidden lg:grid lg:grid-cols-2 gap-6">
                                     {gridNews.map((item) => (
                                         <div key={item.id} onClick={() => handleCardClick(item.id)} className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group cursor-pointer block">
                                             <div className="relative h-48 overflow-hidden">

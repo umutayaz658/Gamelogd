@@ -16,6 +16,10 @@ interface GameDNAProps {
         platforms: Stat[];
     } | any[]; // any[] to handle old format gracefully
     username?: string;
+    // When false, renders only the genre bar list (no card wrapper/own header) —
+    // used by the mobile accordion, which supplies its own single header instead
+    // of stacking a second "Game DNA" title underneath.
+    showHeader?: boolean;
 }
 
 const getHexColor = (colorStr: string) => {
@@ -40,61 +44,37 @@ const formatHours = (hours: number): string => {
     return `${hours}`;
 };
 
-export default function GameDNA({ stats, username }: GameDNAProps) {
+export default function GameDNA({ stats, username, showHeader = true }: GameDNAProps) {
     const [activeTab, setActiveTab] = useState<'genres' | 'platforms'>('genres');
-    
+
     const isOldFormat = Array.isArray(stats);
-    
+
     // If old format, it has "genre" instead of "name" sometimes, map it safely
-    const genresList = isOldFormat 
-        ? stats.map(s => ({ ...s, name: s.genre || s.name })) 
+    const genresList = isOldFormat
+        ? stats.map(s => ({ ...s, name: s.genre || s.name }))
         : (stats?.genres || []);
-        
+
     const platformsList = isOldFormat ? [] : (stats?.platforms || []);
 
     const currentList = activeTab === 'genres' ? genresList : platformsList;
     const totalHours = genresList.reduce((sum: number, s: any) => sum + (s.total_hours || 0), 0);
-    
+
     if (genresList.length === 0 && platformsList.length === 0) {
         return null; // Do not render if completely empty
     }
 
-    return (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-zinc-100 font-bold">
-                    <Dna className="h-5 w-5 text-emerald-500" />
-                    <span>Game DNA</span>
-                </div>
-                <div className="flex items-center gap-3">
-                    {totalHours > 0 && (
-                        <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-                            <Clock className="h-3 w-3" />
-                            <span>{formatHours(totalHours)}h total</span>
-                        </div>
-                    )}
-                    {username && (
-                        <Link
-                            href={`/${username}/games`}
-                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors group"
-                            title="View Full Library"
-                        >
-                            <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
-                        </Link>
-                    )}
-                </div>
-            </div>
-
+    const content = (
+        <>
             {/* Tabs */}
             {!isOldFormat && platformsList.length > 0 && (
                 <div className="flex items-center gap-2 mb-6 bg-zinc-950 p-1 rounded-xl w-fit">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('genres')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeTab === 'genres' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                     >
                         Genres
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('platforms')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeTab === 'platforms' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                     >
@@ -133,6 +113,40 @@ export default function GameDNA({ stats, username }: GameDNAProps) {
                     </div>
                 ))}
             </div>
+        </>
+    );
+
+    if (!showHeader) {
+        return content;
+    }
+
+    return (
+        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 text-zinc-100 font-bold">
+                    <Dna className="h-5 w-5 text-emerald-500" />
+                    <span>Game DNA</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    {totalHours > 0 && (
+                        <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                            <Clock className="h-3 w-3" />
+                            <span>{formatHours(totalHours)}h total</span>
+                        </div>
+                    )}
+                    {username && (
+                        <Link
+                            href={`/${username}/games`}
+                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors group"
+                            title="View Full Library"
+                        >
+                            <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+                        </Link>
+                    )}
+                </div>
+            </div>
+
+            {content}
         </div>
     );
 }

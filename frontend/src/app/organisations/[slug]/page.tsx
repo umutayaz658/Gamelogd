@@ -127,7 +127,7 @@ export default function OrganisationProfilePage() {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-sans">
                 <Navbar />
-                <div className="container mx-auto px-4 py-20 text-center">
+                <div className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 py-20 text-center">
                     <h2 className="text-2xl font-bold mb-4">{t('organisationNotFound' as any) || 'Organisation Not Found'}</h2>
                     <p className="text-zinc-400 mb-8">{t('organisationNotFoundDesc' as any) || 'The organisation you are looking for does not exist or has been deleted.'}</p>
                     <Link href="/devs" className="bg-blue-600 hover:bg-blue-500 px-6 py-2.5 rounded-xl font-bold transition-all">
@@ -179,7 +179,7 @@ export default function OrganisationProfilePage() {
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-blue-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6 pb-12">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-12">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar */}
                     <div className="hidden lg:block col-span-3">
