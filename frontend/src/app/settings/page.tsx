@@ -265,6 +265,7 @@ const translations = {
         errorSteamSync: "Failed to sync Steam account. Please check your ID.",
         confirmSteamDisconnect: "Are you sure you want to disconnect Steam? This will remove your synced games.",
         successSteamDisconnect: "Steam disconnected successfully.",
+        steamSuccess: "Steam connected successfully. Library sync started in the background.",
         confirmUnblockTitle: "Unblock User",
         confirmUnblockMsg: "Are you sure you want to unblock @{username}?",
         successPlatformUpdate: "account updated successfully!",
@@ -432,6 +433,7 @@ const translations = {
         errorSteamSync: "Steam hesabı eşitlenemedi. Lütfen ID'nizi kontrol edin.",
         confirmSteamDisconnect: "Steam bağlantısını kesmek istediğinizden emin misiniz? Bu işlem eşitlenmiş oyunlarınızı kaldıracaktır.",
         successSteamDisconnect: "Steam bağlantısı başarıyla kesildi.",
+        steamSuccess: "Steam başarıyla bağlandı. Kütüphane senkronizasyonu arka planda başladı.",
         confirmUnblockTitle: "Kullanıcı Engeli Kaldır",
         confirmUnblockMsg: "@{username} kullanıcısının engelini kaldırmak istediğinizden emin misiniz?",
         successPlatformUpdate: "hesabı başarıyla güncellendi!",
@@ -599,6 +601,7 @@ const translations = {
         errorSteamSync: "No se pudo sincronizar Steam.",
         confirmSteamDisconnect: "¿Desconectar Steam?",
         successSteamDisconnect: "Steam desconectado.",
+        steamSuccess: "Steam conectado correctamente. Sincronización de biblioteca iniciada en segundo plano.",
         confirmUnblockTitle: "Desbloquear Usuario",
         confirmUnblockMsg: "¿Está seguro de que desea desbloquear a @{username}?",
         successPlatformUpdate: "¡Actualizado con éxito!",
@@ -750,6 +753,7 @@ const translations = {
         errorSteamSync: "Échec de la synchronisation Steam.",
         confirmSteamDisconnect: "Déconnecter Steam ?",
         successSteamDisconnect: "Steam déconnecté.",
+        steamSuccess: "Steam connecté avec succès. Synchronisation de la bibliothèque démarrée en arrière-plan.",
         confirmUnblockTitle: "Débloquer l'utilisateur",
         confirmUnblockMsg: "Êtes-vous sûr de vouloir débloquer @{username} ?",
         successPlatformUpdate: "Compte mis à jour avec succès !",
@@ -901,6 +905,7 @@ const translations = {
         errorSteamSync: "Steam-Synchronisierung fehlgeschlagen.",
         confirmSteamDisconnect: "Steam-Verbindung trennen?",
         successSteamDisconnect: "Steam-Verbindung getrennt.",
+        steamSuccess: "Steam erfolgreich verbunden. Bibliothekssynchronisierung im Hintergrund gestartet.",
         confirmUnblockTitle: "Benutzer entsperren",
         confirmUnblockMsg: "Sind Sie sicher, dass Sie @{username} entsperren möchten?",
         successPlatformUpdate: "Konto erfolgreich aktualisiert!",
@@ -1079,6 +1084,24 @@ function SettingsContent() {
         }
     }, [activeTab]);
 
+    useEffect(() => {
+        const syncStatus = searchParams.get('sync');
+        const reason = searchParams.get('reason');
+        
+        if (syncStatus === 'steam_success') {
+            setSteamSyncMessage({ type: 'success', text: t('steamSuccess') || 'Steam connected successfully. Library sync started in the background.' });
+            setSteamConnected(true);
+            router.replace('/settings?tab=connected', { scroll: false });
+        } else if (syncStatus === 'xbox_success') {
+            alert("Xbox connected successfully. Library sync started in the background.");
+            router.replace('/settings?tab=connected', { scroll: false });
+        } else if (syncStatus === 'error') {
+            const errorMsg = reason ? `Connection failed: ${reason}` : 'Connection failed. Please try again.';
+            setSteamSyncMessage({ type: 'error', text: errorMsg });
+            router.replace('/settings?tab=connected', { scroll: false });
+        }
+    }, [searchParams, router]);
+
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -1204,10 +1227,8 @@ function SettingsContent() {
             setIsInvestor(user.is_investor || false);
             if (user.steam_id) {
                 setSteamConnected(true);
-                setSteamIdInput(user.steam_id);
             } else {
                 setSteamConnected(false);
-                setSteamIdInput('');
             }
             if (user.settings) {
                 setSettings(prev => ({
@@ -1328,6 +1349,76 @@ function SettingsContent() {
         }
     };
 
+    const handleSteamConnect = async () => {
+        try {
+            const res = await api.get('/users/steam_auth_url/');
+            window.location.href = res.data.url;
+        } catch (error) {
+            console.error("Steam connect failed:", error);
+            setSteamSyncMessage({ type: 'error', text: 'Failed to initiate Steam connection.' });
+        }
+    };
+
+    const handleSteamDisconnect = async () => {
+        setConfirmModalConfig({
+            title: 'Disconnect Steam',
+            message: 'Are you sure you want to disconnect your Steam account? Your imported games and playtimes will be removed.',
+            confirmText: 'Disconnect',
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post('/users/disconnect_steam/');
+                    setSteamConnected(false);
+                    setSteamSyncMessage(null);
+                    if (user) {
+                        updateUser({ ...user, steam_id: '' });
+                    }
+                } catch (error) {
+                    console.error("Failed to disconnect steam:", error);
+                    alert("Failed to disconnect Steam.");
+                }
+            }
+        });
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleXboxConnect = async () => {
+        try {
+            const res = await api.get('/users/xbox_auth_url/');
+            window.location.href = res.data.url;
+        } catch (error) {
+            console.error("Xbox connect failed:", error);
+            alert("Failed to initiate Xbox connection.");
+        }
+    };
+
+    const handleXboxDisconnect = async () => {
+        setConfirmModalConfig({
+            title: 'Disconnect Xbox Live',
+            message: 'Are you sure you want to disconnect your Xbox Live account? Your imported games and playtimes will be removed.',
+            confirmText: 'Disconnect',
+            isDanger: true,
+            onConfirm: async () => {
+                try {
+                    await api.post('/users/disconnect_xbox/');
+                    if (user) {
+                        updateUser({ ...user, xbox_gamertag: null });
+                    }
+                    const updatedSettings = { ...settings };
+                    if (updatedSettings.connected_accounts.xbox) {
+                        updatedSettings.connected_accounts.xbox.connected = false;
+                        updatedSettings.connected_accounts.xbox.username = "";
+                    }
+                    setSettings(updatedSettings);
+                } catch (error) {
+                    console.error("Failed to disconnect xbox:", error);
+                    alert("Failed to disconnect Xbox.");
+                }
+            }
+        });
+        setIsConfirmModalOpen(true);
+    };
+
     const handleDisplaySettingsChange = async (key: string, value: string) => {
         const updatedDisplay = { ...displaySettings, [key]: value };
         setDisplaySettings(updatedDisplay);
@@ -1345,45 +1436,7 @@ function SettingsContent() {
         }
     };
 
-    const handleSteamSync = async () => {
-        if (!steamIdInput) return;
-        setIsSyncing(true);
-        setSteamSyncMessage(null);
-        try {
-            const res = await api.post('/users/sync_steam/', { steam_id: steamIdInput });
-            setSteamConnected(true);
-            setSteamSyncMessage({ type: 'success', text: res.data.message || t('successSteamSync') });
-            const meRes = await api.get('/users/me/');
-            updateUser(meRes.data);
-        } catch (error) {
-            console.error("Steam sync failed:", error);
-            setSteamSyncMessage({ type: 'error', text: t('errorSteamSync') });
-        } finally {
-            setIsSyncing(false);
-        }
-    };
 
-    const handleSteamDisconnect = () => {
-        setConfirmModalConfig({
-            title: displaySettings.language === 'Turkish' ? 'Steam Bağlantısını Kes' : 'Disconnect Steam',
-            message: t('confirmSteamDisconnect'),
-            confirmText: displaySettings.language === 'Turkish' ? 'Bağlantıyı Kes' : 'Disconnect',
-            isDanger: true,
-            onConfirm: async () => {
-                try {
-                    await api.post('/users/disconnect_steam/');
-                    setSteamConnected(false);
-                    setSteamIdInput('');
-                    toast.success(t('successSteamDisconnect'));
-                    const meRes = await api.get('/users/me/');
-                    updateUser(meRes.data);
-                } catch (error) {
-                    console.error("Failed to disconnect Steam:", error);
-                }
-            }
-        });
-        setIsConfirmModalOpen(true);
-    };
 
     const handleConnectPlatform = (platformId: string, platformName: string) => {
         setConnectingPlatform({ id: platformId, name: platformName });
@@ -1909,14 +1962,14 @@ function SettingsContent() {
                                         {[
                                             { id: 'steam', name: 'Steam', icon: Gamepad2, connected: steamConnected, color: 'text-blue-400', description: t('steamDesc') },
                                             { id: 'psn', name: 'PlayStation Network', icon: Gamepad2, connected: settings.connected_accounts.psn?.connected, color: 'text-blue-600', description: t('psnDesc') },
-                                            { id: 'xbox', name: 'Xbox Live', icon: Gamepad2, connected: settings.connected_accounts.xbox?.connected, color: 'text-green-500', description: t('xboxDesc') },
+                                            { id: 'xbox', name: 'Xbox Live', icon: Gamepad2, connected: !!user?.xbox_gamertag, color: 'text-green-500', description: t('xboxDesc') },
                                             { id: 'twitch', name: 'Twitch', icon: Twitch, connected: settings.connected_accounts.twitch?.connected, color: 'text-purple-500', description: t('twitchDesc') },
                                             { id: 'epic', name: 'Epic Games', icon: Zap, connected: settings.connected_accounts.epic?.connected, color: 'text-white', description: t('epicDesc') },
                                             { id: 'gog', name: 'GOG.com', icon: Monitor, connected: settings.connected_accounts.gog?.connected, color: 'text-purple-400', description: t('gogDesc') },
                                             { id: 'ea', name: 'EA App', icon: Play, connected: settings.connected_accounts.ea?.connected, color: 'text-red-500', description: t('eaDesc') },
                                         ].map((platform) => {
                                             const isSteam = platform.id === 'steam';
-                                            const connUsername = isSteam ? user?.steam_id : (settings.connected_accounts[platform.id as keyof typeof settings.connected_accounts] as any)?.username;
+                                            const connUsername = isSteam ? user?.steam_id : (platform.id === 'xbox' ? user?.xbox_gamertag : (settings.connected_accounts[platform.id as keyof typeof settings.connected_accounts] as any)?.username);
                                             
                                             return (
                                                 <div key={platform.id} className="flex flex-col p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
@@ -1944,6 +1997,14 @@ function SettingsContent() {
                                                                 if (isSteam) {
                                                                     if (platform.connected) {
                                                                         handleSteamDisconnect();
+                                                                    } else {
+                                                                        handleSteamConnect();
+                                                                    }
+                                                                } else if (platform.id === 'xbox') {
+                                                                    if (platform.connected) {
+                                                                        handleXboxDisconnect();
+                                                                    } else {
+                                                                        handleXboxConnect();
                                                                     }
                                                                 } else {
                                                                     if (platform.connected) {
@@ -1961,39 +2022,6 @@ function SettingsContent() {
                                                             {platform.connected ? t('disconnect') : t('connect')}
                                                         </button>
                                                     </div>
-
-                                                    {/* Steam Specific Input Logic */}
-                                                    {isSteam && !platform.connected && (
-                                                        <div className="mt-4 pt-4 border-t border-zinc-900 animate-in slide-in-from-top-2">
-                                                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Steam ID 64</label>
-                                                            <div className="flex gap-2 mb-2">
-                                                                <input
-                                                                    type="text"
-                                                                    value={steamIdInput}
-                                                                    onChange={(e) => setSteamIdInput(e.target.value)}
-                                                                    placeholder="Enter your Steam ID..."
-                                                                    className={`flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none ${activeColor.borderFocus}`}
-                                                                />
-                                                                <button
-                                                                    onClick={handleSteamSync}
-                                                                    disabled={isSyncing || !steamIdInput}
-                                                                    className={`px-3 py-2 ${activeColor.bg} ${activeColor.hover} disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center gap-2`}
-                                                                >
-                                                                    {isSyncing ? (
-                                                                        <>
-                                                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                                                            <span>Syncing...</span>
-                                                                        </>
-                                                                    ) : (
-                                                                        <span>Sync</span>
-                                                                    )}
-                                                                </button>
-                                                            </div>
-                                                            <p className="text-xs text-zinc-500 mt-2">
-                                                                Find your Steam ID 64 <a href="https://steamdb.info/calculator/" target="_blank" rel="noopener noreferrer" className={`${activeColor.text} hover:underline`}>here</a>.
-                                                            </p>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             );
                                         })}

@@ -248,6 +248,12 @@ if not CRON_SECRET:
     else:
         raise ImproperlyConfigured('CRON_SECRET environment variable must be set in production.')
 
+# OAuth and API Keys
+MICROSOFT_CLIENT_ID = os.environ.get('MICROSOFT_CLIENT_ID')
+MICROSOFT_CLIENT_SECRET = os.environ.get('MICROSOFT_CLIENT_SECRET')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+OPENXBL_API_KEY = os.environ.get('OPENXBL_API_KEY')
+
 # Email configuration
 # In development (Docker local): print emails to console (terminal logs)
 # In production: use Resend SMTP to send real emails from noreply@gamelogd.net

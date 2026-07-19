@@ -1,8 +1,9 @@
 import { Dna, ArrowRight, Clock, Gamepad2 } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
 
-interface GenreStat {
-    genre: string;
+interface Stat {
+    name: string;
     percentage: number;
     color: string;
     total_hours?: number;
@@ -10,7 +11,10 @@ interface GenreStat {
 }
 
 interface GameDNAProps {
-    stats: GenreStat[];
+    stats: {
+        genres: Stat[];
+        platforms: Stat[];
+    } | any[]; // any[] to handle old format gracefully
     username?: string;
     // When false, renders only the genre bar list (no card wrapper/own header) —
     // used by the mobile accordion, which supplies its own single header instead
@@ -41,48 +45,84 @@ const formatHours = (hours: number): string => {
 };
 
 export default function GameDNA({ stats, username, showHeader = true }: GameDNAProps) {
-    const totalHours = stats.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+    const [activeTab, setActiveTab] = useState<'genres' | 'platforms'>('genres');
 
-    const list = (
-        <div className="flex flex-col gap-4">
-            {stats.map((stat) => (
-                <div key={stat.genre}>
-                    <div className="flex justify-between text-sm mb-1.5">
-                        <span className="text-zinc-400 font-medium">{stat.genre}</span>
-                        <div className="flex items-center gap-2">
-                            {stat.total_hours !== undefined && stat.total_hours > 0 && (
-                                <span className="text-zinc-600 text-xs flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    {formatHours(stat.total_hours)}h
-                                </span>
-                            )}
-                            {stat.game_count !== undefined && stat.game_count > 0 && (
-                                <span className="text-zinc-600 text-xs flex items-center gap-1">
-                                    <Gamepad2 className="h-3 w-3" />
-                                    {stat.game_count}
-                                </span>
-                            )}
-                            <span className="text-white font-bold">{stat.percentage}%</span>
+    const isOldFormat = Array.isArray(stats);
+
+    // If old format, it has "genre" instead of "name" sometimes, map it safely
+    const genresList = isOldFormat
+        ? stats.map(s => ({ ...s, name: s.genre || s.name }))
+        : (stats?.genres || []);
+
+    const platformsList = isOldFormat ? [] : (stats?.platforms || []);
+
+    const currentList = activeTab === 'genres' ? genresList : platformsList;
+    const totalHours = genresList.reduce((sum: number, s: any) => sum + (s.total_hours || 0), 0);
+
+    if (genresList.length === 0 && platformsList.length === 0) {
+        return null; // Do not render if completely empty
+    }
+
+    const content = (
+        <>
+            {/* Tabs */}
+            {!isOldFormat && platformsList.length > 0 && (
+                <div className="flex items-center gap-2 mb-6 bg-zinc-950 p-1 rounded-xl w-fit">
+                    <button
+                        onClick={() => setActiveTab('genres')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeTab === 'genres' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                        Genres
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('platforms')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeTab === 'platforms' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                        Platforms
+                    </button>
+                </div>
+            )}
+
+            <div className="flex flex-col gap-4">
+                {currentList.map((stat: any) => (
+                    <div key={stat.name}>
+                        <div className="flex justify-between text-sm mb-1.5">
+                            <span className="text-zinc-400 font-medium">{stat.name}</span>
+                            <div className="flex items-center gap-2">
+                                {stat.total_hours !== undefined && stat.total_hours > 0 && (
+                                    <span className="text-zinc-600 text-xs flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {formatHours(stat.total_hours)}h
+                                    </span>
+                                )}
+                                {stat.game_count !== undefined && stat.game_count > 0 && (
+                                    <span className="text-zinc-600 text-xs flex items-center gap-1">
+                                        <Gamepad2 className="h-3 w-3" />
+                                        {stat.game_count}
+                                    </span>
+                                )}
+                                <span className="text-white font-bold">{stat.percentage}%</span>
+                            </div>
+                        </div>
+                        <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
+                            <div
+                                className="h-full rounded-full transition-all duration-1000 ease-out"
+                                style={{ width: `${stat.percentage}%`, backgroundColor: getHexColor(stat.color) }}
+                            />
                         </div>
                     </div>
-                    <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
-                        <div
-                            className="h-full rounded-full transition-all duration-1000 ease-out"
-                            style={{ width: `${stat.percentage}%`, backgroundColor: getHexColor(stat.color) }}
-                        />
-                    </div>
-                </div>
-            ))}
-        </div>
+                ))}
+            </div>
+        </>
     );
 
     if (!showHeader) {
-        return list;
+        return content;
     }
 
     return (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-zinc-100 font-bold">
                     <Dna className="h-5 w-5 text-emerald-500" />
                     <span>Game DNA</span>
@@ -106,7 +146,7 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
                 </div>
             </div>
 
-            {list}
+            {content}
         </div>
     );
 }

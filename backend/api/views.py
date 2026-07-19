@@ -291,24 +291,53 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         request.user.steam_id = steam_id
         request.user.save()
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def steam_auth_url(self, request):
+        from api.services.oauth import get_steam_openid_url
+        
+        callback_url = request.build_absolute_uri('/api/users/steam_auth_callback/')
+        url = get_steam_openid_url(callback_url)
+        
+        # Save user_id in session/cookie or use state parameter (Steam OpenID doesn't support state natively well,
+        # but we can append it to the return_to URL)
+        from django.core import signing
+        state = signing.dumps({'user_id': request.user.id})
+        
+        callback_url = request.build_absolute_uri(f'/api/users/steam_auth_callback/?state={state}')
+        url = get_steam_openid_url(callback_url)
+        
+        return Response({"url": url}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def steam_auth_callback(self, request):
+        from django.core import signing
+        from django.http import HttpResponseRedirect
         from django.conf import settings
-        if not settings.STEAM_API_KEY:
-            return Response({
-                "status": "Steam ID saved, but library sync is unavailable (STEAM_API_KEY not configured).",
-                "steam_id_saved": True
-            }, status=status.HTTP_200_OK)
-
-        # Run sync in background thread so the user doesn't wait
+        from api.services.oauth import verify_steam_openid_response
+        from api.models import User as UserModel, Notification
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        state = request.GET.get('state')
+        
+        try:
+            state_data = signing.loads(state, max_age=3600)
+            user_id = state_data['user_id']
+            user = UserModel.objects.get(id=user_id)
+        except Exception:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=invalid_state")
+            
+        steam_id = verify_steam_openid_response(request.GET)
+        if not steam_id:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=verification_failed")
+            
+        user.steam_id = steam_id
+        user.save()
+        
         import threading
-        user_id = request.user.id
-
         def run_sync():
             from api.services.steam import fetch_steam_library
-            from api.models import Notification, User as UserModel
             try:
-                stats = fetch_steam_library(user_id, steam_id)
-                # Create a notification for the user when sync completes
-                user = UserModel.objects.get(id=user_id)
+                stats = fetch_steam_library(user.id, steam_id)
                 synced = stats.get('synced', 0)
                 total = stats.get('total', 0)
                 Notification.objects.create(
@@ -317,34 +346,130 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                     verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.'
                 )
             except Exception as e:
-                print(f"Background Steam sync failed for user {user_id}: {e}")
-                try:
-                    user = UserModel.objects.get(id=user_id)
-                    Notification.objects.create(
-                        recipient=user,
-                        actor=user,
-                        verb='Steam library sync failed. Please check your privacy settings and try again.'
-                    )
-                except Exception:
-                    pass
-
+                print(f"Background Steam sync failed for user {user.id}: {e}")
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb='Steam library sync failed. Please check your privacy settings.'
+                )
         threading.Thread(target=run_sync, daemon=True).start()
+        
+        return HttpResponseRedirect(f"{frontend_url}/settings?sync=steam_success")
 
-        return Response({
-            "status": "sync_started",
-            "message": "Steam library sync has been started. You will be notified when it's complete."
-        }, status=status.HTTP_200_OK)
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def xbox_auth_url(self, request):
+        from django.core import signing
+        from api.services.oauth import get_xbox_oauth_url
+        
+        state = signing.dumps({'user_id': request.user.id})
+        # Hardcode to localhost to avoid Azure 127.0.0.1 validation errors
+        callback_url = 'http://localhost:8000/api/users/xbox_auth_callback/'
+        
+        try:
+            url = get_xbox_oauth_url(callback_url)
+            # Append state to the Microsoft OAuth URL
+            url = f"{url}&state={state}"
+            return Response({"url": url}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def xbox_auth_callback(self, request):
+        from django.core import signing
+        from django.http import HttpResponseRedirect
+        from django.conf import settings
+        from api.services.oauth import process_xbox_oauth_flow
+        from api.models import User as UserModel, Notification
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        code = request.GET.get('code')
+        state = request.GET.get('state')
+        
+        if not code or not state:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=missing_params")
+            
+        try:
+            state_data = signing.loads(state, max_age=3600)
+            user_id = state_data['user_id']
+            user = UserModel.objects.get(id=user_id)
+        except Exception:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=invalid_state")
+            
+        # Hardcode to localhost to avoid Azure 127.0.0.1 validation errors
+        callback_url = 'http://localhost:8000/api/users/xbox_auth_callback/'
+        result = process_xbox_oauth_flow(code, callback_url)
+        
+        if not result:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=xbox_auth_failed")
+            
+        gamertag, xuid, xsts_token, user_hash = result
+            
+        user.xbox_gamertag = gamertag
+        user.save()
+        
+        Notification.objects.create(
+            recipient=user,
+            actor=user,
+            verb=f'Started syncing Xbox Live library for {gamertag}...'
+        )
+        
+        import threading
+        def run_sync():
+            from api.services.xbox import sync_xbox_library
+            try:
+                sync_xbox_library(user, xuid, xsts_token, user_hash)
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb=f'Your Xbox Live library for {gamertag} has been synced successfully.'
+                )
+            except Exception as e:
+                print(f"Background Xbox sync failed for user {user.id}: {e}")
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb='Xbox library sync failed. Please check your Xbox Live privacy settings.'
+                )
+        threading.Thread(target=run_sync, daemon=True).start()
+        
+        return HttpResponseRedirect(f"{frontend_url}/settings?sync=xbox_success")
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def disconnect_xbox(self, request):
+        request.user.xbox_gamertag = ""
+        request.user.save()
+        
+        from api.models import LibraryEntry
+        entries = LibraryEntry.objects.filter(user=request.user, platform__icontains='xbox')
+        for entry in entries:
+            entry.xbox_playtime = 0
+            entry.playtime_forever = entry.steam_playtime
+            platforms = [p.strip() for p in entry.platform.split(',') if p.strip().lower() != 'xbox']
+            entry.platform = ', '.join(platforms)
+            if not entry.platform:
+                entry.delete()
+            else:
+                entry.save()
+                
+        return Response({'status': 'disconnected'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def disconnect_steam(self, request):
-        # Clear Steam ID
         request.user.steam_id = ""
         request.user.save()
         
-        # Remove Steam Games from Library
         from api.models import LibraryEntry
-        LibraryEntry.objects.filter(user=request.user, platform__iexact='steam').delete()
-        
+        entries = LibraryEntry.objects.filter(user=request.user, platform__icontains='steam')
+        for entry in entries:
+            entry.steam_playtime = 0
+            entry.playtime_forever = entry.xbox_playtime
+            platforms = [p.strip() for p in entry.platform.split(',') if p.strip().lower() != 'steam']
+            entry.platform = ', '.join(platforms)
+            if not entry.platform:
+                entry.delete()
+            else:
+                entry.save()
+                
         return Response({'status': 'disconnected'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='change-password')
@@ -497,48 +622,77 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         
-        # Playtime > 0 olan tüm oyunları dahil et (dropped dahil)
-        # Böylece Steam kütüphanesindeki oynanan her oyun Game DNA'ya etki eder
         entries = LibraryEntry.objects.filter(
-            user=user,
-            playtime_forever__gt=0
-        ).select_related('game')
+            user=user
+        ).exclude(status='dropped').select_related('game')
 
-        # Playtime-ağırlıklı tür hesaplaması
-        # Her oyunun playtime'ı (dakika) o oyunun türlerine ağırlık olarak eklenir
-        # Böylece 300 saat oynanan aksiyon oyunu, 5 saat oynanan RPG'den çok daha fazla etki eder
         from api.services.steam import normalize_genre
-        genre_weights = {}  # genre -> total playtime in minutes
-        genre_game_counts = {}  # genre -> number of games (for display)
+        genre_weights = {}
+        genre_game_counts = {}
+        platform_weights = {}
+        platform_game_counts = {}
+
         for entry in entries:
-            # Playtime 0 ise minimum 1 dakika ağırlık ver (oyun yine de sayılsın)
-            weight = max(entry.playtime_forever, 1)
+            weight = entry.playtime_forever if entry.playtime_forever > 0 else 120
+            
+            # Genre calculations
             for genre in (entry.game.genres or []):
                 normalized = normalize_genre(genre)
                 genre_weights[normalized] = genre_weights.get(normalized, 0) + weight
                 genre_game_counts[normalized] = genre_game_counts.get(normalized, 0) + 1
+                
+            # Platform calculations
+            platforms = [p.strip() for p in entry.platform.split(',') if p.strip()] if entry.platform else []
+            if not platforms:
+                platforms = ['Unknown']
+            import re
+            for plat in platforms:
+                # Sanitize platform name: strip HTML tags, truncate
+                plat = re.sub(r'<[^>]+>', '', plat).strip()[:100]
+                if not plat:
+                    plat = 'Unknown'
+                platform_weights[plat] = platform_weights.get(plat, 0) + weight
+                platform_game_counts[plat] = platform_game_counts.get(plat, 0) + 1
 
-        total_weight = sum(genre_weights.values())
-        if total_weight == 0:
-            return Response([])
+        total_genre_weight = sum(genre_weights.values())
+        total_platform_weight = sum(platform_weights.values())
 
-        # Yüzde hesapla ve sırala (playtime ağırlığına göre)
         colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
-        result = []
-        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
-            percentage = round((weight / total_weight) * 100)
-            if percentage == 0:
-                continue
-            total_hours = round(weight / 60, 1)
-            result.append({
-                "genre": genre,
-                "percentage": percentage,
-                "color": colors[len(result) % len(colors)],
-                "total_hours": total_hours,
-                "game_count": genre_game_counts.get(genre, 0)
-            })
+        
+        genres_result = []
+        if total_genre_weight > 0:
+            for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
+                percentage = round((weight / total_genre_weight) * 100)
+                if percentage == 0:
+                    continue
+                total_hours = round(weight / 60, 1)
+                genres_result.append({
+                    "name": genre,
+                    "percentage": percentage,
+                    "color": colors[len(genres_result) % len(colors)],
+                    "total_hours": total_hours,
+                    "game_count": genre_game_counts.get(genre, 0)
+                })
 
-        return Response(result)
+        platforms_result = []
+        if total_platform_weight > 0:
+            for i, (plat, weight) in enumerate(sorted(platform_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
+                percentage = round((weight / total_platform_weight) * 100)
+                if percentage == 0:
+                    continue
+                total_hours = round(weight / 60, 1)
+                platforms_result.append({
+                    "name": plat,
+                    "percentage": percentage,
+                    "color": colors[len(platforms_result) % len(colors)],
+                    "total_hours": total_hours,
+                    "game_count": platform_game_counts.get(plat, 0)
+                })
+
+        return Response({
+            "genres": genres_result,
+            "platforms": platforms_result
+        })
 
     @action(detail=True, methods=['get'], url_path='recommended-games')
     def recommended_games(self, request, username=None):
@@ -1260,33 +1414,65 @@ class ReviewViewSet(viewsets.ModelViewSet):
             
         return queryset
 
-    def _sync_library_status(self, review):
+    def _sync_library_status(self, review, playtime_hours=None, platform=None):
         """Sync LibraryEntry status based on review is_completed flag, and ensure logged games are in the library."""
         from api.models import LibraryEntry
+        
+        # Sanitize platform input
+        if platform:
+            import re
+            platform = str(platform).strip()[:100]  # Truncate to max field length
+            # Strip any HTML/script tags
+            platform = re.sub(r'<[^>]+>', '', platform)
+            if not platform:
+                platform = None
         
         entry, created = LibraryEntry.objects.get_or_create(
             user=review.user,
             game=review.game,
             defaults={
                 'status': 'completed' if review.is_completed else 'playing',
-                'platform': 'Manual'
+                'platform': platform if platform else 'Manual'
             }
         )
         
+        update_fields = []
+        
         if review.is_completed and entry.status != 'completed':
             entry.status = 'completed'
-            entry.save(update_fields=['status'])
+            update_fields.append('status')
         elif not review.is_completed and entry.status == 'completed':
             entry.status = 'playing'
-            entry.save(update_fields=['status'])
+            update_fields.append('status')
+
+        if playtime_hours is not None:
+            try:
+                hours = float(playtime_hours)
+                # Validate range: non-negative and capped at 50,000 hours (~5.7 years non-stop)
+                if 0 <= hours <= 50000:
+                    entry.playtime_forever = int(hours * 60)
+                    update_fields.append('playtime_forever')
+            except (ValueError, TypeError):
+                pass
+                
+        if platform:
+            entry.platform = platform
+            update_fields.append('platform')
+            
+        if update_fields:
+            entry.save(update_fields=update_fields)
 
     def perform_create(self, serializer):
         review = serializer.save(user=self.request.user)
-        self._sync_library_status(review)
+        playtime_hours = self.request.data.get('playtime_hours')
+        platform = self.request.data.get('platform')
+        self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
 
     def perform_update(self, serializer):
         review = serializer.save()
-        self._sync_library_status(review)
+        playtime_hours = self.request.data.get('playtime_hours')
+        platform = self.request.data.get('platform')
+        self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
 
 
 class PostViewSet(viewsets.ModelViewSet):
