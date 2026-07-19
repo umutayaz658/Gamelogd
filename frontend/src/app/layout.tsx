@@ -7,6 +7,7 @@ import { LogModalProvider } from '@/context/LogModalContext';
 import ClientLogModalWrapper from '@/components/ClientLogModalWrapper';
 import { ReplyModalProvider } from '@/context/ReplyModalContext';
 import ReplyModal from '@/components/ReplyModal';
+import MobileTabBar from '@/components/MobileTabBar';
 import { FeedProvider } from '@/context/FeedContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { ConfirmProvider } from '@/context/ConfirmContext';
@@ -23,7 +24,7 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" className="dark">
-            <body className="bg-zinc-950 text-zinc-100 antialiased" suppressHydrationWarning={true}>
+            <body className="bg-zinc-950 text-zinc-100 antialiased pb-14 lg:pb-0" suppressHydrationWarning={true}>
                 <ToastProvider>
                     <ConfirmProvider>
                         <AuthProvider>
@@ -35,6 +36,7 @@ export default function RootLayout({
                                             <MessagesDrawer />
                                             <ClientLogModalWrapper />
                                             <ReplyModal />
+                                            <MobileTabBar />
                                         </FeedProvider>
                                     </ReplyModalProvider>
                                 </LogModalProvider>

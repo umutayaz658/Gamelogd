@@ -125,3 +125,15 @@ export function getRelativeTime(timestamp: string | Date, lang: string = 'Englis
     if (isGerman) return `${diffInYears}j`;
     return `${diffInYears}y`;
 }
+
+/**
+ * Compacts large counts the way Twitter does (1234 -> "1.2K", 2500000 -> "2.5M").
+ * Numbers under 1000 are shown as-is.
+ */
+export function formatCount(count: number): string {
+    if (count < 1000) return String(count);
+    if (count < 1_000_000) {
+        return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+    }
+    return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+}

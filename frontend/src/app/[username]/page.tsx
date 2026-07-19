@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use, useCallback } from 'react';
+import { useState, useEffect, useRef, use, useCallback } from 'react';
 import Link from 'next/link';
 import Navbar from "@/components/Navbar";
 import GameDNA from "@/components/Profile/GameDNA";
@@ -9,10 +9,11 @@ import GameSearchModal from "@/components/GameSearchModal";
 import { getImageUrl } from "@/lib/utils";
 import { sanitizeUrl } from "@/lib/url";
 import api from "@/lib/api";
-import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X, Clock, Lock, UserX } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X, Clock, Lock, UserX, Dna, ChevronDown, ArrowRight } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
 import EditProfileModal from "@/components/EditProfileModal";
+import ImageModal from "@/components/modals/ImageModal";
 import FollowersFollowingModal from "@/components/FollowersFollowingModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useTranslation } from "@/lib/useTranslation";
@@ -103,6 +104,17 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [isSteamStatusLoading, setIsSteamStatusLoading] = useState(false);
     const [isSteamPrivate, setIsSteamPrivate] = useState(false);
     const [isUpdatingPrivacy, setIsUpdatingPrivacy] = useState(false);
+
+    // Mobile-only: Bio show-more/less + Game DNA accordion
+    const [isBioExpanded, setIsBioExpanded] = useState(false);
+    const [shouldShowBioShowMore, setShouldShowBioShowMore] = useState(false);
+    const [isGameDnaExpanded, setIsGameDnaExpanded] = useState(false);
+    const [gameDnaMaxHeight, setGameDnaMaxHeight] = useState(0);
+    const bioRef = useRef<HTMLParagraphElement>(null);
+    const gameDnaContentRef = useRef<HTMLDivElement>(null);
+
+    // Twitter-style full-size avatar/cover viewer
+    const [viewerImage, setViewerImage] = useState<string | null>(null);
 
     const isOwnProfile = currentUser?.username?.toLowerCase() === username?.toLowerCase();
 
@@ -350,6 +362,34 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         return () => document.removeEventListener('visibilitychange', handleVisibility);
     }, [fetchGameDNA]);
 
+    // Mobile Bio block: check whether the bio overflows 3 lines, mirrors PostCard.tsx's
+    // showMore/showLess overflow-detection pattern.
+    useEffect(() => {
+        const checkBioOverflow = () => {
+            if (bioRef.current && !isBioExpanded) {
+                setShouldShowBioShowMore(bioRef.current.scrollHeight > bioRef.current.clientHeight);
+            }
+        };
+        const timer = setTimeout(checkBioOverflow, 50);
+        window.addEventListener('resize', checkBioOverflow);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('resize', checkBioOverflow);
+        };
+    }, [profileUser?.bio, isBioExpanded]);
+
+    // Mobile Game DNA accordion: recompute the target height whenever the panel is
+    // opened/closed OR the underlying stats arrive later than the first click — this
+    // avoids the "snaps open on the very first expand" bug where scrollHeight was
+    // measured before gameDNA had finished loading.
+    useEffect(() => {
+        if (isGameDnaExpanded && gameDnaContentRef.current) {
+            setGameDnaMaxHeight(gameDnaContentRef.current.scrollHeight);
+        } else {
+            setGameDnaMaxHeight(0);
+        }
+    }, [isGameDnaExpanded, gameDNA]);
+
     const handleSlotClick = (index: number) => {
         if (!isOwnProfile) return;
         setActiveSlotIndex(index);
@@ -596,38 +636,39 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             <Navbar />
 
             {/* Hero Section */}
-            <div className="relative mb-20">
+            <div className="relative mb-4 sm:mb-14 md:mb-20">
                 {/* Cover Image */}
-                <div className="h-60 md:h-80 w-full overflow-hidden bg-zinc-950 relative">
+                <div className="h-40 sm:h-56 md:h-80 w-full overflow-hidden bg-zinc-950 relative">
                     {displayUser.cover && (
                         <img
                             src={displayUser.cover}
                             alt="Cover"
-                            className="w-full h-full object-cover"
+                            onClick={() => setViewerImage(displayUser.cover)}
+                            className="w-full h-full object-cover cursor-pointer"
                         />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent pointer-events-none" />
                 </div>
 
-                <div className="container mx-auto px-4">
-                    <div className="relative -mt-20 flex flex-col md:flex-row items-end gap-6">
+                <div className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4">
+                    <div className="relative -mt-10 sm:-mt-14 md:-mt-20 flex flex-col md:flex-row items-end gap-6">
                         {/* Avatar */}
                         <div className="relative">
-                            <div className="h-32 w-32 md:h-40 md:w-40 rounded-full border-4 border-zinc-950 overflow-hidden bg-zinc-900">
+                            <div className="h-20 w-20 sm:h-28 sm:w-28 md:h-40 md:w-40 rounded-full border-4 border-zinc-950 overflow-hidden bg-zinc-900">
                                 <img
                                     src={displayUser.avatar}
                                     alt={displayUser.name}
-                                    className="w-full h-full object-cover"
+                                    onClick={() => setViewerImage(displayUser.avatar)}
+                                    className="w-full h-full object-cover cursor-pointer"
                                 />
                             </div>
-                            <div className="absolute bottom-2 right-2 h-6 w-6 bg-emerald-500 rounded-full border-4 border-zinc-950" />
                         </div>
 
                         {/* Profile Info */}
                         <div className="flex-1 mb-2 w-full">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div>
-                                    <div className="flex items-center gap-4">
+                                <div className="hidden lg:block">
+                                    <div className="flex flex-wrap items-center gap-4">
                                         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
                                             {displayUser.name}
                                             <div className="flex flex-wrap gap-1.5 items-center">
@@ -657,7 +698,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                                 <span>{t('editProfile')}</span>
                                             </button>
                                         ) : (
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex flex-wrap items-center gap-2">
                                                 {!profileUser.has_blocked_me && !isBlocked && (
                                                     <>
                                                         <button
@@ -730,7 +771,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
                                 {/* Stats */}
                                 {!profileUser.has_blocked_me && !isBlocked && (
-                                    <div className="flex items-center gap-6 md:gap-8 bg-zinc-900/50 px-6 py-3 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
+                                    <div className="hidden lg:flex items-center gap-6 md:gap-8 bg-zinc-900/50 px-6 py-3 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
                                         <button
                                             onClick={() => {
                                                 if (!canViewContent) return;
@@ -759,15 +800,212 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Mobile name row: name (compact) + Edit Profile / Follow+3-dot, right-aligned */}
+                                <div className="lg:hidden flex items-center justify-between gap-3">
+                                    <h1 className="text-xl font-bold text-white truncate self-end leading-none">{displayUser.name}</h1>
+                                    {isOwnProfile ? (
+                                        <button
+                                            onClick={() => setIsEditProfileOpen(true)}
+                                            className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-all text-sm font-medium"
+                                        >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                            <span>{t('editProfile')}</span>
+                                        </button>
+                                    ) : !profileUser.has_blocked_me && (
+                                        <div className="flex-shrink-0 flex items-center gap-2">
+                                            {/* 3-dot menu (mobile) — also carries the Message action since the
+                                                row only has room for two elements (3-dot + Follow) */}
+                                            <div className="relative block-menu-container">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setIsMenuOpen(!isMenuOpen);
+                                                    }}
+                                                    className="flex items-center justify-center p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white transition-all border border-zinc-700 cursor-pointer"
+                                                >
+                                                    <MoreHorizontal className="h-4 w-4" />
+                                                </button>
+                                                {isMenuOpen && (
+                                                    <div className="absolute right-0 mt-2 w-40 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-1 animate-in fade-in duration-100">
+                                                        {!isBlocked && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); handleMessage(); }}
+                                                                className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer flex items-center gap-2"
+                                                            >
+                                                                <MessageSquare className="h-3.5 w-3.5" />
+                                                                {t('messageBtn')}
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleBlockToggle();
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-500/10 rounded-lg font-bold transition-colors cursor-pointer"
+                                                        >
+                                                            {isBlocked ? t('unblock') : t('block')}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {!isBlocked && (
+                                                <button
+                                                    onClick={handleFollowToggle}
+                                                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all text-sm font-bold shadow-lg ${isFollowing || isRequested
+                                                        ? 'bg-transparent border border-zinc-600 text-zinc-300 hover:border-zinc-400 hover:text-white'
+                                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20'
+                                                        }`}
+                                                >
+                                                    {isFollowing ? (
+                                                        <>
+                                                            <UserX className="h-4 w-4" />
+                                                            <span>{t('unfollow')}</span>
+                                                        </>
+                                                    ) : isRequested ? (
+                                                        <>
+                                                            <Clock className="h-4 w-4 text-zinc-400" />
+                                                            <span>{t('requested')}</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <UserPlus className="h-4 w-4" />
+                                                            <span>{t('follow')}</span>
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Mobile username + role badges row, left-aligned under the name */}
+                                <div className="lg:hidden flex flex-wrap items-center gap-2 mt-0 leading-none">
+                                    <p className="text-zinc-400 font-medium">{displayUser.handle}</p>
+                                    {profileUser.is_gamer && (
+                                        <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-lg border border-emerald-500/20 uppercase tracking-wider">
+                                            {t('roleGamer')}
+                                        </span>
+                                    )}
+                                    {profileUser.is_developer && (
+                                        <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] font-bold rounded-lg border border-blue-500/20 uppercase tracking-wider">
+                                            {t('roleDeveloper')}
+                                        </span>
+                                    )}
+                                    {profileUser.is_investor && (
+                                        <span className="px-2 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] font-bold rounded-lg border border-amber-500/20 uppercase tracking-wider">
+                                            {t('roleInvestor')}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Mobile Bio — Twitter-style, always visible under the name/handle */}
+                                {displayUser.bio && (
+                                    <div className="lg:hidden mt-1 space-y-2">
+                                        <p ref={bioRef} className={`text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap ${isBioExpanded ? '' : 'line-clamp-3'}`}>
+                                            {displayUser.bio}
+                                        </p>
+                                        {shouldShowBioShowMore && (
+                                            <button
+                                                onClick={() => setIsBioExpanded(v => !v)}
+                                                className="text-emerald-500 hover:text-emerald-400 hover:underline text-xs font-semibold -mt-2 block w-fit"
+                                            >
+                                                {isBioExpanded ? t('showLess') : `${t('showMore')}...`}
+                                            </button>
+                                        )}
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500">
+                                            {displayUser.location && displayUser.location.trim().length > 0 && (
+                                                <div className="flex items-center gap-1.5">
+                                                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                                    <span className="truncate">{displayUser.location}</span>
+                                                </div>
+                                            )}
+                                            {displayUser.show_birth_date && displayUser.birth_date && (() => {
+                                                const bDate = new Date(displayUser.birth_date);
+                                                if (isNaN(bDate.getTime())) return null;
+                                                const locale = language === 'Turkish' ? 'tr-TR' : 'en-US';
+                                                return (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Cake className="h-3.5 w-3.5" />
+                                                        {t('born')} {bDate.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                    </div>
+                                                );
+                                            })()}
+                                            <div className="flex items-center gap-1.5">
+                                                <Calendar className="h-3.5 w-3.5" />
+                                                {t('joined')} {displayUser.joined}
+                                            </div>
+                                        </div>
+                                        {Object.keys(displayUser.social_links).length > 0 && (
+                                            <div className="flex items-center gap-3 flex-wrap">
+                                                {Object.entries(displayUser.social_links).map(([platform, url]) => (
+                                                    <SocialIcon key={platform} platform={platform} url={url as string} />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Mobile Stats — duplicate of the desktop stats row above, shown only below lg;
+                                    slightly more compact than the desktop version to match the rest of the header */}
+                                {!profileUser.has_blocked_me && !isBlocked && (
+                                    <div className="lg:hidden flex items-center justify-around bg-zinc-900/50 px-3 py-2 rounded-xl border border-zinc-800/50 backdrop-blur-sm mt-1 w-full">
+                                        <button
+                                            onClick={() => {
+                                                if (!canViewContent) return;
+                                                setFollowModalTab('followers');
+                                                setIsFollowModalOpen(true);
+                                            }}
+                                            className={`text-center focus:outline-none group transition-all ${canViewContent ? 'hover:opacity-80' : 'cursor-default'}`}
+                                        >
+                                            <div className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors">{followersCount}</div>
+                                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{t('followers')}</div>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (!canViewContent) return;
+                                                setFollowModalTab('following');
+                                                setIsFollowModalOpen(true);
+                                            }}
+                                            className={`text-center focus:outline-none group transition-all ${canViewContent ? 'hover:opacity-80' : 'cursor-default'}`}
+                                        >
+                                            <div className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors">{profileUser.following_count || 0}</div>
+                                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{t('following')}</div>
+                                        </button>
+                                        <div className="text-center">
+                                            <div className="text-base font-bold text-emerald-400">{profileUser.reviews_count || 0}</div>
+                                            <div className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">{t('reviews')}</div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Mobile follow-request accept/decline — single line, right under the stats row */}
+                                {hasRequestedMe && !profileUser.has_blocked_me && !isBlocked && (
+                                    <div className="lg:hidden flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 mt-2 w-full">
+                                        <p className="text-xs text-zinc-300 truncate flex-1 min-w-0">{t('followRequestHeader')}</p>
+                                        <button
+                                            onClick={handleAcceptIncomingRequest}
+                                            className="flex-shrink-0 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer"
+                                        >
+                                            {t('accept')}
+                                        </button>
+                                        <button
+                                            onClick={handleDeclineIncomingRequest}
+                                            className="flex-shrink-0 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold rounded-lg border border-zinc-700 transition-all cursor-pointer"
+                                        >
+                                            {t('decline')}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
- 
-            <main className="container mx-auto px-4 pb-12">
+
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pb-12">
                 {hasRequestedMe && !profileUser.has_blocked_me && !isBlocked && (
-                    <div className="mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 animate-in fade-in duration-300">
+                    <div className="hidden lg:flex mb-6 items-center justify-between gap-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 animate-in fade-in duration-300">
                         <div className="flex items-center gap-3">
                             <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400">
                                 <UserPlus className="h-5 w-5" />
@@ -818,7 +1056,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                     <Trophy className="h-4 w-4 text-amber-500" />
                                     <span>{t('allTimeFavorites')}</span>
                                 </div>
-                                <div className="grid grid-cols-4 gap-4">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                     {topGames.map((game, index) => (
                                         <button
                                             key={index}
@@ -871,9 +1109,88 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                             </div>
                         )}
 
+                        {/* Mobile Currently Playing — compact chip, same height as the closed Game DNA
+                            accordion below regardless of state, so the header rhythm stays consistent */}
+                        {canViewContent && (
+                            <div className="lg:hidden mb-3">
+                                {isSteamStatusLoading ? (
+                                    <div className="h-16 flex items-center gap-3 bg-zinc-900 rounded-2xl border border-zinc-800 px-4">
+                                        <Loader2 className="h-4 w-4 text-emerald-500 animate-spin" />
+                                        <span className="text-xs text-zinc-500 font-semibold">{t('currentlyPlaying')}</span>
+                                    </div>
+                                ) : steamStatus && steamStatus.is_playing ? (
+                                    <div className="h-16 flex items-center gap-3 bg-zinc-900 rounded-2xl border border-zinc-800 pl-4 pr-2">
+                                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                                        <p className="text-sm font-bold text-white truncate flex-1 min-w-0">
+                                            {t('playing')} {steamStatus.game_title}
+                                        </p>
+                                        <div className="h-12 w-12 rounded-lg overflow-hidden flex-shrink-0">
+                                            <img
+                                                src={steamStatus.cover_image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"}
+                                                alt={steamStatus.game_title || "Game"}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="h-16 flex items-center gap-3 bg-zinc-900 rounded-2xl border border-dashed border-zinc-800 px-4 text-zinc-500">
+                                        <Gamepad2 className="h-5 w-5 opacity-40 flex-shrink-0" />
+                                        <span className="text-xs font-bold uppercase tracking-wider">{t('notPlaying')}</span>
+                                        {isOwnProfile && !profileUser?.steam_id && (
+                                            <Link href="/settings?tab=connected" className="text-[11px] text-emerald-500 hover:underline font-semibold ml-auto flex-shrink-0">
+                                                {t('connectSteamAccount')}
+                                            </Link>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Mobile Game DNA — collapsed accordion, single card/header (GameDNA's own
+                            header is suppressed via showHeader=false so the list attaches directly
+                            under this trigger instead of stacking a second "Game DNA" title) */}
+                        {canViewContent && (
+                            <div className="lg:hidden mb-6 bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+                                <div className="w-full h-16 flex items-center justify-between px-4">
+                                    <button
+                                        onClick={() => setIsGameDnaExpanded(v => !v)}
+                                        className="flex-1 h-full flex items-center gap-2 text-zinc-100 font-bold text-left"
+                                    >
+                                        <Dna className="h-5 w-5 text-emerald-500" />
+                                        <span>Game DNA</span>
+                                    </button>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        <Link
+                                            href={`/${username}/games`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                                            title="View Full Library"
+                                        >
+                                            <ArrowRight className="h-4 w-4" />
+                                        </Link>
+                                        <button
+                                            onClick={() => setIsGameDnaExpanded(v => !v)}
+                                            className="p-1.5"
+                                        >
+                                            <ChevronDown className={`h-4 w-4 text-zinc-400 transition-transform ${isGameDnaExpanded ? 'rotate-180' : ''}`} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div
+                                    style={{ maxHeight: gameDnaMaxHeight }}
+                                    className="overflow-hidden transition-[max-height] duration-300 ease-out"
+                                >
+                                    <div ref={gameDnaContentRef} className="px-4 pb-4 pt-1 border-t border-zinc-800">
+                                        <GameDNA stats={gameDNA} username={username} showHeader={false} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-12 gap-8">
-                            {/* Left Column (Sticky) */}
-                            <div className="col-span-12 lg:col-span-4 space-y-6">
+                            {/* Left Column (Sticky) — desktop only; mobile gets its own compact
+                                Bio/Currently-Playing/Game-DNA presentation near the header instead */}
+                            <div className="hidden lg:block lg:col-span-4 space-y-6">
 
                                 {/* Bio Card */}
                                 <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
@@ -995,7 +1312,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
 
                                 {canViewContent ? (
                                     <>
-                                        <div className="flex gap-6 border-b border-zinc-800 mb-6 overflow-x-auto">
+                                        <div className="flex gap-6 border-b border-zinc-800 mb-6 overflow-x-auto no-scrollbar">
                                             {['Activity', 'Reviews', 'Replies', 'Opinions', 'Portfolio'].map((tab) => {
                                                 const tabKey = `tab${tab}` as any;
                                                 return (
@@ -1197,6 +1514,13 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 message={confirmModalConfig.message}
                 isDanger={!isBlocked}
                 confirmText={isBlocked ? 'Unblock' : 'Block'}
+            />
+
+            {/* Twitter-style full-size avatar/cover viewer */}
+            <ImageModal
+                isOpen={!!viewerImage}
+                onClose={() => setViewerImage(null)}
+                images={viewerImage ? [viewerImage] : []}
             />
         </div >
     );

@@ -315,7 +315,11 @@ class NotificationSerializer(serializers.ModelSerializer):
 
                 elif 'followed' in obj.verb and model_name == 'project':
                     return f"/projects/{obj.target.id}"
-                
+
+                elif 'transferred ownership' in obj.verb:
+                    if model_name == 'organisation':
+                        return f"/organisations/{obj.target.slug}"
+
                 elif 'mentioned' in obj.verb:
                     if model_name == 'post':
                         return f"/{obj.target.user.username}/status/{obj.target.id}"
@@ -546,16 +550,26 @@ class ReviewSerializer(serializers.ModelSerializer):
         return representation
 
 
+class PostMediaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PostMedia
+        fields = ['id', 'file', 'media_type', 'order']
+
+
 class SimplePostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     type = serializers.CharField(default='post', read_only=True)
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
     reply_to_username = serializers.SerializerMethodField()
     news_details = serializers.SerializerMethodField()
-    
+    # Without this, a quote/repost embed (which serializes its `repost_parent` through this
+    # serializer) only ever showed the legacy single `media_file` — the multi-image gallery
+    # a post actually has was silently dropped, showing just the first image.
+    media = PostMediaSerializer(many=True, read_only=True)
+
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
 
     def get_reply_to_username(self, obj):
         if obj.parent:
@@ -601,11 +615,6 @@ class SimplePostSerializer(serializers.ModelSerializer):
 
 
 # from core.models import Game, Review, Post, Project, JobPosting, PostMedia (Imported at top)
-
-class PostMediaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PostMedia
-        fields = ['id', 'file', 'media_type', 'order']
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -896,9 +905,21 @@ class ConversationSerializer(serializers.ModelSerializer):
         return None
 
     def get_last_message(self, obj):
+        # Prefer the annotated fields set by ConversationViewSet.get_queryset (a single
+        # correlated-subquery pass over all conversations instead of one query per row).
+        # Fall back to a direct query if the serializer is ever used outside that viewset.
+        if hasattr(obj, 'ann_last_created_at'):
+            if obj.ann_last_created_at is None:
+                return None
+            content = "This message was deleted" if obj.ann_last_is_deleted else obj.ann_last_content
+            return {
+                'content': content,
+                'created_at': obj.ann_last_created_at,
+                'sender_username': obj.ann_last_sender,
+            }
+
         last_msg = obj.messages.order_by('-created_at').first()
         if last_msg:
-            # If deleted, hide content from last message preview
             content = last_msg.content
             if last_msg.is_deleted:
                 content = "This message was deleted"
@@ -910,6 +931,9 @@ class ConversationSerializer(serializers.ModelSerializer):
         return None
 
     def get_unread_count(self, obj):
+        if hasattr(obj, 'ann_unread_count'):
+            return obj.ann_unread_count
+
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.messages.filter(is_read=False).exclude(sender=request.user).count()

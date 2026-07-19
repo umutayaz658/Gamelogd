@@ -10,6 +10,10 @@ interface NotificationContextType {
     fetchCounts: () => Promise<void>;
     markMessagesRead: () => void;
     markNotificationsRead: () => void;
+    // Set by the messages page when a chat thread is open fullscreen on mobile, so the
+    // global Navbar/MobileTabBar singletons know to hide themselves.
+    isChatFullscreen: boolean;
+    setChatFullscreen: (value: boolean) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -18,6 +22,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
+    const [isChatFullscreen, setChatFullscreen] = useState(false);
 
     const fetchCounts = async () => {
         if (!user) return;
@@ -61,7 +66,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             unreadNotifications,
             fetchCounts,
             markMessagesRead,
-            markNotificationsRead
+            markNotificationsRead,
+            isChatFullscreen,
+            setChatFullscreen
         }}>
             {children}
         </NotificationContext.Provider>

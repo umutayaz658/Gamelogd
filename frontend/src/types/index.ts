@@ -260,6 +260,7 @@ export interface Notification {
     target_id?: number;
     is_read: boolean;
     created_at: string;
+    target_url?: string | null;
 }
 
 export interface ConversationMember {

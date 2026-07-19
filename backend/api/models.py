@@ -314,6 +314,7 @@ class Message(models.Model):
 
     # Message states
     is_pinned = models.BooleanField(default=False)
+    pinned_at = models.DateTimeField(null=True, blank=True)
     is_edited = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
@@ -405,6 +406,36 @@ class PendingRegistration(models.Model):
 
     def __str__(self):
         return f"Pending registration for {self.email} (Code: {self.code})"
+
+
+class PendingEmailChange(models.Model):
+    """One pending email-change request per user, verified the same way
+    PendingRegistration verifies a fresh signup: a 6-digit code sent to the new
+    address, with the same expiry + brute-force lockout behavior."""
+    user = models.OneToOneField(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='pending_email_change')
+    new_email = models.EmailField()
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    failed_attempts = models.PositiveIntegerField(default=0)
+
+    MAX_VERIFY_ATTEMPTS = 5
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=5)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def generate_code(cls):
+        import secrets
+        return "".join(secrets.choice("0123456789") for _ in range(6))
+
+    def __str__(self):
+        return f"Pending email change for {self.user.username} -> {self.new_email} (Code: {self.code})"
 
 
 class Block(models.Model):
