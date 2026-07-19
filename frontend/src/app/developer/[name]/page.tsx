@@ -93,7 +93,7 @@ export default function DeveloperPage() {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
                 <Navbar />
-                <main className="container mx-auto px-4 pt-6">
+                <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6">
                     <div className="grid grid-cols-12 gap-6">
                         <div className="hidden lg:block col-span-3"><LeftSidebar /></div>
                         <div className="col-span-12 lg:col-span-9 flex justify-center items-center h-64">
@@ -109,7 +109,7 @@ export default function DeveloperPage() {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
                 <Navbar />
-                <main className="container mx-auto px-4 pt-6">
+                <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6">
                     <div className="grid grid-cols-12 gap-6">
                         <div className="hidden lg:block col-span-3"><LeftSidebar /></div>
                         <div className="col-span-12 lg:col-span-9 text-center mt-20">
@@ -138,7 +138,7 @@ export default function DeveloperPage() {
 
             <div className="relative z-10">
                 <Navbar />
-                <main className="container mx-auto px-4 pt-6 pb-20">
+                <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-20">
                     <div className="grid grid-cols-12 gap-6">
                         <div className="hidden lg:block col-span-3">
                             <LeftSidebar />

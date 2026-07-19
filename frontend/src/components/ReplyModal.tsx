@@ -9,9 +9,35 @@ import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from './PostCard';
 import ReviewCard from './ReviewCard';
+import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import api from '@/lib/api';
+
+// Grid display still caps at 4 visible cells (Twitter standard, with a "+N" overlay
+// past that) — this only bounds how many files a single post can attach.
+const MAX_MEDIA_ITEMS = 10;
+
+interface ComposerMediaItem {
+    file: File;
+    preview: string;
+    type: 'image' | 'video';
+}
+
+// Mirrors PostCard.tsx's getPostMediaItems — used only for the quote-mode embed
+// preview, which only ever receives a Post-shaped activeItem (Review has no media fields).
+const getQuotedMediaItems = (item: Post): GridMediaItem[] => {
+    if (item.media && item.media.length > 0) {
+        return item.media.map(m => ({ url: getImageUrl(m.file), type: m.media_type }));
+    }
+    if (item.media_file || item.image) {
+        return [{ url: getImageUrl(item.media_file || item.image || ''), type: item.media_type === 'video' ? 'video' : 'image' }];
+    }
+    if (item.gif_url) {
+        return [{ url: item.gif_url, type: 'image' }];
+    }
+    return [];
+};
 
 export default function ReplyModal() {
     const { isOpen, activeItem: rawActiveItem, mode, closeReplyModal } = useReplyModal();
@@ -34,9 +60,7 @@ export default function ReplyModal() {
     }, [content]);
 
     // Media State
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [mediaItems, setMediaItems] = useState<ComposerMediaItem[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // GIF State
@@ -54,23 +78,33 @@ export default function ReplyModal() {
 
     // --- Handlers ---
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            setSelectedGif(null);
+            setShowGifPicker(false);
 
-        setSelectedGif(null);
-        setShowGifPicker(false);
+            const newItems: ComposerMediaItem[] = Array.from(files).map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+                type: file.type.startsWith('video/') ? 'video' as const : 'image' as const,
+            }));
+            setMediaItems(prev => [...prev, ...newItems].slice(0, MAX_MEDIA_ITEMS));
+        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
 
-        const type = file.type.startsWith('video/') ? 'video' : 'image';
-        setSelectedFile(file);
-        setMediaType(type);
-        setPreviewUrl(URL.createObjectURL(file));
+    const removeMediaItem = (index: number) => {
+        setMediaItems(prev => {
+            const item = prev[index];
+            if (item) URL.revokeObjectURL(item.preview);
+            return prev.filter((_, i) => i !== index);
+        });
     };
 
     const handleGifSelect = (url: string) => {
-        setSelectedFile(null);
-        setMediaType(null);
-        setPreviewUrl(null);
+        mediaItems.forEach(item => URL.revokeObjectURL(item.preview));
+        setMediaItems([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
 
         setSelectedGif(url);
@@ -78,9 +112,8 @@ export default function ReplyModal() {
     };
 
     const clearMedia = () => {
-        setSelectedFile(null);
-        setMediaType(null);
-        setPreviewUrl(null);
+        mediaItems.forEach(item => URL.revokeObjectURL(item.preview));
+        setMediaItems([]);
         setSelectedGif(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -121,7 +154,7 @@ export default function ReplyModal() {
 
     const handleSubmit = async () => {
         const hasContent = content.trim().length > 0;
-        const hasMedia = !!selectedFile || !!selectedGif;
+        const hasMedia = mediaItems.length > 0 || !!selectedGif;
         const validPoll = showPollCreator && pollOptions.filter(o => o.trim()).length >= 2;
 
         if (!hasContent && !hasMedia && !validPoll) return;
@@ -150,10 +183,7 @@ export default function ReplyModal() {
                     formData.append('type', 'reply');
                 }
             }
-            if (mediaType && selectedFile) {
-                formData.append('media_file', selectedFile);
-                formData.append('media_type', mediaType);
-            }
+            mediaItems.forEach(item => formData.append('uploaded_media', item.file));
             if (selectedGif) {
                 formData.append('gif_url', selectedGif);
             }
@@ -287,23 +317,27 @@ export default function ReplyModal() {
                                             <div>
                                                 {activeItem.title && <h4 className="font-bold text-sm text-white mb-1">{activeItem.title}</h4>}
                                                 <p className="text-zinc-350 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">{activeItem.content}</p>
-                                                {(activeItem.media_file || activeItem.image) && (
-                                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-40 mt-1.5">
-                                                        <img src={getImageUrl(activeItem.media_file || activeItem.image || '')} className="w-full h-full object-cover" />
-                                                    </div>
-                                                )}
-                                                {activeItem.gif_url && (
-                                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-40 mt-1.5">
-                                                        <img src={activeItem.gif_url} className="w-full h-full object-cover" />
-                                                    </div>
-                                                )}
+                                                {(() => {
+                                                    const quotedMediaItems = getQuotedMediaItems(activeItem);
+                                                    if (quotedMediaItems.length === 0) return null;
+                                                    return <PostMediaGrid items={quotedMediaItems} compact className="mt-1.5" />;
+                                                })()}
                                             </div>
                                         )}
                                     </div>
                                 )}
 
                                 {/* Media Preview */}
-                                {(previewUrl || selectedGif) && (
+                                {mediaItems.length > 0 && (
+                                    <div className="mb-4">
+                                        <PostMediaGrid
+                                            items={mediaItems.map(m => ({ url: m.preview, type: m.type }))}
+                                            editable
+                                            onRemove={removeMediaItem}
+                                        />
+                                    </div>
+                                )}
+                                {selectedGif && (
                                     <div className="relative mb-4 rounded-xl overflow-hidden border border-zinc-800 bg-black">
                                         <button
                                             onClick={clearMedia}
@@ -311,12 +345,7 @@ export default function ReplyModal() {
                                         >
                                             <X className="h-4 w-4" />
                                         </button>
-
-                                        {mediaType === 'video' ? (
-                                            <video src={previewUrl!} controls className="w-full max-h-[300px] object-contain" />
-                                        ) : (
-                                            <img src={previewUrl || selectedGif!} alt="Preview" className="w-full max-h-[300px] object-contain" />
-                                        )}
+                                        <img src={selectedGif} alt="Preview" className="w-full max-h-[300px] object-contain" />
                                     </div>
                                 )}
 
@@ -369,11 +398,13 @@ export default function ReplyModal() {
                                             ref={fileInputRef}
                                             className="hidden"
                                             accept="image/png, image/jpeg, image/gif, video/mp4, video/quicktime"
-                                            onChange={handleFileSelect}
+                                            onChange={handleMediaChange}
+                                            multiple
                                         />
                                         <button
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-3 py-1.5 rounded-full transition-all text-sm font-medium"
+                                            disabled={mediaItems.length >= MAX_MEDIA_ITEMS}
+                                            className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-3 py-1.5 rounded-full transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                                             title="Media"
                                         >
                                             <ImagePlay className="h-5 w-5" />
@@ -418,7 +449,7 @@ export default function ReplyModal() {
                                         )}
                                         <button
                                             onClick={handleSubmit}
-                                            disabled={(!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350 || isSubmitting}
+                                            disabled={(!content.trim() && mediaItems.length === 0 && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350 || isSubmitting}
                                             className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
                                         >
                                             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}

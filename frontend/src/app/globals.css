@@ -19,6 +19,16 @@
   }
 }
 
+html, body {
+  /* Stops vertical touch-drags from "overscrolling" past the document's real
+     boundary. Mobile Safari/Chrome interpret that residual rubber-band motion as a
+     page-scroll gesture and animate their address bar in/out in response — even on
+     pages with barely any scrollable content — which is what made fixed/sticky
+     headers and footers appear to shift or vanish while scrolling. This doesn't
+     affect normal in-page scrolling anywhere, only the overscroll past the edges. */
+  overscroll-behavior-y: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -49,4 +59,16 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: #27272a #09090b;
+}
+
+/* Opt-in utility for horizontally-scrollable rows (mobile filter bars, tab
+   strips, category pills) where the scrollbar itself shouldn't be visible —
+   plain/unlayered so it can override the global ::-webkit-scrollbar rule
+   above regardless of Tailwind's own layer ordering. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
