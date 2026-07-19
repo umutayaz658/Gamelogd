@@ -127,15 +127,16 @@ export default function SidebarSearch() {
             {/* Absolute Dropdown Overlay */}
             {showResults && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col">
-                    {/* Filter Pills inside dropdown */}
-                    <div className="p-2.5 bg-zinc-900 border-b border-zinc-800/80 flex gap-1.5 justify-start">
+                    {/* Filter Pills inside dropdown — horizontally scrollable so they never get
+                        squeezed/clipped in narrower contexts (e.g. the mobile sidebar drawer) */}
+                    <div className="p-2.5 bg-zinc-900 border-b border-zinc-800/80 flex gap-1.5 justify-start overflow-x-auto no-scrollbar">
                         <button
                             type="button"
                             onClick={() => {
                                 setFilterType('users');
                                 setResults([]);
                             }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                            className={`flex-shrink-0 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
                                 filterType === 'users'
                                     ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
                                     : 'bg-zinc-950/50 border border-zinc-850 text-zinc-400 hover:text-white'
@@ -150,7 +151,7 @@ export default function SidebarSearch() {
                                 setFilterType('organisations');
                                 setResults([]);
                             }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                            className={`flex-shrink-0 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
                                 filterType === 'organisations'
                                     ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
                                     : 'bg-zinc-950/50 border border-zinc-850 text-zinc-400 hover:text-white'
@@ -165,7 +166,7 @@ export default function SidebarSearch() {
                                 setFilterType('projects');
                                 setResults([]);
                             }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                            className={`flex-shrink-0 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
                                 filterType === 'projects'
                                     ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
                                     : 'bg-zinc-950/50 border border-zinc-850 text-zinc-400 hover:text-white'

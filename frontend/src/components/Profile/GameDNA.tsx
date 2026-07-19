@@ -12,6 +12,10 @@ interface GenreStat {
 interface GameDNAProps {
     stats: GenreStat[];
     username?: string;
+    // When false, renders only the genre bar list (no card wrapper/own header) —
+    // used by the mobile accordion, which supplies its own single header instead
+    // of stacking a second "Game DNA" title underneath.
+    showHeader?: boolean;
 }
 
 const getHexColor = (colorStr: string) => {
@@ -36,9 +40,46 @@ const formatHours = (hours: number): string => {
     return `${hours}`;
 };
 
-export default function GameDNA({ stats, username }: GameDNAProps) {
+export default function GameDNA({ stats, username, showHeader = true }: GameDNAProps) {
     const totalHours = stats.reduce((sum, s) => sum + (s.total_hours || 0), 0);
-    
+
+    const list = (
+        <div className="flex flex-col gap-4">
+            {stats.map((stat) => (
+                <div key={stat.genre}>
+                    <div className="flex justify-between text-sm mb-1.5">
+                        <span className="text-zinc-400 font-medium">{stat.genre}</span>
+                        <div className="flex items-center gap-2">
+                            {stat.total_hours !== undefined && stat.total_hours > 0 && (
+                                <span className="text-zinc-600 text-xs flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {formatHours(stat.total_hours)}h
+                                </span>
+                            )}
+                            {stat.game_count !== undefined && stat.game_count > 0 && (
+                                <span className="text-zinc-600 text-xs flex items-center gap-1">
+                                    <Gamepad2 className="h-3 w-3" />
+                                    {stat.game_count}
+                                </span>
+                            )}
+                            <span className="text-white font-bold">{stat.percentage}%</span>
+                        </div>
+                    </div>
+                    <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
+                        <div
+                            className="h-full rounded-full transition-all duration-1000 ease-out"
+                            style={{ width: `${stat.percentage}%`, backgroundColor: getHexColor(stat.color) }}
+                        />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
+    if (!showHeader) {
+        return list;
+    }
+
     return (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5">
             <div className="flex items-center justify-between mb-6">
@@ -65,36 +106,7 @@ export default function GameDNA({ stats, username }: GameDNAProps) {
                 </div>
             </div>
 
-            <div className="flex flex-col gap-4">
-                {stats.map((stat) => (
-                    <div key={stat.genre}>
-                        <div className="flex justify-between text-sm mb-1.5">
-                            <span className="text-zinc-400 font-medium">{stat.genre}</span>
-                            <div className="flex items-center gap-2">
-                                {stat.total_hours !== undefined && stat.total_hours > 0 && (
-                                    <span className="text-zinc-600 text-xs flex items-center gap-1">
-                                        <Clock className="h-3 w-3" />
-                                        {formatHours(stat.total_hours)}h
-                                    </span>
-                                )}
-                                {stat.game_count !== undefined && stat.game_count > 0 && (
-                                    <span className="text-zinc-600 text-xs flex items-center gap-1">
-                                        <Gamepad2 className="h-3 w-3" />
-                                        {stat.game_count}
-                                    </span>
-                                )}
-                                <span className="text-white font-bold">{stat.percentage}%</span>
-                            </div>
-                        </div>
-                        <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
-                            <div
-                                className="h-full rounded-full transition-all duration-1000 ease-out"
-                                style={{ width: `${stat.percentage}%`, backgroundColor: getHexColor(stat.color) }}
-                            />
-                        </div>
-                    </div>
-                ))}
-            </div>
+            {list}
         </div>
     );
 }

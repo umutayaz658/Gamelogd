@@ -10,6 +10,17 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
+import PostMediaGrid from '@/components/PostMediaGrid';
+
+// Grid display still caps at 4 visible cells (Twitter standard, with a "+N" overlay
+// past that) — this only bounds how many files a single post can attach.
+const MAX_MEDIA_ITEMS = 10;
+
+interface ComposerMediaItem {
+    file: File;
+    preview: string;
+    type: 'image' | 'video';
+}
 
 interface PostComposerProps {
     onPostCreated: (post: Post) => void;
@@ -39,9 +50,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     }, [content]);
 
     // Media State
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [mediaItems, setMediaItems] = useState<ComposerMediaItem[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // GIF State
@@ -56,23 +65,33 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
 
     // Handlers
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            setSelectedGif(null);
+            setShowGifPicker(false);
 
-        setSelectedGif(null);
-        setShowGifPicker(false);
+            const newItems: ComposerMediaItem[] = Array.from(files).map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+                type: file.type.startsWith('video/') ? 'video' as const : 'image' as const,
+            }));
+            setMediaItems(prev => [...prev, ...newItems].slice(0, MAX_MEDIA_ITEMS));
+        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
 
-        const type = file.type.startsWith('video/') ? 'video' : 'image';
-        setSelectedFile(file);
-        setMediaType(type);
-        setPreviewUrl(URL.createObjectURL(file));
+    const removeMediaItem = (index: number) => {
+        setMediaItems(prev => {
+            const item = prev[index];
+            if (item) URL.revokeObjectURL(item.preview);
+            return prev.filter((_, i) => i !== index);
+        });
     };
 
     const handleGifSelect = (url: string) => {
-        setSelectedFile(null);
-        setMediaType(null);
-        setPreviewUrl(null);
+        mediaItems.forEach(item => URL.revokeObjectURL(item.preview));
+        setMediaItems([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
 
         setSelectedGif(url);
@@ -80,9 +99,8 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     };
 
     const clearMedia = () => {
-        setSelectedFile(null);
-        setMediaType(null);
-        setPreviewUrl(null);
+        mediaItems.forEach(item => URL.revokeObjectURL(item.preview));
+        setMediaItems([]);
         setSelectedGif(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -123,7 +141,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
 
     const handlePost = async () => {
         const hasContent = content.trim().length > 0;
-        const hasMedia = !!selectedFile || !!selectedGif;
+        const hasMedia = mediaItems.length > 0 || !!selectedGif;
         const validPoll = showPollCreator && pollOptions.filter(o => o.trim()).length >= 2;
 
         if (!hasContent && !hasMedia && !validPoll) return;
@@ -151,10 +169,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                 }
             }
 
-            if (selectedFile) {
-                formData.append('media_file', selectedFile);
-                if (mediaType) formData.append('media_type', mediaType);
-            }
+            mediaItems.forEach(item => formData.append('uploaded_media', item.file));
 
             if (selectedGif) {
                 formData.append('gif_url', selectedGif);
@@ -202,7 +217,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     alt="User"
                     className="h-10 w-10 rounded-full bg-zinc-800 object-cover"
                 />
-                <div className="flex-1 relative">
+                <div className="flex-1 min-w-0 relative">
                     {replyingTo && (
                         <div className="mb-2">
                             <span className="text-zinc-500 text-sm">{t('replyingTo')} </span>
@@ -225,7 +240,16 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     />
 
                     {/* Media Preview */}
-                    {(previewUrl || selectedGif) && (
+                    {mediaItems.length > 0 && (
+                        <div className="mb-4">
+                            <PostMediaGrid
+                                items={mediaItems.map(m => ({ url: m.preview, type: m.type }))}
+                                editable
+                                onRemove={removeMediaItem}
+                            />
+                        </div>
+                    )}
+                    {selectedGif && (
                         <div className="relative mb-4 rounded-xl overflow-hidden border border-zinc-800 bg-black">
                             <button
                                 onClick={clearMedia}
@@ -233,12 +257,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             >
                                 <X className="h-4 w-4" />
                             </button>
-
-                            {mediaType === 'video' ? (
-                                <video src={previewUrl!} controls className="w-full max-h-[400px] object-contain" />
-                            ) : (
-                                <img src={previewUrl || selectedGif!} alt="Preview" className="w-full max-h-[400px] object-contain" />
-                            )}
+                            <img src={selectedGif} alt="Preview" className="w-full max-h-[400px] object-contain" />
                         </div>
                     )}
 
@@ -284,18 +303,20 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     )}
 
                     {/* Toolbar */}
-                    <div className="flex items-center justify-between border-t border-zinc-800 pt-3 relative">
-                        <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-2 justify-between border-t border-zinc-800 pt-3 relative">
+                        <div className="flex gap-1 items-center overflow-x-auto scrollbar-thin-dark min-w-0">
                             <input
                                 type="file"
                                 ref={fileInputRef}
                                 className="hidden"
                                 accept="image/png, image/jpeg, image/gif, video/mp4, video/quicktime"
-                                onChange={handleFileSelect}
+                                onChange={handleMediaChange}
+                                multiple
                             />
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-3 py-1.5 rounded-full transition-all text-sm font-medium"
+                                disabled={mediaItems.length >= MAX_MEDIA_ITEMS}
+                                className="flex-shrink-0 flex items-center gap-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 p-2 sm:px-3 sm:py-1.5 rounded-full transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                                 title="Image/Video"
                             >
                                 <ImagePlay className="h-4 w-4" />
@@ -305,7 +326,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                                     setShowGifPicker(!showGifPicker);
                                     setShowEmojiPicker(false);
                                 }}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-sm font-medium ${showGifPicker ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
+                                className={`flex-shrink-0 flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-full transition-all text-sm font-medium ${showGifPicker ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                                 title="GIF"
                             >
                                 <FileImage className="h-4 w-4" />
@@ -315,14 +336,14 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                                     setShowEmojiPicker(!showEmojiPicker);
                                     setShowGifPicker(false);
                                 }}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-sm font-medium ${showEmojiPicker ? 'bg-zinc-800 text-yellow-500' : 'text-zinc-400 hover:text-yellow-500 hover:bg-zinc-800'}`}
+                                className={`flex-shrink-0 flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-full transition-all text-sm font-medium ${showEmojiPicker ? 'bg-zinc-800 text-yellow-500' : 'text-zinc-400 hover:text-yellow-500 hover:bg-zinc-800'}`}
                                 title="Emoji"
                             >
                                 <Smile className="h-4 w-4" />
                             </button>
                             <button
                                 onClick={togglePollCreator}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-sm font-medium ${showPollCreator ? 'bg-zinc-800 text-blue-500' : 'text-zinc-400 hover:text-blue-500 hover:bg-zinc-800'}`}
+                                className={`flex-shrink-0 flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-full transition-all text-sm font-medium ${showPollCreator ? 'bg-zinc-800 text-blue-500' : 'text-zinc-400 hover:text-blue-500 hover:bg-zinc-800'}`}
                                 title="Poll"
                             >
                                 <BarChart2 className="h-4 w-4" />
@@ -330,7 +351,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             <select
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
-                                className="bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-zinc-450 hover:text-white transition-colors focus:outline-none focus:border-emerald-500/50 cursor-pointer"
+                                className="flex-shrink-0 max-w-[6.5rem] sm:max-w-none bg-zinc-950 border border-zinc-800 rounded-xl px-2 py-1 text-xs text-zinc-450 hover:text-white transition-colors focus:outline-none focus:border-emerald-500/50 cursor-pointer"
                                 title="Select Post Category"
                             >
                                 <option value="general">📁 General</option>
@@ -346,7 +367,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             </select>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
                             {content.length > 0 && (
                                 <span className={`text-xs font-semibold select-none transition-colors ${
                                     content.length >= 350 ? 'text-red-500 font-bold' :
@@ -357,18 +378,18 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             )}
                             <button
                                 onClick={handlePost}
-                                disabled={isPosting || (!content.trim() && !selectedFile && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350}
-                                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
+                                disabled={isPosting || (!content.trim() && mediaItems.length === 0 && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350}
+                                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-3 sm:px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
                             >
                                 {isPosting ? (
                                     <>
                                         <Loader2 className="h-4 w-4 animate-spin" />
-                                        {t('loading')}
+                                        <span className="hidden sm:inline">{t('loading')}</span>
                                     </>
                                 ) : (
                                     <>
                                         <Send className="h-4 w-4" />
-                                        {t('post')}
+                                        <span className="hidden sm:inline">{t('post')}</span>
                                     </>
                                 )}
                             </button>

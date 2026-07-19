@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
-import { ExternalLink, Calendar, MessageCircle, Heart, Share2, Send, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Calendar, MessageCircle, Heart, Share2, Send, Link as LinkIcon } from 'lucide-react';
 import PostComposer from '@/components/PostComposer';
 import PostCard from '@/components/PostCard';
 
@@ -33,6 +33,7 @@ interface NewsDetail {
 
 export default function NewsDetailPage() {
     const params = useParams();
+    const router = useRouter();
     const id = params.id;
     const { t } = useTranslation();
     const toast = useToast();
@@ -128,7 +129,7 @@ export default function NewsDetailPage() {
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6 pb-20">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-20">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar */}
                     <div className="hidden lg:block col-span-3">
@@ -137,6 +138,15 @@ export default function NewsDetailPage() {
 
                     {/* Main Content */}
                     <div className="col-span-12 lg:col-span-9 max-w-3xl mx-auto w-full space-y-6">
+
+                        {/* Back Button */}
+                        <button
+                            onClick={() => router.back()}
+                            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors -mt-2"
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                            <span className="text-sm font-medium">{t('back')}</span>
+                        </button>
 
                         {/* Hero Image */}
                         <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl border border-zinc-800">
@@ -154,9 +164,9 @@ export default function NewsDetailPage() {
 
                         {/* Header Info */}
                         <div className="space-y-4">
-                            <h1 className="text-3xl md:text-4xl font-bold leading-tight">{news.title}</h1>
+                            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight">{news.title}</h1>
 
-                            <div className="flex items-center justify-between border-b border-zinc-800 pb-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-800 pb-6">
                                 <div className="flex items-center gap-3">
                                     {news.source_icon && (
                                         <img src={news.source_icon} alt={news.source_name} className="w-10 h-10 rounded-full border border-zinc-700 bg-zinc-800 p-1" />
@@ -176,7 +186,7 @@ export default function NewsDetailPage() {
                                         href={news.link}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="bg-zinc-100 text-zinc-900 hover:bg-white px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition-colors"
+                                        className="w-full sm:w-auto bg-zinc-100 text-zinc-900 hover:bg-white px-4 py-2 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                                     >
                                         {t('readFullArticle')} <ExternalLink className="h-4 w-4" />
                                     </a>
@@ -185,24 +195,24 @@ export default function NewsDetailPage() {
                         </div>
 
                         {/* Content */}
-                        <div className="prose prose-invert prose-lg max-w-none text-zinc-300 leading-relaxed">
+                        <div className="prose prose-invert prose-base md:prose-lg max-w-none text-zinc-300 leading-relaxed">
                             {/* News comes from external RSS feeds — sanitize before rendering
                                 so a crafted item can't run script / steal the session. */}
                             <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(news.description || '') }} />
                         </div>
 
                         {/* Social Actions Bar */}
-                        <div className="flex items-center justify-between py-4 border-y border-zinc-800">
+                        <div className="flex items-center justify-between flex-wrap gap-y-2 py-4 border-y border-zinc-800">
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={handleLike}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors ${isLiked ? 'text-pink-500 bg-pink-500/10' : 'text-zinc-400 hover:bg-zinc-800 hover:text-pink-500'
+                                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full transition-colors ${isLiked ? 'text-pink-500 bg-pink-500/10' : 'text-zinc-400 hover:bg-zinc-800 hover:text-pink-500'
                                         }`}
                                 >
                                     <Heart className={`h-5 w-5 ${isLiked ? 'fill-current' : ''}`} />
                                     <span className="font-medium">{likeCount}</span>
                                 </button>
-                                <button className="flex items-center gap-2 px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-blue-400 transition-colors">
+                                <button className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-blue-400 transition-colors">
                                     <MessageCircle className="h-5 w-5" />
                                     <span className="font-medium">{comments.length}</span>
                                 </button>
@@ -210,7 +220,7 @@ export default function NewsDetailPage() {
                             <div className="relative" ref={shareMenuRef}>
                                 <button
                                     onClick={() => setShowShareMenu(!showShareMenu)}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
                                 >
                                     <Share2 className="h-5 w-5" />
                                     <span className="font-medium">{t('share')}</span>

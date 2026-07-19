@@ -144,7 +144,7 @@ export default function ProjectDashboardPage() {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-sans">
                 <Navbar />
-                <div className="container mx-auto px-4 py-20 text-center">
+                <div className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 py-20 text-center">
                     <h2 className="text-2xl font-bold mb-4">Access Denied</h2>
                     <p className="text-zinc-400 mb-8">You do not have permission to access the management dashboard for this project.</p>
                     <Link href={`/projects/${id}`} className="bg-zinc-900 hover:bg-zinc-800 px-6 py-2.5 rounded-xl font-bold border border-zinc-800 transition-all">
@@ -159,7 +159,7 @@ export default function ProjectDashboardPage() {
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-blue-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6 pb-12">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-12">
                 <div className="grid grid-cols-12 gap-6">
                     <div className="hidden lg:block col-span-3">
                         <LeftSidebar />
