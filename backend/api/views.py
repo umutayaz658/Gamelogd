@@ -676,6 +676,8 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
         self.get_queryset().update(is_read=True)
+        from api.consumers import send_user_update
+        send_user_update(request.user.id)
         return Response({'status': 'marked all read'})
 
 class RegisterView(generics.CreateAPIView):
@@ -1764,10 +1766,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         conversation_id = request.query_params.get('conversation_id')
         if conversation_id:
             # Mark unread messages from other users as read
-            Message.objects.filter(
+            updated_count = Message.objects.filter(
                 conversation_id=conversation_id,
                 is_read=False
             ).exclude(sender=request.user).update(is_read=True)
+            if updated_count > 0:
+                from api.consumers import send_user_update
+                send_user_update(request.user.id)
         
         return super().list(request, *args, **kwargs)
 

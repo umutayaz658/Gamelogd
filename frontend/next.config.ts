@@ -105,7 +105,7 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://gsi.gstatic.com; " +
               "style-src 'self' 'unsafe-inline' https://accounts.google.com https://gsi.gstatic.com https://fonts.googleapis.com; " +
               "img-src * data: blob:; " +
-              "connect-src 'self' https://gamelogd-production.up.railway.app http://localhost:8000 http://127.0.0.1:8000 https://accounts.google.com https://api.giphy.com; " +
+              "connect-src 'self' https://gamelogd-production.up.railway.app wss://gamelogd-production.up.railway.app http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://accounts.google.com https://api.giphy.com; " +
               "frame-src 'self' https://accounts.google.com; " +
               "font-src 'self' data: https://fonts.gstatic.com; " +
               "frame-ancestors 'none';",
