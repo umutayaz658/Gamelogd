@@ -46,36 +46,64 @@ def auto_categorize_post(post):
 
 
 def calculate_trending_score(post):
-    """Calculate a trending score for a post based on engagement and recency."""
+    """
+    Advanced social feed ranking algorithm inspired by Instagram, Twitter, and LinkedIn.
+    Designed to maximize session length, user retention, and viral loop engagement.
+    """
     now = timezone.now()
     age_hours = (now - post.timestamp).total_seconds() / 3600
     
-    # Engagement counts
+    # 1. Base Engagement Metrics
     likes_count = post.likes.count() if hasattr(post, 'likes') else 0
     replies_count = post.replies.count() if hasattr(post, 'replies') else 0
     reposts_count = post.reposts.count() if hasattr(post, 'reposts') else 0
     bookmarks_count = post.bookmarks.count() if hasattr(post, 'bookmarks') else 0
     
-    # Weighted engagement score
-    engagement = (
+    # 2. Rich Media Boost (Instagram/Twitter: visual content gets 35% boost for higher dwell time)
+    media_boost = 1.0
+    if post.image or post.gif_url or (hasattr(post, 'media_file') and post.media_file):
+        media_boost = 1.35
+    elif len(post.content or '') > 280:
+        # LinkedIn Dwell Time: long high-quality text posts get 15% boost
+        media_boost = 1.15
+        
+    # 3. Conversation Thread Boost (Twitter/LinkedIn: rewarding active discussion threads)
+    thread_boost = 1.0
+    if replies_count > 0:
+        # Check if multiple distinct users are replying
+        distinct_reply_users = post.replies.values('user').distinct().count()
+        if distinct_reply_users > 1:
+            thread_boost = 1.25
+        
+        # Check if the post creator is active in their own thread (encourages community building)
+        creator_replied = post.replies.filter(user=post.user).exists()
+        if creator_replied:
+            thread_boost *= 1.15
+
+    # 4. External Link Penalty (Twitter/LinkedIn: penalty for posts driving users out of Gamelogd)
+    link_penalty = 1.0
+    if 'http' in (post.content or '') and not (post.image or post.gif_url):
+        link_penalty = 0.85
+
+    # 5. Weighted Engagement Score
+    # - Reposts: 4.5 (highest viral value, creates new distribution nodes)
+    # - Bookmarks: 3.5 (high utility value, indicates content users want to return to)
+    # - Replies: 2.5 (conversational value, drives dwell time)
+    # - Likes: 1.0 (low-friction positive feedback)
+    weighted_engagement = (
         likes_count * 1.0 +
-        replies_count * 2.0 +
-        reposts_count * 3.0 +
-        bookmarks_count * 1.5
+        replies_count * 2.5 +
+        reposts_count * 4.5 +
+        bookmarks_count * 3.5
     )
     
-    # Time multiplier (boost recent content)
-    if age_hours <= 24:
-        time_multiplier = 2.0
-    elif age_hours <= 72:
-        time_multiplier = 1.5
-    else:
-        time_multiplier = 1.0
+    # 6. Gravity Decay Formula (HackerNews/Reddit style decay)
+    # Gravity constant determines how fast posts drop off. 1.5 is standard for active social feeds.
+    gravity = 1.5
+    raw_score = (weighted_engagement + 1.0) * media_boost * thread_boost * link_penalty
+    decayed_score = raw_score / ((age_hours + 2.0) ** gravity)
     
-    # Decay formula
-    score = engagement * time_multiplier / (1 + age_hours * 0.1)
-    
-    return round(score, 4)
+    return round(decayed_score, 4)
 
 
 def update_all_trending_scores():
