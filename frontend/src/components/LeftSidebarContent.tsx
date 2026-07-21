@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash, PlusCircle } from 'lucide-react';
+import { Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash, PlusCircle, PenSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useLogModal } from '@/context/LogModalContext';
+import { usePostModal } from '@/context/PostModalContext';
 import SidebarSearch from './SidebarSearch';
 import api from '@/lib/api';
 import { getImageUrl, getRelativeTime } from '@/lib/utils';
@@ -28,6 +29,7 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
     const isMobile = useIsMobile();
     const { unreadMessages, unreadNotifications, markMessagesRead, markNotificationsRead } = useNotifications();
     const { openLogModal } = useLogModal();
+    const { openPostModal } = usePostModal();
     const { t, language } = useTranslation();
 
     const getTranslatedVerb = (verb: string, actorId?: number) => {
@@ -285,14 +287,27 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
                             );
                         })}
 
-                        {/* Log Game CTA Button - Solid Green, Below Settings with Spacing */}
-                        <button
-                            onClick={() => { openLogModal(); onNavigate?.(); }}
-                            className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
-                        >
-                            <PlusCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                            <span className="font-bold text-lg">{t('logGame')}</span>
-                        </button>
+                        {/* CTA Button - Solid Green, Below Settings with Spacing.
+                            Desktop sidebar gets a "Post" shortcut (Navbar already has its own
+                            Log Game button there, so this avoided duplicating it); the mobile
+                            drawer keeps "Log Game" since it's mobile's only entry point to it. */}
+                        {isMobile ? (
+                            <button
+                                onClick={() => { openLogModal(); onNavigate?.(); }}
+                                className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
+                            >
+                                <PlusCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                                <span className="font-bold text-lg">{t('logGame')}</span>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => { openPostModal(); onNavigate?.(); }}
+                                className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
+                            >
+                                <PenSquare className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                                <span className="font-bold text-lg">{t('post')}</span>
+                            </button>
+                        )}
                     </div>
                 </nav>
             )}

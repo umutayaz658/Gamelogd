@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Hash, Newspaper, Bell, MessageSquare, ChevronUp, Sparkles } from 'lucide-react';
+import { Home, Hash, Newspaper, Bell, MessageSquare, ChevronUp, Sparkles, PenSquare } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { usePostModal } from '@/context/PostModalContext';
 
 // Pixels of scroll movement (in one direction) required before the bar reacts,
 // so it doesn't flicker on tiny scroll jitter.
@@ -19,6 +20,7 @@ export default function MobileTabBar() {
     const { t } = useTranslation();
     const pathname = usePathname();
     const isMobile = useIsMobile();
+    const { openPostModal } = usePostModal();
 
     const [hidden, setHidden] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
@@ -94,10 +96,15 @@ export default function MobileTabBar() {
     const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname?.startsWith(href));
     const isExpandedGroupActive = isActive('/news') || isActive(recommendedHref);
 
-    // These two pages should never hide the tab bar on scroll-down — the messages check
+    // These pages should never hide the tab bar on scroll-down — the messages check
     // only ever matters for the conversation list, since isChatFullscreen already hides
-    // this bar entirely once a chat thread is open.
-    const alwaysVisible = pathname === '/notifications' || pathname === '/messages';
+    // this bar entirely once a chat thread is open. Settings has its own long scrollable
+    // sub-pages, so it's included for the same reason as Notifications/Messages.
+    const alwaysVisible = pathname === '/notifications' || pathname === '/messages' || pathname === '/settings';
+
+    // Quick-post FAB only makes sense where there's a feed (or the user's own posts) to
+    // post into — not on e.g. Messages/Settings/someone else's profile.
+    const showPostFab = pathname === '/' || pathname === '/explore' || pathname === '/bookmarks' || pathname === `/${user.username}`;
 
     const renderTab = (tab: { key: string; href: string; icon: typeof Home; label: string; badge?: number; onClick?: () => void }) => {
         const active = isActive(tab.href);
@@ -125,38 +132,55 @@ export default function MobileTabBar() {
     };
 
     return (
-        <nav
-            ref={navRef}
-            className={`fixed bottom-0 inset-x-0 z-50 lg:hidden bg-zinc-900 border-t border-zinc-800 pb-[max(env(safe-area-inset-bottom),0.5rem)] transition-transform duration-300 ease-out ${
-                hidden && !alwaysVisible ? 'translate-y-full' : 'translate-y-0'
-            }`}
-        >
-            {/* Main row comes first in DOM so it's the one that gets pushed upward when
-                the drawer below it grows — the News/Recommended row becomes the new
-                bottom-most strip instead of appearing above the main row. */}
-            <div className="grid grid-cols-5 h-14">
-                {leftTabs.map(renderTab)}
+        <>
+            {/* Quick-post FAB — follows the tab bar's own scroll-hide animation (same
+                duration/easing) instead of just vanishing with it: when the bar slides
+                down, the FAB slides down too and settles at the very bottom edge, then
+                slides back up together with the bar on scroll-up. */}
+            {showPostFab && (
                 <button
-                    onClick={() => setIsExpanded((v) => !v)}
-                    className="flex flex-col items-center justify-center gap-0.5 relative"
-                    aria-label={t('recommended')}
-                    aria-expanded={isExpanded}
+                    onClick={openPostModal}
+                    aria-label={t('post')}
+                    className={`fixed right-4 z-40 lg:hidden h-14 w-14 flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-900/30 transition-all duration-300 ease-out ${
+                        hidden && !alwaysVisible ? 'bottom-[max(env(safe-area-inset-bottom),1rem)]' : 'bottom-20'
+                    }`}
                 >
-                    <ChevronUp className={`h-5 w-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''} ${isExpanded || isExpandedGroupActive ? 'text-white' : 'text-zinc-500'}`} />
+                    <PenSquare className="h-6 w-6" />
                 </button>
-                {rightTabs.map(renderTab)}
-            </div>
-
-            {/* Expandable drawer — News + Recommended. Animates via an explicit inline
-                height (rather than swapping Tailwind's max-h utility) so the grow/shrink
-                is a single smooth property change. Being last in DOM, this row is what
-                ends up flush against the screen edge once it grows. */}
-            <div
-                className="grid grid-cols-2 overflow-hidden transition-[height] duration-300 ease-out"
-                style={{ height: isExpanded ? '3.5rem' : '0px' }}
+            )}
+            <nav
+                ref={navRef}
+                className={`fixed bottom-0 inset-x-0 z-50 lg:hidden bg-zinc-900 border-t border-zinc-800 pb-[max(env(safe-area-inset-bottom),0.5rem)] transition-transform duration-300 ease-out ${
+                    hidden && !alwaysVisible ? 'translate-y-full' : 'translate-y-0'
+                }`}
             >
-                {expandedTabs.map(renderTab)}
-            </div>
-        </nav>
+                {/* Main row comes first in DOM so it's the one that gets pushed upward when
+                    the drawer below it grows — the News/Recommended row becomes the new
+                    bottom-most strip instead of appearing above the main row. */}
+                <div className="grid grid-cols-5 h-14">
+                    {leftTabs.map(renderTab)}
+                    <button
+                        onClick={() => setIsExpanded((v) => !v)}
+                        className="flex flex-col items-center justify-center gap-0.5 relative"
+                        aria-label={t('recommended')}
+                        aria-expanded={isExpanded}
+                    >
+                        <ChevronUp className={`h-5 w-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''} ${isExpanded || isExpandedGroupActive ? 'text-white' : 'text-zinc-500'}`} />
+                    </button>
+                    {rightTabs.map(renderTab)}
+                </div>
+
+                {/* Expandable drawer — News + Recommended. Animates via an explicit inline
+                    height (rather than swapping Tailwind's max-h utility) so the grow/shrink
+                    is a single smooth property change. Being last in DOM, this row is what
+                    ends up flush against the screen edge once it grows. */}
+                <div
+                    className="grid grid-cols-2 overflow-hidden transition-[height] duration-300 ease-out"
+                    style={{ height: isExpanded ? '3.5rem' : '0px' }}
+                >
+                    {expandedTabs.map(renderTab)}
+                </div>
+            </nav>
+        </>
     );
 }
