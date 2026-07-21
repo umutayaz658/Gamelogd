@@ -7,6 +7,8 @@ import { LogModalProvider } from '@/context/LogModalContext';
 import ClientLogModalWrapper from '@/components/ClientLogModalWrapper';
 import { ReplyModalProvider } from '@/context/ReplyModalContext';
 import ReplyModal from '@/components/ReplyModal';
+import { PostModalProvider } from '@/context/PostModalContext';
+import PostModal from '@/components/PostModal';
 import MobileTabBar from '@/components/MobileTabBar';
 import { FeedProvider } from '@/context/FeedContext';
 import { ToastProvider } from '@/context/ToastContext';
@@ -31,13 +33,16 @@ export default function RootLayout({
                             <NotificationProvider>
                                 <LogModalProvider>
                                     <ReplyModalProvider>
-                                        <FeedProvider>
-                                            {children}
-                                            <MessagesDrawer />
-                                            <ClientLogModalWrapper />
-                                            <ReplyModal />
-                                            <MobileTabBar />
-                                        </FeedProvider>
+                                        <PostModalProvider>
+                                            <FeedProvider>
+                                                {children}
+                                                <MessagesDrawer />
+                                                <ClientLogModalWrapper />
+                                                <ReplyModal />
+                                                <PostModal />
+                                                <MobileTabBar />
+                                            </FeedProvider>
+                                        </PostModalProvider>
                                     </ReplyModalProvider>
                                 </LogModalProvider>
                             </NotificationProvider>
