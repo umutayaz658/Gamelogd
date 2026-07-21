@@ -2805,7 +2805,7 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             news_parent__isnull=True
         ).select_related('user').prefetch_related('likes', 'replies', 'reposts', 'bookmarks', 'media')
         
-        if ordering == 'popular' or not ordering:
+        if (ordering == 'popular' or not ordering) and not hashtag:
             cutoff = timezone.now() - timedelta(days=7)
             posts = posts.filter(timestamp__gte=cutoff)
             
