@@ -48,6 +48,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         let socket: WebSocket | null = null;
         let reconnectTimeout: any = null;
         let isClosedIntentionally = false;
+        let wsConnected = false;
 
         const connectWS = () => {
             const token = Cookies.get('access_token');
@@ -71,11 +72,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 wsUrl = `ws://localhost:8000/ws/updates/?token=${token}`;
             }
 
-            console.log(`[WebSocket] Connecting to ${wsUrl}`);
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                console.log('[WebSocket] Connected successfully');
+                wsConnected = true;
             };
 
             socket.onmessage = (event) => {
@@ -91,10 +91,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             };
 
             socket.onclose = (event) => {
-                console.log(`[WebSocket] Disconnected: code=${event.code}, reason=${event.reason}`);
+                wsConnected = false;
                 if (!isClosedIntentionally) {
                     reconnectTimeout = setTimeout(() => {
-                        console.log('[WebSocket] Attempting to reconnect...');
                         connectWS();
                     }, 5000);
                 }
@@ -108,8 +107,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         connectWS();
 
-        // 30s polling fallback in case WebSockets are blocked/fails
-        const interval = setInterval(fetchCounts, 30000);
+        // 30s polling fallback — only runs when WebSocket is NOT connected (e.g. blocked/failed)
+        const interval = setInterval(() => {
+            if (!wsConnected) {
+                fetchCounts();
+            }
+        }, 30000);
 
         return () => {
             isClosedIntentionally = true;
