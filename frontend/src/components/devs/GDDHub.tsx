@@ -30,8 +30,9 @@ import {
     BalancingTable, BalancingRow, DialogueNode, Task,
     GDDCategory, DEFAULT_GDD_CATEGORIES,
 } from './WorkspaceTypes';
-import api from '@/lib/api';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import BoardSwitcher from './BoardSwitcher';
+import CategoryManager from './CategoryManager';
 import { cn, getImageUrl } from '@/lib/utils';
 
 // Helper to format ISO timestamp as relative time
@@ -388,314 +389,105 @@ interface CreateDocModalProps {
     defaultSection?: string;
 }
 
-const COLOR_PRESETS = [
-    { name: 'Blue',     color: 'text-blue-400',    bg: 'bg-blue-500/10 border-blue-500/20' },
-    { name: 'Violet',   color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
-    { name: 'Amber',    color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
-    { name: 'Pink',     color: 'text-pink-400',    bg: 'bg-pink-500/10 border-pink-500/20' },
-    { name: 'Emerald',  color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-    { name: 'Cyan',     color: 'text-cyan-400',    bg: 'bg-cyan-500/10 border-cyan-500/20' },
-    { name: 'Zinc',     color: 'text-zinc-400',    bg: 'bg-zinc-700/20 border-zinc-700/30' },
-    { name: 'Red',      color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/20' },
-    { name: 'Orange',   color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/20' },
-];
-
 function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: CreateDocModalProps) {
     const { data: workspaceData, setGDDCategories, setGDDDocs } = useWorkspace();
     const categories = workspaceData.gddCategories ?? DEFAULT_GDD_CATEGORIES;
 
-    const [view, setView] = useState<'create' | 'manage' | 'add_category' | 'edit_category'>('create');
     const [title, setTitle] = useState('');
     const [section, setSection] = useState<string>(defaultSection || 'introduction');
     const [emoji, setEmoji] = useState('');
-
-    // Category form state
-    const [catName, setCatName] = useState('');
-    const [catEmoji, setCatEmoji] = useState('');
-    const [catColorIdx, setCatColorIdx] = useState(0);
-    const [editingCatId, setEditingCatId] = useState<string | null>(null);
+    const [showCategoryManager, setShowCategoryManager] = useState(false);
 
     // Get current section meta helper
     const activeCat = categories.find(c => c.id === section) || categories[0];
-
-    const handleSaveCategory = () => {
-        if (!catName.trim()) return;
-        const selectedPreset = COLOR_PRESETS[catColorIdx];
-        const newCat: GDDCategory = {
-            id: editingCatId || `cat-${Date.now()}`,
-            label: catName.trim(),
-            emoji: catEmoji || '📌',
-            color: selectedPreset.color,
-            bg: selectedPreset.bg,
-        };
-
-        if (editingCatId) {
-            setGDDCategories(prev => prev.map(c => c.id === editingCatId ? newCat : c));
-        } else {
-            setGDDCategories(prev => [...prev, newCat]);
-            // Automatically select the newly created category
-            setSection(newCat.id);
-        }
-
-        // Reset and back to manage view
-        setCatName('');
-        setCatEmoji('');
-        setCatColorIdx(0);
-        setEditingCatId(null);
-        setView('manage');
-    };
-
-    const handleStartEditCategory = (cat: GDDCategory) => {
-        setEditingCatId(cat.id);
-        setCatName(cat.label);
-        setCatEmoji(cat.emoji);
-        // Find matching preset index
-        const presetIdx = COLOR_PRESETS.findIndex(p => p.color === cat.color) ?? 0;
-        setCatColorIdx(presetIdx >= 0 ? presetIdx : 0);
-        setView('edit_category');
-    };
-
-    const handleDeleteCategory = (catId: string) => {
-        // Remove from list
-        setGDDCategories(prev => prev.filter(c => c.id !== catId));
-        // If the deleted category was currently selected, select another one (or fallback to 'other' / first category)
-        if (section === catId) {
-            const nextCat = categories.find(c => c.id !== catId);
-            setSection(nextCat ? nextCat.id : 'other');
-        }
-        
-        // Also re-assign any documents belonging to deleted category to 'other' (or next available category)
-        setGDDDocs(prevDocs => prevDocs.map(d => {
-            if (d.section === catId) {
-                const fallbackId = categories.find(c => c.id !== catId)?.id || 'other';
-                return { ...d, section: fallbackId };
-            }
-            return d;
-        }));
-    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
-                
-                {/* ── Normal Create View ── */}
-                {view === 'create' && (
-                    <>
-                        <div className="flex items-center justify-between p-5 border-b border-zinc-800">
-                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <FileText className="w-4 h-4 text-blue-400" /> New GDD Page
-                            </h2>
-                            <button onClick={onClose} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
-                                <X className="w-4 h-4" />
-                            </button>
+                <div className="flex items-center justify-between p-5 border-b border-zinc-800">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-400" /> New GDD Page
+                    </h2>
+                    <button onClick={onClose} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+                <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (title.trim()) {
+                        onSubmit(title.trim(), section, emoji || activeCat?.emoji || '📌');
+                        onClose();
+                    }
+                }} className="p-5 space-y-4">
+                    <div className="flex gap-3">
+                        <div>
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Icon</label>
+                            <input
+                                value={emoji}
+                                onChange={(e) => setEmoji(e.target.value)}
+                                placeholder={activeCat?.emoji || '📌'}
+                                className="w-14 text-center bg-zinc-900 border border-zinc-700 rounded-xl px-2 py-2.5 text-xl focus:outline-none focus:border-blue-500 transition-all"
+                            />
                         </div>
-                        <form onSubmit={(e) => {
-                            e.preventDefault();
-                            if (title.trim()) {
-                                onSubmit(title.trim(), section, emoji || activeCat?.emoji || '📌');
-                                onClose();
-                            }
-                        }} className="p-5 space-y-4">
-                            <div className="flex gap-3">
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Icon</label>
-                                    <input
-                                        value={emoji}
-                                        onChange={(e) => setEmoji(e.target.value)}
-                                        placeholder={activeCat?.emoji || '📌'}
-                                        className="w-14 text-center bg-zinc-900 border border-zinc-700 rounded-xl px-2 py-2.5 text-xl focus:outline-none focus:border-blue-500 transition-all"
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Page Title *</label>
-                                    <input
-                                        autoFocus
-                                        value={title}
-                                        onChange={(e) => setTitle(e.target.value)}
-                                        placeholder="e.g. Double Jump Mechanic"
-                                        required
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Category</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => setView('manage')}
-                                        className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors"
-                                    >
-                                        <Settings className="w-3 h-3" /> Manage
-                                    </button>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin-dark">
-                                    {categories.map((cat) => (
-                                        <button key={cat.id} type="button" onClick={() => setSection(cat.id)}
-                                            className={cn('px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left flex items-center gap-2',
-                                                section === cat.id ? `${cat.color} ${cat.bg}` : 'text-zinc-400 border-zinc-800 hover:border-zinc-700 bg-zinc-900/50')}>
-                                            <span>{cat.emoji}</span> {cat.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="flex gap-3 pt-1">
-                                <button type="button" onClick={onClose}
-                                    className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={!title.trim()}
-                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40">
-                                    Create Page
-                                </button>
-                            </div>
-                        </form>
-                    </>
-                )}
-
-                {/* ── Manage Categories View ── */}
-                {view === 'manage' && (
-                    <>
-                        <div className="flex items-center justify-between p-5 border-b border-zinc-800">
-                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Settings className="w-4 h-4 text-zinc-400" /> Manage Categories
-                            </h2>
-                            <button onClick={() => setView('create')} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
-                                <X className="w-4 h-4" />
-                            </button>
+                        <div className="flex-1">
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Page Title *</label>
+                            <input
+                                autoFocus
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                placeholder="e.g. Double Jump Mechanic"
+                                required
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
+                            />
                         </div>
-                        <div className="p-5 space-y-4">
-                            <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin-dark">
-                                {categories.map((cat) => (
-                                    <div key={cat.id} className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900 border border-zinc-800/80 group">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-base">{cat.emoji}</span>
-                                            <span className={cn('text-xs font-semibold', cat.color)}>{cat.label}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleStartEditCategory(cat)}
-                                                className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-all"
-                                                title="Edit category"
-                                            >
-                                                <Edit3 className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDeleteCategory(cat.id)}
-                                                className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                                                title="Delete category"
-                                                disabled={categories.length <= 1}
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                    </div>
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Category</label>
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setCatName('');
-                                    setCatEmoji('📌');
-                                    setCatColorIdx(0);
-                                    setEditingCatId(null);
-                                    setView('add_category');
-                                }}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all"
+                                onClick={() => setShowCategoryManager(true)}
+                                className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors"
                             >
-                                <Plus className="w-4 h-4" /> Add Custom Category
-                            </button>
-                            <div className="pt-2 border-t border-zinc-800 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => setView('create')}
-                                    className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition-all"
-                                >
-                                    Back to Create
-                                </button>
-                            </div>
-                        </div>
-                    </>
-                )}
-
-                {/* ── Add / Edit Category Sub-Form View ── */}
-                {(view === 'add_category' || view === 'edit_category') && (
-                    <>
-                        <div className="flex items-center justify-between p-5 border-b border-zinc-800">
-                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Tag className="w-4 h-4 text-blue-400" /> {view === 'add_category' ? 'Add Category' : 'Edit Category'}
-                            </h2>
-                            <button onClick={() => setView('manage')} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
-                                <X className="w-4 h-4" />
+                                <Settings className="w-3 h-3" /> Manage
                             </button>
                         </div>
-                        <form onSubmit={(e) => { e.preventDefault(); handleSaveCategory(); }} className="p-5 space-y-4">
-                            <div className="flex gap-3">
-                                <div className="w-16">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Emoji</label>
-                                    <input
-                                        value={catEmoji}
-                                        onChange={(e) => setCatEmoji(e.target.value)}
-                                        placeholder="📌"
-                                        maxLength={2}
-                                        className="w-full text-center bg-zinc-900 border border-zinc-700 rounded-xl px-2 py-2.5 text-xl focus:outline-none focus:border-blue-500 transition-all"
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Category Name *</label>
-                                    <input
-                                        autoFocus
-                                        value={catName}
-                                        onChange={(e) => setCatName(e.target.value)}
-                                        placeholder="e.g. Combat"
-                                        required
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">Color Theme</label>
-                                <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5">
-                                    {COLOR_PRESETS.map((preset, idx) => (
-                                        <button
-                                            key={preset.name}
-                                            type="button"
-                                            onClick={() => setCatColorIdx(idx)}
-                                            className={cn(
-                                                'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 active:scale-95',
-                                                preset.bg,
-                                                catColorIdx === idx ? 'border-white scale-110' : 'border-transparent'
-                                            )}
-                                            title={preset.name}
-                                        >
-                                            <span className={cn('w-3.5 h-3.5 rounded-full bg-current', preset.color)} />
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="flex gap-3 pt-2 border-t border-zinc-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setView('manage')}
-                                    className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all"
-                                >
-                                    Cancel
+                        <div className="grid grid-cols-2 gap-2 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin-dark">
+                            {categories.map((cat) => (
+                                <button key={cat.id} type="button" onClick={() => setSection(cat.id)}
+                                    className={cn('px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left flex items-center gap-2',
+                                        section === cat.id ? `${cat.color} ${cat.bg}` : 'text-zinc-400 border-zinc-800 hover:border-zinc-700 bg-zinc-900/50')}>
+                                    <span>{cat.emoji}</span> {cat.label}
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={!catName.trim()}
-                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40"
-                                >
-                                    {view === 'add_category' ? 'Add Category' : 'Save Changes'}
-                                </button>
-                            </div>
-                        </form>
-                    </>
-                )}
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex gap-3 pt-1">
+                        <button type="button" onClick={onClose}
+                            className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">
+                            Cancel
+                        </button>
+                        <button type="submit" disabled={!title.trim()}
+                            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40">
+                            Create Page
+                        </button>
+                    </div>
+                </form>
             </div>
+
+            {showCategoryManager && (
+                <CategoryManager
+                    title="Manage GDD Categories"
+                    categories={categories}
+                    onSave={(cats) => setGDDCategories(cats as GDDCategory[])}
+                    onDeleteReassign={(deletedId, fallbackId) => {
+                        if (section === deletedId) setSection(fallbackId);
+                        setGDDDocs(prevDocs => prevDocs.map(d => d.section === deletedId ? { ...d, section: fallbackId } : d));
+                    }}
+                    onClose={() => setShowCategoryManager(false)}
+                />
+            )}
         </div>
     );
 }
@@ -715,6 +507,7 @@ function CommentPanel({
     onDelete: (id: string) => void;
     currentUser: string;
 }) {
+    const { hasPermission } = useWorkspace();
     const [text, setText] = useState('');
     const active = comments.filter(c => !c.resolved);
     const resolved = comments.filter(c => c.resolved);
@@ -749,13 +542,15 @@ function CommentPanel({
                         </div>
                         <p className="text-xs text-zinc-400 leading-relaxed">{comment.text}</p>
                         <div className="flex items-center gap-2 pt-1">
-                            <button
-                                onClick={() => onResolve(comment.id)}
-                                className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors"
-                            >
-                                <Check className="w-3 h-3" /> Resolve
-                            </button>
-                            {comment.author === currentUser && (
+                            {hasPermission('gdd.comment.resolve') && (
+                                <button
+                                    onClick={() => onResolve(comment.id)}
+                                    className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors"
+                                >
+                                    <Check className="w-3 h-3" /> Resolve
+                                </button>
+                            )}
+                            {(comment.author === currentUser || hasPermission('gdd.comment.delete_any')) && (
                                 <button
                                     onClick={() => onDelete(comment.id)}
                                     className="flex items-center gap-1 text-[10px] text-zinc-600 hover:text-red-400 transition-colors ml-auto"
@@ -1390,6 +1185,7 @@ function DocTreeItem({
     onDelete: (id: string) => void;
     level?: number;
 }) {
+    const { hasPermission } = useWorkspace();
     const [expanded, setExpanded] = useState(true);
     const children = useMemo(() => docs.filter(d => d.parentId === doc.id), [docs, doc.id]);
     const hasChildren = children.length > 0;
@@ -1428,12 +1224,14 @@ function DocTreeItem({
                 {doc.isPublic && (
                     <Globe className="w-2.5 h-2.5 text-emerald-500 flex-shrink-0 opacity-60" />
                 )}
-                <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-red-400 transition-all flex-shrink-0"
-                >
-                    <Trash2 className="w-2.5 h-2.5" />
-                </button>
+                {hasPermission('gdd.doc.delete') && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-red-400 transition-all flex-shrink-0"
+                    >
+                        <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                )}
             </div>
 
             {/* Recursively render child documents */}
@@ -1598,22 +1396,8 @@ function useGDDToKanban(setTasks: (fn: (prev: Task[]) => Task[]) => void, column
 // ─── Main GDD Hub ─────────────────────────────────────────────────────────────
 
 export default function GDDHub() {
-    const { data, setGDDDocs, setBalancingTables, setTasks, logActivity, activeWorkspace, activeBoard, setActiveBoard } = useWorkspace();
+    const { data, setGDDDocs, setBalancingTables, setTasks, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
-    const [projects, setProjects] = useState<any[]>([]);
-
-    useEffect(() => {
-        api.get('/projects/?manageable=true')
-            .then((res) => {
-                const all = res.data.results ?? res.data;
-                if (activeWorkspace.type === 'org' && activeWorkspace.org) {
-                    setProjects(all.filter((p: any) => p.organisation === activeWorkspace.org?.id));
-                } else {
-                    setProjects(all.filter((p: any) => !p.organisation));
-                }
-            })
-            .catch((err) => console.error('Failed to load projects:', err));
-    }, [activeWorkspace]);
     const { gddDocs, balancingTables, dialogueTrees, tasks, columns, gddCategories } = data;
     const categories = gddCategories ?? DEFAULT_GDD_CATEGORIES;
 
@@ -1645,37 +1429,9 @@ export default function GDDHub() {
     const [scrollTarget, setScrollTarget] = useState<{ text: string; timestamp: number } | null>(null);
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
-    const [showBoardDropdown, setShowBoardDropdown] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const currentUser = user?.username ?? 'You';
-
-    const activeBoardInfo = useMemo(() => {
-        if (activeBoard === 'solo') {
-            return {
-                name: user?.real_name || user?.username || 'Personal Workspace',
-                avatar: user?.avatar,
-            };
-        }
-        if (activeBoard === 'org') {
-            return {
-                name: activeWorkspace.org?.name || 'Organisation',
-                avatar: activeWorkspace.org?.logo,
-            };
-        }
-        if (activeBoard.startsWith('project_')) {
-            const pid = parseInt(activeBoard.replace('project_', ''), 10);
-            const p = projects.find((proj) => proj.id === pid);
-            return {
-                name: p?.title || 'Project Board',
-                avatar: p?.cover_image,
-            };
-        }
-        return {
-            name: 'Board',
-            avatar: undefined,
-        };
-    }, [activeBoard, user, activeWorkspace, projects]);
 
     // Derived active document directly from URL parameter
     const urlDocId = searchParams.get('gddDocId');
@@ -1883,21 +1639,23 @@ export default function GDDHub() {
                                                             Edit
                                                         </button>
                                                     )}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleUpdateDoc({
-                                                                ...latestDoc,
-                                                                comments: latestDoc.comments?.map(c =>
-                                                                    c.id === comment.id ? { ...c, resolved: !c.resolved } : c
-                                                                )
-                                                            });
-                                                        }}
-                                                        className="text-[10px] text-zinc-500 hover:text-blue-400 px-1"
-                                                    >
-                                                        {comment.resolved ? 'Reopen' : 'Resolve'}
-                                                    </button>
-                                                    {(comment.author === currentUser || currentUser === 'admin' || currentUser === 'owner') && (
+                                                    {hasPermission('gdd.comment.resolve') && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleUpdateDoc({
+                                                                    ...latestDoc,
+                                                                    comments: latestDoc.comments?.map(c =>
+                                                                        c.id === comment.id ? { ...c, resolved: !c.resolved } : c
+                                                                    )
+                                                                });
+                                                            }}
+                                                            className="text-[10px] text-zinc-500 hover:text-blue-400 px-1"
+                                                        >
+                                                            {comment.resolved ? 'Reopen' : 'Resolve'}
+                                                        </button>
+                                                    )}
+                                                    {(comment.author === currentUser || hasPermission('gdd.comment.delete_any')) && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -2054,100 +1812,7 @@ export default function GDDHub() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <div className="flex items-center gap-3">
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowBoardDropdown(!showBoardDropdown)}
-                                            className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 transition-all rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-md cursor-pointer min-w-[200px] justify-between"
-                                        >
-                                            <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className="w-6 h-6 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                    <img
-                                                        src={getImageUrl(activeBoardInfo.avatar, activeBoardInfo.name)}
-                                                        alt=""
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                </div>
-                                                <span className="truncate max-w-[120px]">{activeBoardInfo.name}</span>
-                                            </div>
-                                            <ChevronDown className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                                        </button>
-
-                                        {showBoardDropdown && (
-                                            <>
-                                                <div
-                                                    className="fixed inset-0 z-40"
-                                                    onClick={() => setShowBoardDropdown(false)}
-                                                />
-                                                <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
-                                                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
-                                                        Switch Workspace Board
-                                                    </p>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setActiveBoard(activeWorkspace.type === 'solo' ? 'solo' : 'org');
-                                                            setShowBoardDropdown(false);
-                                                        }}
-                                                        className={cn(
-                                                            "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
-                                                            (activeBoard === 'solo' || activeBoard === 'org')
-                                                                ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                                : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                                                        )}
-                                                    >
-                                                        <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-800 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                            <img
-                                                                src={getImageUrl(
-                                                                    activeWorkspace.type === 'solo' ? user?.avatar : activeWorkspace.org?.logo,
-                                                                    activeWorkspace.type === 'solo' ? (user?.real_name || user?.username) : activeWorkspace.org?.name
-                                                                )}
-                                                                alt=""
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                        <span className="truncate">
-                                                            {activeWorkspace.type === 'solo' ? 'Personal' : activeWorkspace.org?.name}
-                                                        </span>
-                                                    </button>
-
-                                                    {projects.length > 0 && (
-                                                        <div className="pt-1.5 border-t border-zinc-900/60 mt-1">
-                                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2.5 py-1">
-                                                                Projects
-                                                            </p>
-                                                            {projects.map((p) => (
-                                                                <button
-                                                                    key={p.id}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setActiveBoard(`project_${p.id}`);
-                                                                        setShowBoardDropdown(false);
-                                                                    }}
-                                                                    className={cn(
-                                                                        "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-lg transition-colors text-left font-semibold",
-                                                                        activeBoard === `project_${p.id}`
-                                                                            ? "bg-blue-600/10 text-blue-400 font-bold"
-                                                                            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                                                                    )}
-                                                                >
-                                                                    <div className="w-5 h-5 rounded-md overflow-hidden bg-zinc-805 border border-zinc-800 flex items-center justify-center flex-shrink-0">
-                                                                        <img
-                                                                            src={getImageUrl(p.cover_image, p.title)}
-                                                                            alt=""
-                                                                            className="w-full h-full object-cover"
-                                                                        />
-                                                                    </div>
-                                                                    <span className="truncate">{p.title}</span>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
+                                    <BoardSwitcher />
 
                                     <span className="text-zinc-700 text-lg font-light">/</span>
 
@@ -2210,12 +1875,14 @@ export default function GDDHub() {
                                                             {doc.isPublic
                                                                 ? <span title="Public"><Globe className="w-3.5 h-3.5 text-emerald-500" /></span>
                                                                 : <span title="Private"><Lock className="w-3.5 h-3.5 text-zinc-700" /></span>}
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDeleteDoc(doc.id); }}
-                                                                className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 rounded hover:bg-red-500/10 transition-all"
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
+                                                            {hasPermission('gdd.doc.delete') && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteDoc(doc.id); }}
+                                                                    className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 rounded hover:bg-red-500/10 transition-all"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">{preview}...</p>

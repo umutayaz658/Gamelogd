@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -9,11 +10,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-default-key')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = str(os.environ.get('DEBUG', '0')).lower() in ['1', 'true']
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# Never boot production on the well-known insecure default — session/CSRF/token signing
+# would be forgeable. Fall back to the dev default only when DEBUG is on.
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-default-key'
+    else:
+        raise ImproperlyConfigured('SECRET_KEY environment variable must be set in production.')
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost 127.0.0.1 [::1]').split(' ')
 
@@ -51,20 +59,34 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Never open the API to every origin: it would let any website read authenticated
+# responses cross-origin. Rely on the explicit allow-list below instead.
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Required so the browser sends/receives the httpOnly auth cookie cross-site during the
+# transition and for same-site cookie auth after the API moves to api.gamelogd.net.
+CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "https://gamelogd-coral.vercel.app",
     "https://gamelogd.net",
     "https://www.gamelogd.net",
 ]
 
+# Vercel preview deployments for THIS project. Anchored to the exact project family
+# (gamelogd-coral) rather than "gamelogd.*", which would also match an attacker-registered
+# gamelogd-<anything>.vercel.app and — with CORS_ALLOW_CREDENTIALS — let it read authenticated
+# responses. For full safety, prefer anchoring on the Vercel team slug or dropping the regex and
+# listing preview URLs explicitly.
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://gamelogd.*\.vercel\.app$",
+    r"^https://gamelogd-coral(-[a-z0-9]+)*\.vercel\.app$",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "https://gamelogd-coral.vercel.app",
     "https://gamelogd-production.up.railway.app",
     "https://gamelogd.net",
@@ -197,17 +219,49 @@ AUTH_USER_MODEL = 'api.User'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        # Accepts the token from the standard Authorization header OR from an httpOnly
+        # cookie (CSRF-enforced). Subclasses TokenAuthentication, so header clients still work.
+        'api.authentication.CookieTokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
+    # Rate limiting:
+    #  - ScopedRateThrottle: tight per-endpoint caps on the credential/OTP endpoints (below).
+    #  - AnonRateThrottle: caps unauthenticated abuse — bulk scraping of the public feed/explore/
+    #    user-search surfaces (e.g. harvesting) and hammering the AllowAny endpoints.
+    #  - UserRateThrottle: a generous backstop against runaway automated activity (message/follow/
+    #    post spam) set high enough that normal, request-heavy SPA browsing never hits it.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/min',
+        'verify_email': '10/min',
+        'resend_verification': '3/min',
+        'register': '5/min',
+        'anon': '120/min',
+        'user': '600/min',
+    },
 }
 
 STEAM_API_KEY = os.environ.get('STEAM_API_KEY')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com')
-CRON_SECRET = os.environ.get('CRON_SECRET', 'gamelogd-local-cron-secret-key-12345')
+CRON_SECRET = os.environ.get('CRON_SECRET')
+if not CRON_SECRET:
+    if DEBUG:
+        CRON_SECRET = 'gamelogd-local-cron-secret-key-12345'
+    else:
+        raise ImproperlyConfigured('CRON_SECRET environment variable must be set in production.')
+
+# OAuth and API Keys
+MICROSOFT_CLIENT_ID = os.environ.get('MICROSOFT_CLIENT_ID')
+MICROSOFT_CLIENT_SECRET = os.environ.get('MICROSOFT_CLIENT_SECRET')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+OPENXBL_API_KEY = os.environ.get('OPENXBL_API_KEY')
 
 # Email configuration
 # In development (Docker local): print emails to console (terminal logs)
@@ -239,5 +293,35 @@ SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@gamelogd.net')
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
+
+# Production-only transport hardening. Guarded by DEBUG so local http:// dev is unaffected.
+if not DEBUG:
+    # Django sits behind a TLS-terminating proxy (Railway) — trust its forwarded scheme.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# Cookie SameSite: 'Lax' lets first-party navigation carry cookies while blocking most
+# cross-site sends. The CSRF cookie must be readable by JS so the SPA can echo it.
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False
+
+# When the frontend and API live on different subdomains of the same site (e.g.
+# gamelogd.net + api.gamelogd.net in cookie-auth mode), set CSRF_COOKIE_DOMAIN=.gamelogd.net
+# so the frontend JS can read the csrftoken cookie the API sets and echo it back as the
+# X-CSRFToken header. Leave unset (host-only cookie) for header-mode / same-origin setups.
+CSRF_COOKIE_DOMAIN = os.environ.get('CSRF_COOKIE_DOMAIN') or None
+
+# Domain for the httpOnly auth cookie (see api/authentication.py set_auth_cookie).
+# MUST be the shared parent domain (e.g. .gamelogd.net) when the API is on api.gamelogd.net
+# but the frontend is on gamelogd.net — otherwise the cookie is host-only to the API host,
+# the frontend's Next.js middleware can't see it, and every protected route bounces back to
+# /login even though the session is valid. Leave unset (host-only) for same-origin setups.
+AUTH_COOKIE_DOMAIN = os.environ.get('AUTH_COOKIE_DOMAIN') or None
 
 

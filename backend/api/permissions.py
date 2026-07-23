@@ -15,33 +15,63 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return obj.owner == request.user
         elif hasattr(obj, 'recruiter'):
             return obj.recruiter == request.user
-            
+        elif hasattr(obj, 'author'):
+            return obj.author == request.user
+
         return False
+
+class OrganisationAccessPermission(permissions.BasePermission):
+    """
+    Custom permission for Organisations:
+    - Anyone can read.
+    - Owner or Admin can update.
+    - Only the Owner can delete (deleting an org is the most catastrophic action available —
+      cascades to its roles/members/WorkspaceState rows, see OrganisationViewSet.destroy()).
+    """
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        member = obj.members.filter(user=request.user).first()
+        if not member:
+            return False
+
+        if request.method == 'DELETE':
+            return member.role == 'owner'
+
+        return member.role in ('owner', 'admin')
+
 
 class ProjectAccessPermission(permissions.BasePermission):
     """
     Custom permission for Projects:
     - Anyone can read.
-    - Owner or Admin can update or delete.
+    - Owner, org owner/admin, or project admin can update.
     - Editor can update, but NOT delete.
+    - Only the project owner can delete (mirrors OrganisationAccessPermission — deleting a
+      project is irreversible, so it's deliberately not extended to admins).
     """
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
             return True
-            
+
+        is_owner = hasattr(obj, 'owner') and obj.owner == request.user
+        if request.method == 'DELETE':
+            return is_owner
+
         # Check if user is owner or admin of the project's organisation
         if hasattr(obj, 'organisation') and obj.organisation:
             if obj.organisation.members.filter(user=request.user, role__in=['owner', 'admin']).exists():
                 return True
-            
+
         if hasattr(obj, 'owner') and hasattr(obj, 'members'):
-            if obj.owner == request.user:
+            if is_owner:
                 return True
-            
+
             if obj.members.filter(user=request.user, role='admin').exists():
                 return True
-                
+
             if request.method in ['PUT', 'PATCH']:
                 return obj.members.filter(user=request.user, role='editor').exists()
-                
+
         return False

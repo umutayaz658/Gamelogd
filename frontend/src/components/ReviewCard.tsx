@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2 } from 'lucide-react';
 import { Review } from '@/types';
-import { getImageUrl, getRelativeTime } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, formatCount } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
@@ -11,17 +11,24 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 interface ReviewCardProps {
     review: Review;
     isDetailView?: boolean;
+    // See PostCard's identical prop — renders the "X reposted" label inside this
+    // card's own bordered container instead of the caller stacking a div above it.
+    repostedBy?: { name: string };
 }
 
-export default function ReviewCard({ review, isDetailView = false }: ReviewCardProps) {
+export default function ReviewCard({ review, isDetailView = false, repostedBy }: ReviewCardProps) {
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
     const { t, language } = useTranslation();
+    const toast = useToast();
+    const confirm = useConfirm();
     const [isSpoilerVisible, setIsSpoilerVisible] = useState(false);
     const baseId = useId().replace(/:/g, '-');
 
@@ -85,7 +92,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm("Are you sure you want to delete this review?")) return;
+        if (!(await confirm({ message: "Are you sure you want to delete this review?", confirmText: 'Delete', isDanger: true }))) return;
         try {
             await api.delete(`/reviews/${review.id}/`);
             window.location.reload();
@@ -114,7 +121,7 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                 await navigator.share(shareData);
             } else {
                 await navigator.clipboard.writeText(url);
-                alert('Link copied to clipboard!');
+                toast.success('Link copied to clipboard!');
             }
         } catch (error) {
             // User cancelled share dialog, ignore
@@ -132,6 +139,12 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
             onClick={handleCardClick}
             className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
         >
+            {repostedBy && (
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 mb-2 pl-12">
+                    <Repeat2 className="h-3.5 w-3.5 text-zinc-500" />
+                    <span>{repostedBy.name} {t('reposted')}</span>
+                </div>
+            )}
             <div className="flex gap-4">
                 {/* User Avatar */}
                 <div className="flex flex-col items-center flex-shrink-0 w-fit">
@@ -148,29 +161,29 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    {/* Header: Name, Username, Date, More Button */}
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
+                    {/* Header: Name, Username, Time, More Button */}
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden">
                             <Link
                                 href={`/${review.user.username}`}
-                                className="font-bold text-white hover:underline"
+                                className="font-bold text-white hover:underline truncate min-w-0 shrink"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 {review.user.real_name || review.user.username}
                             </Link>
                             <Link
                                 href={`/${review.user.username}`}
-                                className="text-zinc-500 text-sm hover:text-zinc-400"
+                                className="text-zinc-500 text-sm hover:text-zinc-400 truncate min-w-0 shrink"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 @{review.user.username.toLowerCase()}
                             </Link>
-                            <span className="text-zinc-700 text-sm">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline" title={new Date(review.timestamp).toLocaleString()}>
-                                {new Date(review.timestamp).toLocaleDateString()} • {getRelativeTime(review.timestamp, language)}
+                            <span className="text-zinc-700 text-sm flex-shrink-0">•</span>
+                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(review.timestamp).toLocaleString()}>
+                                {getRelativeTime(review.timestamp, language)}
                             </span>
                         </div>
-                        <div className="relative" ref={menuRef}>
+                        <div className="relative flex-shrink-0" ref={menuRef}>
                             <button
                                 className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
                                 onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
@@ -316,100 +329,105 @@ export default function ReviewCard({ review, isDetailView = false }: ReviewCardP
 
                     {/* Actions Footer */}
                     <div className="flex items-center justify-between mt-2 text-zinc-500 border-t border-zinc-800/50 pt-3">
-                        <button
-                            className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                openReplyModal({ ...review, type: 'review' });
-                            }}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
-                                <MessageCircle className="h-4 w-4" />
-                            </div>
-                            <span className="text-sm">0</span>
-                        </button>
-
-                        <div className="relative">
+                        {/* Comment / Repost / Like / Share — evenly distributed across the
+                            full width (equal gaps between each). Bookmark alone stays
+                            snug against Share at the right edge. */}
+                        <div className="flex items-center justify-between flex-1">
                             <button
-                                className="flex items-center gap-2 text-zinc-500 hover:text-green-500 group transition-colors"
-                                title="Quote Review"
+                                className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    openQuoteModal({ ...review, type: 'review' } as any);
+                                    openReplyModal({ ...review, type: 'review' });
                                 }}
                             >
-                                <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
-                                    <Repeat2 className="h-4 w-4" />
+                                <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
+                                    <MessageCircle className="h-4 w-4" />
                                 </div>
-                                <span className="text-sm">0</span>
+                                <span className="text-sm">{formatCount(0)}</span>
                             </button>
+
+                            <div className="relative">
+                                <button
+                                    className="flex items-center gap-2 text-zinc-500 hover:text-green-500 group transition-colors"
+                                    title="Quote Review"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openQuoteModal({ ...review, type: 'review' } as any);
+                                    }}
+                                >
+                                    <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
+                                        <Repeat2 className="h-4 w-4" />
+                                    </div>
+                                    <span className="text-sm">{formatCount(0)}</span>
+                                </button>
+                            </div>
+
+                            <button
+                                className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
+                                onClick={handleLike}
+                            >
+                                <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
+                                    <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
+                                </div>
+                                <span className="text-sm">{formatCount(likesCount || 0)}</span>
+                            </button>
+
+                            <div className="relative" ref={shareMenuRef}>
+                                <button
+                                    className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowShareMenu(!showShareMenu);
+                                    }}
+                                >
+                                    <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
+                                        <Share2 className="h-4 w-4" />
+                                    </div>
+                                </button>
+                                {showShareMenu && (
+                                    <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                setIsShareModalOpen(true);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                        >
+                                            <Send className="h-3.5 w-3.5 text-emerald-500" />
+                                            Send via Direct Message
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
+                                                navigator.clipboard.writeText(url);
+                                                toast.success('Link copied to clipboard!');
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
+                                            Copy Link
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                handleShare(e);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                            Share via...
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <button
-                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
-                            onClick={handleLike}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
-                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
-                            </div>
-                            <span className="text-sm">{likesCount || 0}</span>
-                        </button>
-
-                        <div className="relative" ref={shareMenuRef}>
-                            <button
-                                className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowShareMenu(!showShareMenu);
-                                }}
-                            >
-                                <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
-                                    <Share2 className="h-4 w-4" />
-                                </div>
-                            </button>
-                            {showShareMenu && (
-                                <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowShareMenu(false);
-                                            setIsShareModalOpen(true);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
-                                    >
-                                        <Send className="h-3.5 w-3.5 text-emerald-500" />
-                                        Send via Direct Message
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowShareMenu(false);
-                                            const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
-                                            navigator.clipboard.writeText(url);
-                                            alert('Link copied to clipboard!');
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                    >
-                                        <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
-                                        Copy Link
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowShareMenu(false);
-                                            handleShare(e);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                    >
-                                        <Share2 className="h-3.5 w-3.5 text-zinc-550" />
-                                        Share via...
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        
-                        <button
-                            className={`flex items-center gap-2 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
+                            className={`flex items-center gap-2 ml-1 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
                             onClick={handleBookmark}
                         >
                             <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">

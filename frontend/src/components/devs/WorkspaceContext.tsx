@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Organisation } from '@/types';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import {
     WorkspaceData,
     DEFAULT_COLUMNS,
@@ -18,15 +19,16 @@ import {
     Asset,
     TranslationEntry,
     GlossaryTerm,
-    TeamMember,
-    PlaytestFeedback,
     ActivityItem,
     ActivityType,
     GDDCategory,
     DEFAULT_GDD_CATEGORIES,
     AssetCategoryItem,
     DEFAULT_ASSET_CATEGORIES,
+    KanbanCategoryItem,
+    DEFAULT_KANBAN_CATEGORIES,
 } from './WorkspaceTypes';
+import { COLOR_PRESETS } from './CategoryManager';
 
 export type WorkspaceTool =
     | 'dashboard'
@@ -37,6 +39,7 @@ export type WorkspaceTool =
     | 'assets'
     | 'localisation'
     | 'members'
+    | 'playtest'
     | 'settings';
 
 export type WorkspaceType = 'solo' | 'org';
@@ -201,13 +204,6 @@ function buildDefaultData(): WorkspaceData {
             { id: 'gl1', term: 'Mana', translations: { Turkish: 'Mana', Spanish: 'Maná', French: 'Mana' } },
             { id: 'gl2', term: 'Fireball', translations: { Turkish: 'Alev Topu', Spanish: 'Bola de Fuego' } },
         ],
-        teamMembers: [
-            {
-                id: 'tm1', username: 'You (Owner)', role: 'owner', joinedAt: '3mo ago',
-                stats: { tasksCompleted: 12, gddPagesEdited: 8, localisationsApproved: 0 },
-            },
-        ],
-        playtestFeedback: [],
         activities: [
             { id: 'act1', type: 'task_created', text: 'Welcome to your Developer Workspace!', time: 'just now', icon: '🚀' },
             { id: 'act2', type: 'task_completed', text: 'Task "Set up project structure" marked as Done.', time: '2d ago', icon: '✅', actor: 'devuser' },
@@ -215,6 +211,7 @@ function buildDefaultData(): WorkspaceData {
         ],
         gddCategories: DEFAULT_GDD_CATEGORIES,
         assetCategories: DEFAULT_ASSET_CATEGORIES,
+        kanbanCategories: DEFAULT_KANBAN_CATEGORIES,
     };
 }
 
@@ -232,8 +229,19 @@ interface WorkspaceContextType {
     organisations: Organisation[];
     loadingOrgs: boolean;
     refetchOrgs: () => void;
+    // Effective permissions for the current org/project scope (see backend api.permission_catalog)
+    permissions: string[];
+    hasPermission: (key: string) => boolean;
     // Workspace data
     data: WorkspaceData;
+    // Re-fetches the current board's data from the backend and replaces `data` with it — for
+    // callers that mutated the backend's WorkspaceState row directly (bypassing setTasks/setColumns
+    // etc.), e.g. converting Feedback into a Kanban task, so the in-memory context catches up
+    // without needing a full page reload.
+    refreshWorkspaceData: () => void;
+    // Resets this board's content back to empty (keeps columns/categories) — Workspace Settings'
+    // Danger Zone "Clear Workspace Data" action.
+    clearWorkspaceData: () => Promise<void>;
     // Mutators
     setColumns: (cols: KanbanColumn[]) => void;
     setTasks: (tasks: Task[] | ((prev: Task[]) => Task[])) => void;
@@ -242,9 +250,7 @@ interface WorkspaceContextType {
     setAssets: (assets: Asset[] | ((prev: Asset[]) => Asset[])) => void;
     setTranslationKeys: (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => void;
     setGlossary: (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => void;
-    setTeamMembers: (m: TeamMember[] | ((prev: TeamMember[]) => TeamMember[])) => void;
-    setPlaytestFeedback: (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) => void;
-    setCategories: (categories: string[] | ((prev: string[]) => string[])) => void;
+    setKanbanCategories: (categories: KanbanCategoryItem[] | ((prev: KanbanCategoryItem[]) => KanbanCategoryItem[])) => void;
     setGDDCategories: (categories: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => void;
     setAssetCategories: (categories: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => void;
     logActivity: (type: ActivityType, text: string, icon: string, actor?: string) => void;
@@ -252,15 +258,84 @@ interface WorkspaceContextType {
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
+// ─── Last-active-workspace persistence ───────────────────────────────────────
+// Remembers which workspace/board/tool the user was last in, so navigating away from /devs and
+// back (e.g. via the top nav, which links to a bare /devs with no query params) restores it
+// instead of always resetting to the personal/solo workspace.
+
+const LAST_WORKSPACE_KEY = 'gamelogd_devs_last_workspace';
+
+function readPersistedWorkspace(): { workspace?: string; board?: string; tool?: string } {
+    try {
+        const raw = localStorage.getItem(LAST_WORKSPACE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistWorkspace(workspace: string, board: string, tool: string) {
+    try {
+        localStorage.setItem(LAST_WORKSPACE_KEY, JSON.stringify({ workspace, board, tool }));
+    } catch { /* storage disabled/full — persistence is best-effort */ }
+}
+
 // ─── Storage Key Helper ───────────────────────────────────────────────────────
 
 function storageKey(ws: ActiveWorkspace, board: string, userId?: number): string {
     const suffix = userId ? `_u_${userId}` : '';
     if (ws.type === 'solo') {
         if (board === 'solo') return `workspace__solo${suffix}`;
+        // A project board is shared by all its members and lives in a single
+        // owner-canonical row on the backend, so it must NOT be keyed by the viewing
+        // user — otherwise each member would read/write a divergent copy.
+        if (board.startsWith('project_')) return `workspace__solo_board_${board}`;
         return `workspace__solo_board_${board}${suffix}`;
     }
     return `workspace__org_${ws.org?.id ?? 'unknown'}_board_${board}`;
+}
+
+// ─── Legacy Kanban category migration ────────────────────────────────────────
+// One-time, read-time conversion of the old free-form `data.categories: string[]` (custom
+// entries encoded as "emoji Label|colorName") into the structured `KanbanCategoryItem[]` shape
+// shared with GDD/Asset categories. `id` is kept as the *exact original raw string* so existing
+// `Task.category` values (which already store that same raw string) keep matching without
+// needing every Task row migrated too.
+const KANBAN_EMOJI_REGEX = /^(\p{Emoji_Presentation}|\p{Emoji}️)/u;
+const KANBAN_LABEL_STRIP_REGEX = /^(\p{Emoji_Presentation}|\p{Emoji}️)\s*/u;
+
+function migrateLegacyKanbanCategories(legacy: string[]): KanbanCategoryItem[] {
+    return legacy.map((cat) => {
+        const known = DEFAULT_KANBAN_CATEGORIES.find((c) => c.id === cat);
+        if (known) return known;
+
+        let colorName = 'zinc';
+        let baseCat = cat;
+        if (cat.includes('|')) {
+            const parts = cat.split('|');
+            baseCat = parts[0];
+            colorName = parts[1] || 'zinc';
+        }
+        const match = baseCat.match(KANBAN_EMOJI_REGEX);
+        const emoji = match ? match[0] : '📌';
+        const label = baseCat.replace(KANBAN_LABEL_STRIP_REGEX, '');
+        const preset = COLOR_PRESETS.find((p) => p.name.toLowerCase() === colorName.toLowerCase()) ?? COLOR_PRESETS[6];
+        return {
+            id: cat,
+            label: (label.charAt(0).toUpperCase() + label.slice(1)) || 'Custom',
+            emoji,
+            color: preset.color,
+            bg: preset.bg,
+        };
+    });
+}
+
+function ensureKanbanCategories(data: WorkspaceData): WorkspaceData {
+    if (data.kanbanCategories?.length) return data;
+    if (data.categories?.length) {
+        return { ...data, kanbanCategories: migrateLegacyKanbanCategories(data.categories) };
+    }
+    return { ...data, kanbanCategories: DEFAULT_KANBAN_CATEGORIES };
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -276,18 +351,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [organisations, setOrganisations] = useState<Organisation[]>([]);
     const [loadingOrgs, setLoadingOrgs] = useState(false);
     const [data, setData] = useState<WorkspaceData>(buildDefaultData);
+    const [permissions, setPermissions] = useState<string[]>([]);
+
+    const toast = useToast();
 
     // Track if we already initialised from URL params
     const initialised = useRef(false);
+
+    // Optimistic-concurrency token for the currently-loaded board. Holds the { key, version }
+    // last seen from the backend so a save can prove it wasn't based on stale data; when the key
+    // doesn't match the active board (or is null) we send no version and fall back to a plain
+    // create. Kept in a ref so it survives re-renders without retriggering effects.
+    const versionRef = useRef<{ key: string; version: number | null } | null>(null);
 
     // ── Load from URL params on first mount ──────────────────────────────────
     useEffect(() => {
         if (initialised.current) return;
         initialised.current = true;
 
-        const toolParam = searchParams.get('tool') as WorkspaceTool | null;
-        const wsParam = searchParams.get('workspace');
-        const boardParam = searchParams.get('board');
+        // Fall back to the last-persisted workspace only when the URL has none of these params
+        // at all (a genuine deep link always wins over the remembered one).
+        const persisted = readPersistedWorkspace();
+        const toolParam = (searchParams.get('tool') as WorkspaceTool | null) ?? (persisted.tool as WorkspaceTool | undefined) ?? null;
+        const wsParam = searchParams.get('workspace') ?? persisted.workspace ?? null;
+        const boardParam = searchParams.get('board') ?? persisted.board ?? null;
 
         if (toolParam) _setActiveTool(toolParam);
         if (wsParam === 'solo') {
@@ -315,14 +402,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const orgs: Organisation[] = res.data.results ?? res.data;
             setOrganisations(orgs);
 
-            // Resolve org workspace from URL now that we have org list
-            const wsParam = searchParams.get('workspace');
+            // Resolve org workspace from the URL, falling back to the last-persisted one —
+            // same rule as the initial-mount effect above (URL always wins if present).
+            const persisted = readPersistedWorkspace();
+            const wsParam = searchParams.get('workspace') ?? persisted.workspace ?? null;
             if (wsParam && wsParam.startsWith('org_')) {
                 const orgId = parseInt(wsParam.replace('org_', ''), 10);
                 const org = orgs.find((o) => o.id === orgId);
                 if (org) {
                     _setActiveWorkspace({ type: 'org', org });
-                    const boardParam = searchParams.get('board') || 'org';
+                    const boardParam = searchParams.get('board') ?? persisted.board ?? 'org';
                     _setActiveBoard(boardParam);
                 }
             }
@@ -335,10 +424,58 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => { fetchOrgs(); }, [user]);
 
+    // Fetches the given board's WorkspaceState row from the backend and, if it has real column
+    // data, replaces `data` with it. Shared by the load-on-board-change effect below and by
+    // refreshWorkspaceData (for callers that mutated the backend row directly, bypassing the
+    // setTasks/setColumns mutators — e.g. converting Feedback into a Kanban task).
+    const fetchWorkspaceDataFromBackend = useCallback((key: string) => {
+        return api.get(`/workspace-state/${key}/`)
+            .then((res) => {
+                // Remember the version we loaded so the next save can detect a concurrent edit.
+                versionRef.current = { key, version: typeof res.data?.version === 'number' ? res.data.version : null };
+                let backendData = res.data?.data;
+                if (backendData && backendData.columns?.length) {
+                    if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
+                    if (!backendData.assetCategories?.length) backendData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    backendData = ensureKanbanCategories(backendData);
+                    setData(backendData);
+                    try { localStorage.setItem(key, JSON.stringify(backendData)); } catch {}
+                }
+            })
+            .catch((err) => {
+                // No row yet (or load failed): we have no known version, so the next save creates
+                // the row unconditionally.
+                versionRef.current = { key, version: null };
+                console.log('No backend workspace state found or failed to load. Using local state.', err);
+            });
+    }, []);
+
+    const refreshWorkspaceData = useCallback(() => {
+        if (!user) return;
+        fetchWorkspaceDataFromBackend(storageKey(activeWorkspace, activeBoard, user.id));
+    }, [activeWorkspace, activeBoard, user, fetchWorkspaceDataFromBackend]);
+
+    // Resets this board's content (tasks/docs/assets/activities etc.) back to empty, while
+    // preserving its column and category configuration — used by Workspace Settings' Danger
+    // Zone "Clear Workspace Data" action (solo boards and individual projects; organisations use
+    // a real DELETE instead, see WorkspaceSettings.tsx).
+    const clearWorkspaceData = useCallback(async () => {
+        if (!user) return;
+        const key = storageKey(activeWorkspace, activeBoard, user.id);
+        const cleared: WorkspaceData = {
+            ...data,
+            tasks: [], gddDocs: [], balancingTables: [], dialogueTrees: [],
+            assets: [], translationKeys: [], glossary: [], activities: [],
+        };
+        await api.post('/workspace-state/', { key, data: cleared, tool: 'settings' });
+        setData(cleared);
+        try { localStorage.setItem(key, JSON.stringify(cleared)); } catch { /* quota */ }
+    }, [activeWorkspace, activeBoard, user, data]);
+
     // ── Load workspace data from localStorage & backend when workspace or board changes ─
     useEffect(() => {
         const key = storageKey(activeWorkspace, activeBoard, user?.id);
-        
+
         // 1. Load from localStorage cache first for instant render
         try {
             const stored = localStorage.getItem(key);
@@ -348,7 +485,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 if (!parsed.categories?.length) parsed.categories = ['code', 'art', 'audio', 'qa', 'other'];
                 if (!parsed.gddCategories?.length) parsed.gddCategories = DEFAULT_GDD_CATEGORIES;
                 if (!parsed.assetCategories?.length) parsed.assetCategories = DEFAULT_ASSET_CATEGORIES;
-                setData(parsed);
+                setData(ensureKanbanCategories(parsed));
             } else {
                 if (activeBoard.startsWith('project_')) {
                     const emptyData = buildDefaultData();
@@ -360,12 +497,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     emptyData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     emptyData.gddCategories = DEFAULT_GDD_CATEGORIES;
                     emptyData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    emptyData.kanbanCategories = DEFAULT_KANBAN_CATEGORIES;
                     setData(emptyData);
                 } else {
                     const defaultData = buildDefaultData();
                     defaultData.categories = ['code', 'art', 'audio', 'qa', 'other'];
                     defaultData.gddCategories = DEFAULT_GDD_CATEGORIES;
                     defaultData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+                    defaultData.kanbanCategories = DEFAULT_KANBAN_CATEGORIES;
                     setData(defaultData);
                 }
             }
@@ -374,33 +513,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             defaultData.categories = ['code', 'art', 'audio', 'qa', 'other'];
             defaultData.gddCategories = DEFAULT_GDD_CATEGORIES;
             defaultData.assetCategories = DEFAULT_ASSET_CATEGORIES;
+            defaultData.kanbanCategories = DEFAULT_KANBAN_CATEGORIES;
             setData(defaultData);
         }
 
         // 2. Fetch fresh data from backend
         if (!user) return;
 
-        let active = true;
-        api.get(`/workspace-state/${key}/`)
-            .then((res) => {
-                if (!active) return;
-                const backendData = res.data?.data;
-                if (backendData && backendData.columns?.length) {
-                    if (!backendData.categories?.length) backendData.categories = ['code', 'art', 'audio', 'qa', 'other'];
-                    if (!backendData.gddCategories?.length) backendData.gddCategories = DEFAULT_GDD_CATEGORIES;
-                    if (!backendData.assetCategories?.length) backendData.assetCategories = DEFAULT_ASSET_CATEGORIES;
-                    setData(backendData);
-                    try { localStorage.setItem(key, JSON.stringify(backendData)); } catch {}
-                }
-            })
-            .catch((err) => {
-                console.log('No backend workspace state found or failed to load. Using local state.', err);
-            });
-
-        return () => {
-            active = false;
-        };
-    }, [activeWorkspace, activeBoard, user]);
+        fetchWorkspaceDataFromBackend(key);
+    }, [activeWorkspace, activeBoard, user, fetchWorkspaceDataFromBackend]);
 
     // ── Persist workspace data to localStorage & backend whenever it changes ──
     const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -408,20 +529,77 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (persistTimer.current) clearTimeout(persistTimer.current);
         persistTimer.current = setTimeout(() => {
             const key = storageKey(activeWorkspace, activeBoard, user?.id);
+            const tool = lastToolRef.current;
             try {
                 localStorage.setItem(key, JSON.stringify(data));
-                if (user) {
-                    api.post('/workspace-state/', { key, data })
-                        .catch((err) => console.error('Failed to sync workspace state to backend:', err));
+                // Only sync to the backend after a genuine user mutation (a data mutator
+                // sets lastToolRef; the load/hydration path uses setData directly and
+                // leaves it null). This prevents two data-loss/pollution bugs:
+                //  (H2) clobbering real backend data with freshly seeded/loaded defaults
+                //       before the initial GET for this board resolves, and
+                //  (M4) writing demo/seed data for a brand-new user who changed nothing.
+                if (user && tool) {
+                    lastToolRef.current = null;
+                    // Send the version we loaded (only if it belongs to this board) so the server
+                    // can reject the write with 409 when a teammate saved in the meantime, instead
+                    // of silently overwriting their change on this shared board.
+                    const knownVersion = versionRef.current?.key === key ? versionRef.current.version : null;
+                    api.post('/workspace-state/', { key, data, tool, base_version: knownVersion })
+                        .then((res) => {
+                            if (typeof res.data?.version === 'number') {
+                                versionRef.current = { key, version: res.data.version };
+                            }
+                        })
+                        .catch((err) => {
+                            if (err.response?.status === 409) {
+                                // Someone else saved first. Adopt the server's current board so this
+                                // client stops diverging, rather than clobbering their work. The local
+                                // in-progress change is dropped — surfaced to the user so it isn't silent.
+                                const current = err.response.data?.current;
+                                if (current?.data) {
+                                    const merged = ensureKanbanCategories(current.data);
+                                    setData(merged);
+                                    try { localStorage.setItem(key, JSON.stringify(merged)); } catch {}
+                                }
+                                versionRef.current = { key, version: typeof current?.version === 'number' ? current.version : null };
+                                toast.error('This board was updated by someone else — reloaded the latest version.');
+                            } else {
+                                console.error('Failed to sync workspace state to backend:', err);
+                            }
+                        });
                 }
             } catch { /* quota */ }
         }, 400); // debounce 400ms
         return () => { if (persistTimer.current) clearTimeout(persistTimer.current); };
     }, [data, activeWorkspace, activeBoard, user]);
 
+    // ── Effective permissions for the current org/project scope ──────────────
+    useEffect(() => {
+        if (activeWorkspace.type === 'solo' || !activeWorkspace.org || !user) {
+            setPermissions([]);
+            return;
+        }
+        const params = new URLSearchParams();
+        params.append('organisation', String(activeWorkspace.org.id));
+        if (activeBoard.startsWith('project_')) {
+            params.append('project', activeBoard.replace('project_', ''));
+        }
+        let active = true;
+        api.get(`/my-permissions/?${params.toString()}`)
+            .then((res) => { if (active) setPermissions(res.data?.permissions ?? []); })
+            .catch(() => { if (active) setPermissions([]); });
+        return () => { active = false; };
+    }, [activeWorkspace, activeBoard, user]);
+
+    const hasPermission = useCallback((key: string) => {
+        if (activeWorkspace.type === 'solo') return true;
+        return permissions.includes(key);
+    }, [activeWorkspace, permissions]);
+
     // ── URL sync helpers ──────────────────────────────────────────────────────
     const pushURL = useCallback((ws: ActiveWorkspace, tool: WorkspaceTool, board: string) => {
         const wsVal = ws.type === 'solo' ? 'solo' : `org_${ws.org?.id}`;
+        persistWorkspace(wsVal, board, tool);
         router.replace(`/devs?workspace=${wsVal}&tool=${tool}&board=${board}`, { scroll: false });
     }, [router]);
 
@@ -443,45 +621,69 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }, [activeWorkspace, activeTool, pushURL]);
 
     // ── Data mutators ─────────────────────────────────────────────────────────
-    const setColumns = (cols: KanbanColumn[]) =>
+    // lastToolRef tracks which Devs tool the most recent mutation belongs to, so the
+    // debounced persist effect below can tell the backend's coarse per-tool write
+    // permission check (see WorkspaceStateViewSet) which tool this write is for.
+    const lastToolRef = useRef<string | null>(null);
+
+    const setColumns = (cols: KanbanColumn[]) => {
+        lastToolRef.current = 'kanban';
         setData((d) => ({ ...d, columns: cols }));
+    };
 
-    const setTasks = (tasks: Task[] | ((prev: Task[]) => Task[])) =>
+    const setTasks = (tasks: Task[] | ((prev: Task[]) => Task[])) => {
+        lastToolRef.current = 'kanban';
         setData((d) => ({ ...d, tasks: typeof tasks === 'function' ? tasks(d.tasks) : tasks }));
+    };
 
-    const setGDDDocs = (docs: GDDDoc[] | ((prev: GDDDoc[]) => GDDDoc[])) =>
+    const setGDDDocs = (docs: GDDDoc[] | ((prev: GDDDoc[]) => GDDDoc[])) => {
+        lastToolRef.current = 'gdd';
         setData((d) => ({ ...d, gddDocs: typeof docs === 'function' ? docs(d.gddDocs) : docs }));
+    };
 
-    const setBalancingTables = (tables: BalancingTable[] | ((prev: BalancingTable[]) => BalancingTable[])) =>
+    const setBalancingTables = (tables: BalancingTable[] | ((prev: BalancingTable[]) => BalancingTable[])) => {
+        lastToolRef.current = 'gdd';
         setData((d) => ({ ...d, balancingTables: typeof tables === 'function' ? tables(d.balancingTables) : tables }));
+    };
 
-    const setAssets = (assets: Asset[] | ((prev: Asset[]) => Asset[])) =>
+    const setAssets = (assets: Asset[] | ((prev: Asset[]) => Asset[])) => {
+        lastToolRef.current = 'assets';
         setData((d) => ({ ...d, assets: typeof assets === 'function' ? assets(d.assets) : assets }));
+    };
 
-    const setTranslationKeys = (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) =>
+    const setTranslationKeys = (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => {
+        lastToolRef.current = 'localisation';
         setData((d) => ({ ...d, translationKeys: typeof keys === 'function' ? keys(d.translationKeys) : keys }));
+    };
 
-    const setGlossary = (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) =>
+    const setGlossary = (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => {
+        lastToolRef.current = 'localisation';
         setData((d) => ({ ...d, glossary: typeof g === 'function' ? g(d.glossary) : g }));
+    };
 
-    const setTeamMembers = (m: TeamMember[] | ((prev: TeamMember[]) => TeamMember[])) =>
-        setData((d) => ({ ...d, teamMembers: typeof m === 'function' ? m(d.teamMembers) : m }));
+    const setKanbanCategories = (cats: KanbanCategoryItem[] | ((prev: KanbanCategoryItem[]) => KanbanCategoryItem[])) => {
+        lastToolRef.current = 'kanban';
+        setData((d) => ({ ...d, kanbanCategories: typeof cats === 'function' ? cats(d.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES) : cats }));
+    };
 
-    const setPlaytestFeedback = (f: PlaytestFeedback[] | ((prev: PlaytestFeedback[]) => PlaytestFeedback[])) =>
-        setData((d) => ({ ...d, playtestFeedback: typeof f === 'function' ? f(d.playtestFeedback) : f }));
-
-    const setCategories = (cats: string[] | ((prev: string[]) => string[])) =>
-        setData((d) => ({ ...d, categories: typeof cats === 'function' ? cats(d.categories ?? ['code', 'art', 'audio', 'qa', 'other']) : cats }));
-
-    const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) =>
+    const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => {
+        lastToolRef.current = 'gdd';
         setData((d) => ({ ...d, gddCategories: typeof cats === 'function' ? cats(d.gddCategories ?? DEFAULT_GDD_CATEGORIES) : cats }));
+    };
 
-    const setAssetCategories = (cats: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) =>
+    const setAssetCategories = (cats: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => {
+        lastToolRef.current = 'assets';
         setData((d) => ({ ...d, assetCategories: typeof cats === 'function' ? cats(d.assetCategories ?? DEFAULT_ASSET_CATEGORIES) : cats }));
+    };
 
     const logActivity = useCallback((type: ActivityType, text: string, icon: string, actor?: string) => {
+        // Collision-resistant id: Date.now() alone duplicates when two activities are
+        // logged in the same millisecond, producing duplicate React keys.
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? `act-${crypto.randomUUID()}`
+            : `act-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const item: ActivityItem = {
-            id: `act-${Date.now()}`,
+            id,
             type,
             text,
             icon,
@@ -503,7 +705,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 organisations,
                 loadingOrgs,
                 refetchOrgs: fetchOrgs,
+                permissions,
+                hasPermission,
                 data,
+                refreshWorkspaceData,
+                clearWorkspaceData,
                 setColumns,
                 setTasks,
                 setGDDDocs,
@@ -511,9 +717,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 setAssets,
                 setTranslationKeys,
                 setGlossary,
-                setTeamMembers,
-                setPlaytestFeedback,
-                setCategories,
+                setKanbanCategories,
                 setGDDCategories,
                 setAssetCategories,
                 logActivity,

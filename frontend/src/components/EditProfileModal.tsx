@@ -5,6 +5,8 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -16,6 +18,8 @@ interface EditProfileModalProps {
 export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: EditProfileModalProps) {
     const { updateUser } = useAuth();
     const { t } = useTranslation();
+    const toast = useToast();
+    const isMobile = useIsMobile();
     const [isLoading, setIsLoading] = useState(false);
 
     // Form State
@@ -47,6 +51,17 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
             setAvatarFile(null);
         }
     }, [isOpen, user]);
+
+    // Lock background scroll while the modal is open — otherwise the page behind
+    // keeps scrolling (most noticeable on mobile where the modal is full-screen).
+    useEffect(() => {
+        if (!isOpen) return;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [isOpen]);
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'cover' | 'avatar') => {
         const file = e.target.files?.[0];
@@ -96,7 +111,7 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
             onClose();
         } catch (error) {
             console.error("Failed to update profile:", error);
-            alert(t('errorFailedUpdateProfile'));
+            toast.error(t('errorFailedUpdateProfile'));
         } finally {
             setIsLoading(false);
         }
@@ -105,8 +120,11 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-black border border-zinc-800 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative" onClick={e => e.stopPropagation()}>
+        <div className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 ${isMobile ? 'p-0' : 'p-4'}`}>
+            <div
+                className={`bg-black border border-zinc-800 flex flex-col shadow-2xl overflow-hidden relative ${isMobile ? 'w-full h-full rounded-none' : 'w-full max-w-xl max-h-[90vh] rounded-2xl'}`}
+                onClick={e => e.stopPropagation()}
+            >
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-black/50 backdrop-blur-md z-10 sticky top-0">
@@ -133,23 +151,24 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                 {/* Content - Scrollable */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
 
-                    {/* Cover Image */}
-                    <div className="relative h-48 w-full bg-zinc-900 group">
+                    {/* Cover Image — the whole banner is tappable (not just a small hover-only
+                        button), since touch devices have no hover state to reveal it */}
+                    <div
+                        className="relative h-48 w-full bg-zinc-900 group cursor-pointer"
+                        onClick={() => coverInputRef.current?.click()}
+                    >
                         {coverPreview ? (
-                            <img src={coverPreview} alt="Cover" className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity" />
+                            <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-zinc-800" />
                         )}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity gap-4">
-                            <button
-                                onClick={() => coverInputRef.current?.click()}
-                                className="p-3 bg-black/50 rounded-full hover:bg-zinc-800/80 text-white backdrop-blur-sm transition-all"
-                            >
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/40 transition-colors gap-4">
+                            <div className="p-3 bg-black/50 rounded-full text-white backdrop-blur-sm">
                                 <Camera className="h-5 w-5" />
-                            </button>
+                            </div>
                             {coverPreview && (
                                 <button
-                                    onClick={() => { setCoverPreview(null); setCoverFile(null); }}
+                                    onClick={(e) => { e.stopPropagation(); setCoverPreview(null); setCoverFile(null); }}
                                     className="p-3 bg-black/50 rounded-full hover:bg-red-500/80 text-white backdrop-blur-sm transition-all"
                                 >
                                     <X className="h-5 w-5" />
@@ -170,7 +189,7 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                         <div className="relative inline-block group">
                             <div className="w-28 h-28 rounded-full border-4 border-black bg-zinc-900 overflow-hidden relative">
                                 <img src={avatarPreview || getImageUrl(null)} alt="Avatar" className="w-full h-full object-cover" />
-                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+                                <div className="absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors flex items-center justify-center cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
                                     <Camera className="h-6 w-6 text-white" />
                                 </div>
                             </div>

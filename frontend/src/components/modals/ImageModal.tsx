@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Heart, MessageCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
+import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
 import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
-import Link from 'next/link';
+import PostCard from '@/components/PostCard';
+import PostComposer from '@/components/PostComposer';
 
 interface ImageModalProps {
     isOpen: boolean;
@@ -15,81 +14,16 @@ interface ImageModalProps {
     post?: Post;
 }
 
-const renderContentWithLinks = (content: string | undefined) => {
-    if (!content) return null;
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const hashtagRegex = /(#[a-zA-Z0-9_]+)/g;
-    const mentionRegex = /(@[a-zA-Z0-9_-]+)/g;
-    
-    const urlParts = content.split(urlRegex);
-    
-    return urlParts.map((urlPart, urlIndex) => {
-        if (urlPart.match(urlRegex)) {
-            return (
-                <a
-                    key={`url-${urlIndex}`}
-                    href={urlPart}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-emerald-500 hover:text-emerald-400 hover:underline break-all font-medium"
-                >
-                    {urlPart}
-                </a>
-            );
-        }
-        
-        const hashtagParts = urlPart.split(hashtagRegex);
-        return hashtagParts.map((hashtagPart, hashtagIndex) => {
-            if (hashtagPart.match(hashtagRegex)) {
-                const cleanTag = hashtagPart.slice(1);
-                return (
-                    <Link
-                        key={`tag-${urlIndex}-${hashtagIndex}`}
-                        href={`/explore?hashtag=${cleanTag}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-emerald-500 hover:text-emerald-400 font-bold hover:underline"
-                    >
-                        {hashtagPart}
-                    </Link>
-                );
-            }
-            
-            const mentionParts = hashtagPart.split(mentionRegex);
-            return mentionParts.map((mentionPart, mentionIndex) => {
-                if (mentionPart.match(mentionRegex)) {
-                    const username = mentionPart.slice(1);
-                    return (
-                        <Link
-                            key={`mention-${urlIndex}-${hashtagIndex}-${mentionIndex}`}
-                            href={`/${username}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-emerald-500 hover:text-emerald-400 font-bold hover:underline"
-                        >
-                            {mentionPart}
-                        </Link>
-                    );
-                }
-                return mentionPart;
-            });
-        });
-    });
-};
-
 export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, post }: ImageModalProps) {
-    const { user } = useAuth();
     const { t } = useTranslation();
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [zoom, setZoom] = useState(1);
     const [rotation, setRotation] = useState(0);
 
-    // Sidebar States
+    // Sidebar States — the thread panel reuses PostCard/PostComposer for the root
+    // post, reply composer, and reply list, so only the reply data itself lives here.
     const [replies, setReplies] = useState<Post[]>([]);
     const [loadingReplies, setLoadingReplies] = useState(false);
-    const [isLiked, setIsLiked] = useState(post?.is_liked || false);
-    const [likesCount, setLikesCount] = useState(post?.likes_count ?? (Array.isArray(post?.likes) ? post?.likes.length : post?.likes) ?? 0);
-    const [replyContent, setReplyContent] = useState('');
-    const [isPostingReply, setIsPostingReply] = useState(false);
 
     const closedViaPopstate = useRef(false);
 
@@ -101,8 +35,6 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
 
     useEffect(() => {
         if (post) {
-            setIsLiked(post.is_liked || false);
-            setLikesCount(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
             setCurrentIndex(initialIndex);
         }
     }, [post, initialIndex]);
@@ -110,6 +42,7 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
     // Fetch replies
     useEffect(() => {
         if (isOpen && post?.id) {
+            setReplies([]);
             setLoadingReplies(true);
             api.get('/posts/', { params: { parent: post.id } })
                 .then((res) => {
@@ -181,55 +114,15 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
     const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5));
     const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
 
-    const handleLike = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (!user || !post) return;
-
-        try {
-            setIsLiked(!isLiked);
-            setLikesCount((prev) => Math.max(0, isLiked ? prev - 1 : prev + 1));
-            await api.post('/likes/', { post: post.id });
-        } catch (error) {
-            console.error('Failed to toggle like', error);
-            setIsLiked(isLiked);
-            setLikesCount((prev) => Math.max(0, isLiked ? prev + 1 : prev - 1));
-        }
-    };
-
-    const handlePostReply = async () => {
-        if (!replyContent.trim() || !post) return;
-        setIsPostingReply(true);
-        try {
-            const formData = new FormData();
-            formData.append('content', replyContent);
-            formData.append('parent', post.id.toString());
-            formData.append('type', 'reply');
-
-            const response = await api.post('/posts/', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
-
-            setReplies((prev) => [response.data, ...prev]);
-            setReplyContent('');
-        } catch (err) {
-            console.error('Failed to post reply:', err);
-            alert('Failed to send reply');
-        } finally {
-            setIsPostingReply(false);
-        }
-    };
-
     return (
-        <div 
+        <div
             className="fixed inset-0 z-[100] flex bg-black/95 select-none animate-in fade-in duration-200"
-            onClick={onClose}
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
         >
             {/* Left Column: Image Viewer */}
-            <div 
+            <div
                 className="relative flex-1 flex items-center justify-center bg-black overflow-hidden h-full"
-                onClick={onClose}
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
             >
                 {/* Close Button */}
                 <button 
@@ -285,9 +178,9 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
                 )}
 
                 {/* Image Wrapper (Letting wrapper click trigger onClose) */}
-                <div 
+                <div
                     className="w-full h-full max-w-[85vw] max-h-[85vh] flex items-center justify-center p-4"
-                    onClick={onClose}
+                    onClick={(e) => { e.stopPropagation(); onClose(); }}
                 >
                     <img
                         src={images[currentIndex]}
@@ -312,165 +205,39 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
                 )}
             </div>
 
-            {/* Right Column: Premium Twitter-style Sidebar (Desktop only) */}
+            {/* Right Column: Thread panel (Desktop only) — reuses the app's own PostCard/
+                PostComposer so the root post, reply composer, and replies all look and
+                behave exactly like everywhere else in the app (full action bar, real
+                links, standard composer with media/GIF/emoji/poll). */}
             {post && (
-                <div 
-                    className="hidden lg:flex flex-col w-[380px] xl:w-[420px] h-full bg-zinc-950 border-l border-zinc-900 overflow-y-auto text-zinc-200 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent"
+                <div
+                    className="hidden lg:flex flex-col w-[380px] xl:w-[420px] h-full bg-zinc-950 border-l border-zinc-900 overflow-y-auto text-zinc-200 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent p-4 gap-4"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    {/* Header details */}
-                    <div className="p-4 border-b border-zinc-900 flex flex-col gap-3.5 bg-zinc-950">
-                        {/* User Profile Info */}
-                        <div className="flex items-center gap-3">
-                            <img
-                                src={getImageUrl(post.user.avatar, post.user.username)}
-                                alt={post.user.username}
-                                className="h-10 w-10 rounded-full bg-zinc-800 object-cover border border-zinc-900"
-                            />
-                            <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-white text-sm leading-snug truncate hover:underline cursor-pointer">
-                                    {post.user.real_name || post.user.username}
-                                </h4>
-                                <p className="text-zinc-500 text-xs truncate">
-                                    @{post.user.username.toLowerCase()}
-                                </p>
-                            </div>
+                    <PostCard post={post} isDetailView />
+
+                    <PostComposer
+                        onPostCreated={(newReply) => setReplies((prev) => [newReply, ...prev])}
+                        replyingTo={post.user}
+                        parentId={post.id}
+                        parentType="post"
+                    />
+
+                    {loadingReplies ? (
+                        <div className="flex justify-center items-center py-10">
+                            <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
                         </div>
-
-                        {/* Title (if any) */}
-                        {post.title && (
-                            <h3 className="font-bold text-base text-zinc-100 leading-snug">
-                                {post.title}
-                            </h3>
-                        )}
-
-                        {/* Text Content */}
-                        <div className="text-[14.5px] text-zinc-200 whitespace-pre-wrap break-words leading-relaxed tracking-normal font-normal">
-                            {renderContentWithLinks(post.content)}
+                    ) : replies.length > 0 ? (
+                        <div className="flex flex-col gap-4">
+                            {replies.map((reply) => (
+                                <PostCard key={reply.id} post={reply} />
+                            ))}
                         </div>
-
-                        {/* Timestamp */}
-                        <div className="text-[11.5px] text-zinc-500 pt-2.5 border-t border-zinc-900/60 flex flex-wrap gap-1.5 font-medium">
-                            <span>{new Date(post.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            <span>•</span>
-                            <span>{new Date(post.timestamp).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                        </div>                        {/* Likes & Replies Stats (Failsafe 0 checks) */}
-                        <div className="flex gap-4 text-xs font-semibold py-2.5 border-t border-b border-zinc-900/80">
-                            <span><strong className="text-white font-bold text-sm">{likesCount ?? 0}</strong> <span className="text-zinc-500 font-medium">{t('likes')}</span></span>
-                            <span><strong className="text-white font-bold text-sm">{replies.length}</strong> <span className="text-zinc-500 font-medium">{t('replies')}</span></span>
+                    ) : (
+                        <div className="py-12 text-center text-xs text-zinc-500 font-medium">
+                            {t('noRepliesYet')}
                         </div>
-
-                        {/* Action Buttons with Twitter-style Hovers */}
-                        <div className="flex justify-around items-center pt-1 text-zinc-400">
-                            <button 
-                                onClick={() => {
-                                    document.getElementById('modal-reply-textarea')?.focus();
-                                }}
-                                className="flex items-center gap-2 hover:text-emerald-500 hover:bg-emerald-500/10 transition-all duration-200 py-1.5 px-4 rounded-full cursor-pointer"
-                            >
-                                <MessageCircle className="h-4 w-4" />
-                                <span className="text-xs font-bold">{t('reply')}</span>
-                            </button>
-
-                            <button 
-                                onClick={handleLike} 
-                                className={`flex items-center gap-2 hover:text-pink-500 hover:bg-pink-500/10 transition-all duration-200 py-1.5 px-4 rounded-full cursor-pointer ${isLiked ? 'text-pink-500' : ''}`}
-                            >
-                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
-                                <span className="text-xs font-bold">{t('like')}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Sticky Reply Composer (Sleeker integration) */}
-                    <div className="p-4 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-sm sticky top-0 z-10 flex gap-3">
-                        {user ? (
-                            <>
-                                <img
-                                    src={getImageUrl(user.avatar, user.username)}
-                                    alt={user.username}
-                                    className="h-8 w-8 rounded-full bg-zinc-800 object-cover flex-shrink-0"
-                                />
-                                <div className="flex-1 min-w-0">
-                                    <textarea
-                                        id="modal-reply-textarea"
-                                        placeholder={t('postYourReply')}
-                                        value={replyContent}
-                                        onChange={(e) => setReplyContent(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                handlePostReply();
-                                            }
-                                        }}
-                                        className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-655 text-sm focus:outline-none resize-none min-h-[44px] max-h-[120px] leading-relaxed"
-                                    />
-                                    <div className="flex justify-end mt-2">
-                                        <button
-                                            onClick={handlePostReply}
-                                            disabled={isPostingReply || !replyContent.trim()}
-                                            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-850 disabled:text-zinc-550 disabled:cursor-not-allowed text-white text-xs font-bold px-4.5 py-1.5 rounded-full transition-all duration-200 flex items-center gap-1.5 cursor-pointer shadow-sm"
-                                        >
-                                            {isPostingReply ? (
-                                                <>
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                    <span>{t('replying')}</span>
-                                                </>
-                                            ) : (
-                                                <span>{t('reply')}</span>
-                                            )}
-                                        </button>
-                                    </div>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="text-center py-2 w-full text-xs text-zinc-500">
-                                {t('signInToReply')}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Replies List (Modern, spaced layout) */}
-                    <div className="flex-1 bg-zinc-950/20">
-                        {loadingReplies ? (
-                            <div className="flex justify-center items-center py-10">
-                                <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
-                            </div>
-                        ) : replies.length > 0 ? (
-                            <div className="divide-y divide-zinc-900/60">
-                                {replies.map((reply) => (
-                                    <div key={reply.id} className="p-4 flex gap-3 hover:bg-zinc-900/10 transition-colors duration-200">
-                                        <img
-                                            src={getImageUrl(reply.user.avatar, reply.user.username)}
-                                            alt={reply.user.username}
-                                            className="h-8 w-8 rounded-full bg-zinc-800 object-cover flex-shrink-0"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-1.5 mb-1.5">
-                                                <span className="font-bold text-white text-xs truncate hover:underline cursor-pointer">
-                                                    {reply.user.real_name || reply.user.username}
-                                                </span>
-                                                <span className="text-zinc-500 text-[10px] truncate">
-                                                    @{reply.user.username.toLowerCase()}
-                                                </span>
-                                                <span className="text-zinc-700 text-[10px]">•</span>
-                                                <span className="text-zinc-550 text-[10px]">
-                                                    {new Date(reply.timestamp).toLocaleDateString()}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed font-normal">
-                                                {renderContentWithLinks(reply.content)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="py-12 text-center text-xs text-zinc-500 font-medium">
-                                {t('noRepliesYet')}
-                            </div>
-                        )}
-                    </div>
+                    )}
                 </div>
             )}
         </div>

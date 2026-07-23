@@ -5,6 +5,7 @@ import { X, Search, Send, Check, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -28,6 +29,7 @@ interface Conversation {
 
 export default function ShareModal({ isOpen, onClose, itemType, itemId, title }: ShareModalProps) {
     const { user: currentUser } = useAuth();
+    const toast = useToast();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [shareComment, setShareComment] = useState('');
@@ -77,7 +79,7 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
             }, 1000);
         } catch (error) {
             console.error("Failed to share item:", error);
-            alert("Failed to share. Please try again.");
+            toast.error("Failed to share. Please try again.");
             setSendingStates(prev => ({ ...prev, [chatId]: 'idle' }));
         }
     };
@@ -93,9 +95,14 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
     });
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200">
-                
+        <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+        >
+            <div
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
                     <div>

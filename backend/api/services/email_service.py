@@ -73,6 +73,17 @@ def send_verification_email(email, code):
     _send_email_async(email, subject, html_content, text_content)
 
 
+def send_email_change_verification_email(email, code):
+    """
+    Sends the 6-digit verification code (OTP) to the NEW address a user is trying to
+    change their account email to. Sent asynchronously via Resend HTTP API.
+    """
+    subject = 'Gamelogd - Confirm Your New Email'
+    html_content = render_to_string('emails/email_change_verification.html', {'code': code})
+    text_content = strip_tags(html_content)
+    _send_email_async(email, subject, html_content, text_content)
+
+
 def send_support_ticket_email(ticket, user):
     """
     Sends a support ticket or bug report submission to the support team.

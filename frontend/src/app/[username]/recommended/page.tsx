@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
+import FilterDropdown from "@/components/FilterDropdown";
+import GameCarousel from "@/components/GameCarousel";
 import api from '@/lib/api';
-import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, Users, TrendingUp, Sparkles, RefreshCw, LinkIcon, Settings, Gem } from 'lucide-react';
+import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, Users, TrendingUp, LinkIcon, Settings, Gem } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface GameItem {
     id: number;
@@ -25,6 +28,14 @@ interface GenreStat {
     genre: string;
     percentage: number;
 }
+
+// Full genre taxonomy the backend's recommended-games endpoint understands (mirrors
+// backend/api/views.py's translation_map) — not limited to the user's own top-5 Game
+// DNA genres, so there's always a complete set of choices to filter by.
+const GENRE_OPTIONS = [
+    'Action', 'Adventure', 'RPG', 'Strategy', 'Simulation', 'Sports',
+    'Racing', 'Massively Multiplayer', 'Casual', 'Indie', 'Early Access', 'Free To Play',
+];
 
 const GameCard = ({ game, subtitle }: { game: GameItem, subtitle?: string }) => (
     <Link
@@ -58,11 +69,91 @@ const GameCard = ({ game, subtitle }: { game: GameItem, subtitle?: string }) => 
     </Link>
 );
 
+// Trending / Friends Playing / Hidden Gems cards — on mobile these page through 5 at a
+// time (matching the old "You Might Like These" widget's top-right prev/next buttons)
+// since there's no side space for a grid; desktop keeps a simple static top-3 list.
+const DiscoverySection = ({
+    title,
+    icon,
+    items,
+    emptyMessage,
+    renderSubtitle,
+    accentClass,
+    isMobile,
+}: {
+    title: string;
+    icon: ReactNode;
+    items: GameItem[];
+    emptyMessage: string;
+    renderSubtitle: (game: GameItem) => string;
+    accentClass: string;
+    isMobile: boolean;
+}) => {
+    const [page, setPage] = useState(0);
+    const PER_PAGE = 5;
+    const totalPages = Math.ceil(items.length / PER_PAGE);
+
+    useEffect(() => {
+        setPage(0);
+    }, [items]);
+
+    const visible = isMobile ? items.slice(page * PER_PAGE, (page + 1) * PER_PAGE) : items.slice(0, 3);
+
+    return (
+        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                    {icon}
+                    {title}
+                </h2>
+                {isMobile && totalPages > 1 && (
+                    <div className="flex items-center gap-1 pl-2 ml-1 border-l border-zinc-700/50">
+                        <button
+                            onClick={() => setPage(p => (p - 1 + totalPages) % totalPages)}
+                            className="p-1 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
+                            aria-label="Previous"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={() => setPage(p => (p + 1) % totalPages)}
+                            className="p-1 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
+                            aria-label="Next"
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+            </div>
+            {items.length > 0 ? (
+                <div className="space-y-3">
+                    {visible.map(game => (
+                        <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
+                            <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
+                                {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
+                            </div>
+                            <div>
+                                <h4 className={`text-sm font-semibold ${accentClass} line-clamp-1`}>{game.title}</h4>
+                                <p className="text-xs text-zinc-500">{renderSubtitle(game)}</p>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
+                    {emptyMessage}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export default function RecommendedGamesPage() {
     const params = useParams();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useTranslation();
+    const isMobile = useIsMobile();
     const username = params.username as string;
 
     const hasPlatformLinked = !!user?.steam_id;
@@ -74,13 +165,9 @@ export default function RecommendedGamesPage() {
     const [dnaGenres, setDnaGenres] = useState<GenreStat[]>([]);
 
     const [activeTab, setActiveTab] = useState('all');
-    const [selectedPlatform, setSelectedPlatform] = useState('All');
     const [selectedYear, setSelectedYear] = useState('All');
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [pageIndex, setPageIndex] = useState(0);
-
-    const GAMES_PER_PAGE = 5;
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -152,7 +239,6 @@ export default function RecommendedGamesPage() {
 
                 const response = await api.get(url);
                 setGames(response.data);
-                setPageIndex(0);
 
                 // Cache the new results
                 localStorage.setItem(cacheKey, JSON.stringify({
@@ -183,10 +269,6 @@ export default function RecommendedGamesPage() {
         }
     };
 
-    const availablePlatforms = Array.from(
-        new Set(games.flatMap((g: GameItem) => g.platforms || []))
-    ).filter(Boolean).sort() as string[];
-
     const YEAR_RANGES = [
         { label: t('allYears'), value: 'All' },
         { label: '?-2000', value: '?-2000' },
@@ -196,9 +278,6 @@ export default function RecommendedGamesPage() {
     ];
 
     const filteredGames = games.filter((game: GameItem) => {
-        if (selectedPlatform !== 'All') {
-            if (!game.platforms || !game.platforms.includes(selectedPlatform)) return false;
-        }
         if (selectedYear !== 'All') {
             const yearStr = game.release_date ? game.release_date.split('-')[0] : null;
             if (!yearStr) return false;
@@ -212,17 +291,11 @@ export default function RecommendedGamesPage() {
         return true;
     });
 
-    const totalPages = Math.ceil(filteredGames.length / GAMES_PER_PAGE);
-    const visibleGames = filteredGames.slice(pageIndex * GAMES_PER_PAGE, (pageIndex + 1) * GAMES_PER_PAGE);
-
-    const nextPage = () => setPageIndex(p => (p + 1) % totalPages);
-    const prevPage = () => setPageIndex(p => (p - 1 + totalPages) % totalPages);
-
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-indigo-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6 pb-24">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-24">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar */}
                     <div className="hidden lg:block col-span-3">
@@ -237,8 +310,7 @@ export default function RecommendedGamesPage() {
                             <button onClick={() => router.back()} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors">
                                 <ArrowLeft className="w-6 h-6" />
                             </button>
-                            <h1 className="text-3xl font-bold flex items-center gap-3">
-                                <Sparkles className="text-indigo-500 h-8 w-8" />
+                            <h1 className="text-2xl sm:text-3xl font-bold">
                                 {t('recommendedForYou')}
                             </h1>
                         </div>
@@ -293,187 +365,72 @@ export default function RecommendedGamesPage() {
                             </>
                         ) : (
                             <>
-                                {/* Category Tabs */}
+                                {/* Genre + Year filters */}
                                 {dnaGenres.length > 0 && (
-                                    <div className="flex items-center justify-between border-b border-zinc-800 pt-2 pb-2">
-                                        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none flex-1">
-                                            <button
-                                                onClick={() => setActiveTab('all')}
-                                                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activeTab === 'all' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
-                                            >
-                                                {t('allRecommendations')}
-                                            </button>
-                                            {dnaGenres.map(cat => (
-                                                <button
-                                                    key={cat.genre}
-                                                    onClick={() => setActiveTab(cat.genre)}
-                                                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activeTab === cat.genre ? 'bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
-                                                >
-                                                    {cat.genre}
-                                                </button>
-                                            ))}
+                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-zinc-800 pt-2 pb-3">
+                                        <div className="flex-shrink-0">
+                                            <FilterDropdown
+                                                label={t('all')}
+                                                allLabel={t('all')}
+                                                options={GENRE_OPTIONS.map(g => ({ value: g, label: g }))}
+                                                value={activeTab === 'all' ? '' : activeTab}
+                                                onChange={(v) => setActiveTab(v || 'all')}
+                                            />
                                         </div>
-                                        <div className="flex items-center gap-3 ml-4 shrink-0">
-                                            <select
-                                                value={selectedPlatform}
-                                                onChange={(e) => {setSelectedPlatform(e.target.value); setPageIndex(0);}}
-                                                className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
-                                            >
-                                                <option value="All">{t('allPlatforms')}</option>
-                                                {availablePlatforms.map(p => (
-                                                    <option key={p} value={p}>{p}</option>
-                                                ))}
-                                            </select>
-                                            <select
-                                                value={selectedYear}
-                                                onChange={(e) => {setSelectedYear(e.target.value); setPageIndex(0);}}
-                                                className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
-                                            >
-                                                {YEAR_RANGES.map(range => (
-                                                    <option key={range.value} value={range.value}>{range.label}</option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                onClick={handleManualRefresh}
-                                                disabled={loading || isRefreshing}
-                                                className="p-2 bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors border border-zinc-800 shadow-sm disabled:opacity-50 flex-shrink-0"
-                                                title="Refresh Recommendations"
-                                            >
-                                                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-                                            </button>
+                                        <div className="flex-shrink-0">
+                                            <FilterDropdown
+                                                label={t('allYears')}
+                                                allLabel={t('allYears')}
+                                                options={YEAR_RANGES.filter(r => r.value !== 'All').map(r => ({ value: r.value, label: r.label }))}
+                                                value={selectedYear === 'All' ? '' : selectedYear}
+                                                onChange={(v) => setSelectedYear(v || 'All')}
+                                            />
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Main Carousel (Vitrin) */}
-                                <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-950 border border-zinc-800 rounded-3xl p-6 relative shadow-2xl overflow-hidden mt-6">
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
-
-                                    <div className="flex justify-between items-center mb-6">
-                                        <div>
-                                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                                <Gamepad2 className="text-indigo-400 h-5 w-5" />
-                                                {activeTab === 'all' ? t('topPicks') : t('genreShowcase').replace('{genre}', activeTab)}
-                                            </h2>
-                                            <p className="text-sm text-zinc-500 mt-1">
-                                                {t('showcaseDesc')}
-                                            </p>
-                                        </div>
-
-                                        {totalPages > 1 && (
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm text-zinc-500 mr-2">{pageIndex + 1} / {totalPages}</span>
-                                                <button onClick={prevPage} className="p-2 bg-zinc-800 hover:bg-indigo-500 hover:text-white rounded-full transition-all text-zinc-300">
-                                                    <ChevronLeft className="w-5 h-5" />
-                                                </button>
-                                                <button onClick={nextPage} className="p-2 bg-zinc-800 hover:bg-indigo-500 hover:text-white rounded-full transition-all text-zinc-300">
-                                                    <ChevronRight className="w-5 h-5" />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {loading ? (
-                                        <div className="flex justify-center items-center h-64">
-                                            <span className="loading-spinner text-indigo-500">{t('loadingShowcase')}</span>
-                                        </div>
-                                    ) : games.length === 0 ? (
-                                        <div className="text-center py-16 text-zinc-500">
-                                            {t('noRecommendationsFound')}
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                            {visibleGames.map((game, i) => (
-                                                <div key={game.id} className="animate-fade-in" style={{ animationDelay: `${i * 100}ms` }}>
-                                                    <GameCard game={game} />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                {/* Top Picks — shared carousel, same design as the RightSidebar's "You Might Like These" */}
+                                <div className="mt-6">
+                                    <GameCarousel
+                                        title={activeTab === 'all' ? t('topPicks') : t('genreShowcase').replace('{genre}', activeTab)}
+                                        games={filteredGames}
+                                        loading={loading}
+                                        loadingLabel={t('loadingShowcase')}
+                                        emptyLabel={t('noRecommendationsFound')}
+                                        onRefresh={handleManualRefresh}
+                                        isRefreshing={isRefreshing}
+                                    />
                                 </div>
 
                                 {/* Deep Discovery Sections */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-10 border-t border-zinc-800/50 mt-12">
-
-                                    {/* Trending on Gamelogd */}
-                                    <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
-                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                                            <TrendingUp className="text-amber-400 h-5 w-5" />
-                                            {t('trendingOnGamelogd')}
-                                        </h2>
-                                        {trending.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {trending.slice(0, 3).map(game => (
-                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
-                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="text-sm font-semibold group-hover:text-amber-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">{t('playersLoggedThis').replace('{count}', String(game.entry_count))}</p>
-                                                        </div>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-zinc-500 italic py-4">{t('noTrendingData')}</div>
-                                        )}
-                                    </div>
-
-                                    {/* Friends Are Playing */}
-                                    <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
-                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                                            <Users className="text-emerald-400 h-5 w-5" />
-                                            {t('loggedByFriends')}
-                                        </h2>
-                                        {friendsPlaying.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {friendsPlaying.slice(0, 3).map(game => (
-                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
-                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="text-sm font-semibold group-hover:text-emerald-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">{t('loggedByFriend').replace('{username}', game.friend_username || '')}</p>
-                                                        </div>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
-                                                {t('noFriendsLogged')}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Hidden Gems */}
-                                    <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
-                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                                            <Gem className="text-purple-400 h-5 w-5" />
-                                            {t('hiddenGems')}
-                                        </h2>
-                                        {hiddenGems.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {hiddenGems.slice(0, 3).map(game => (
-                                                    <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
-                                                        <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                                            {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="text-sm font-semibold group-hover:text-purple-400 line-clamp-1">{game.title}</h4>
-                                                            <p className="text-xs text-zinc-500">{t('avgRating')}: {game.avg_rating?.toFixed(1) || 'N/A'}</p>
-                                                        </div>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-zinc-500 italic py-4 flex flex-col justify-center h-24">
-                                                {t('noHiddenGems')}
-                                            </div>
-                                        )}
-                                    </div>
-
+                                    <DiscoverySection
+                                        title={t('trendingOnGamelogd')}
+                                        icon={<TrendingUp className="text-amber-400 h-5 w-5" />}
+                                        items={trending}
+                                        emptyMessage={t('noTrendingData')}
+                                        accentClass="group-hover:text-amber-400"
+                                        isMobile={isMobile}
+                                        renderSubtitle={(game) => t('playersLoggedThis').replace('{count}', String(game.entry_count))}
+                                    />
+                                    <DiscoverySection
+                                        title={t('loggedByFriends')}
+                                        icon={<Users className="text-emerald-400 h-5 w-5" />}
+                                        items={friendsPlaying}
+                                        emptyMessage={t('noFriendsLogged')}
+                                        accentClass="group-hover:text-emerald-400"
+                                        isMobile={isMobile}
+                                        renderSubtitle={(game) => t('loggedByFriend').replace('{username}', game.friend_username || '')}
+                                    />
+                                    <DiscoverySection
+                                        title={t('hiddenGems')}
+                                        icon={<Gem className="text-purple-400 h-5 w-5" />}
+                                        items={hiddenGems}
+                                        emptyMessage={t('noHiddenGems')}
+                                        accentClass="group-hover:text-purple-400"
+                                        isMobile={isMobile}
+                                        renderSubtitle={(game) => `${t('avgRating')}: ${game.avg_rating?.toFixed(1) || 'N/A'}`}
+                                    />
                                 </div>
                             </>
                         )}

@@ -1,26 +1,37 @@
+import logging
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, permissions, filters, generics
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
-from api.models import User, Notification, SupportTicket, Interest, PendingRegistration
+from api.models import User, Notification, SupportTicket, Interest, PendingRegistration, PendingEmailChange
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer, OrganisationSerializer, OrganisationMemberSerializer, OrganisationInvitationSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+
+logger = logging.getLogger(__name__)
 from django.utils.html import strip_tags
 from django.conf import settings
-from api.services.email_service import send_verification_email, send_support_ticket_email
+from api.services.email_service import send_verification_email, send_support_ticket_email, send_email_change_verification_email
 
-from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission
+from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission, OrganisationAccessPermission
+from api.authentication import set_auth_cookie, clear_auth_cookie
+
+from rest_framework.throttling import ScopedRateThrottle
+
 
 class CustomAuthToken(ObtainAuthToken):
+    # ObtainAuthToken sets throttle_classes = (); re-enable scoped throttling explicitly.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
+
     def post(self, request, *args, **kwargs):
         username_or_email = request.data.get('username')
         password = request.data.get('password')
@@ -42,11 +53,12 @@ class CustomAuthToken(ObtainAuthToken):
                     }, status=status.HTTP_403_FORBIDDEN)
 
                 token, created = Token.objects.get_or_create(user=user)
-                return Response({
+                response = Response({
                     'token': token.key,
                     'user_id': user.pk,
                     'email': user.email
                 })
+                return set_auth_cookie(response, token.key)
         else:
             # Check if there is a pending registration
             pending = PendingRegistration.objects.filter(Q(email=username_or_email) | Q(username=username_or_email)).first()
@@ -67,6 +79,7 @@ from google.auth.transport import requests as google_requests
 
 class GoogleLoginView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):
         credential = request.data.get('credential')
@@ -82,6 +95,11 @@ class GoogleLoginView(generics.CreateAPIView):
                 clock_skew_in_seconds=10
             )
 
+            # Only trust the email if Google itself has verified it. An unverified email in the
+            # token could otherwise be used to log into a local account that shares that address.
+            if idinfo.get('email_verified') is not True:
+                return Response({"error": "Google account email is not verified."}, status=status.HTTP_400_BAD_REQUEST)
+
             email = idinfo.get('email')
             first_name = idinfo.get('given_name', '')
             last_name = idinfo.get('family_name', '')
@@ -96,16 +114,21 @@ class GoogleLoginView(generics.CreateAPIView):
                 }, status=status.HTTP_200_OK)
 
             token, created = Token.objects.get_or_create(user=user)
-            return Response({
+            response = Response({
                 'token': token.key,
                 'user_id': user.pk,
                 'email': user.email
             })
+            return set_auth_cookie(response, token.key)
 
         except ValueError as e:
             return Response({"error": f"Invalid token: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-class UserViewSet(viewsets.ModelViewSet):
+# Read-only on purpose: profile mutations must go through CurrentUserView (/users/me/),
+# never PATCH/PUT/DELETE on /users/<username>/. A full ModelViewSet here would let any
+# authenticated user edit or delete any other account (IDOR). Custom @action routes
+# (follow, block, sync_steam, ...) still work on a ReadOnlyModelViewSet.
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -256,29 +279,65 @@ class UserViewSet(viewsets.ModelViewSet):
         steam_id = request.data.get('steam_id')
         if not steam_id:
             return Response({"error": "Steam ID is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Validate as a SteamID64 (17-digit number) before persisting or using it to build
+        # outbound Steam API URLs — prevents injecting arbitrary values into request URLs.
+        import re
+        steam_id = str(steam_id).strip()
+        if not re.fullmatch(r'\d{17}', steam_id):
+            return Response({"error": "Invalid Steam ID. Provide a 17-digit SteamID64."}, status=status.HTTP_400_BAD_REQUEST)
+
         # Always save Steam ID first so it persists
         request.user.steam_id = steam_id
         request.user.save()
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def steam_auth_url(self, request):
+        from api.services.oauth import get_steam_openid_url
+        
+        callback_url = request.build_absolute_uri('/api/users/steam_auth_callback/')
+        url = get_steam_openid_url(callback_url)
+        
+        # Save user_id in session/cookie or use state parameter (Steam OpenID doesn't support state natively well,
+        # but we can append it to the return_to URL)
+        from django.core import signing
+        state = signing.dumps({'user_id': request.user.id})
+        
+        callback_url = request.build_absolute_uri(f'/api/users/steam_auth_callback/?state={state}')
+        url = get_steam_openid_url(callback_url)
+        
+        return Response({"url": url}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def steam_auth_callback(self, request):
+        from django.core import signing
+        from django.http import HttpResponseRedirect
         from django.conf import settings
-        if not settings.STEAM_API_KEY:
-            return Response({
-                "status": "Steam ID saved, but library sync is unavailable (STEAM_API_KEY not configured).",
-                "steam_id_saved": True
-            }, status=status.HTTP_200_OK)
-
-        # Run sync in background thread so the user doesn't wait
+        from api.services.oauth import verify_steam_openid_response
+        from api.models import User as UserModel, Notification
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        state = request.GET.get('state')
+        
+        try:
+            state_data = signing.loads(state, max_age=3600)
+            user_id = state_data['user_id']
+            user = UserModel.objects.get(id=user_id)
+        except Exception:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=invalid_state")
+            
+        steam_id = verify_steam_openid_response(request.GET)
+        if not steam_id:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=verification_failed")
+            
+        user.steam_id = steam_id
+        user.save()
+        
         import threading
-        user_id = request.user.id
-
         def run_sync():
             from api.services.steam import fetch_steam_library
-            from api.models import Notification, User as UserModel
             try:
-                stats = fetch_steam_library(user_id, steam_id)
-                # Create a notification for the user when sync completes
-                user = UserModel.objects.get(id=user_id)
+                stats = fetch_steam_library(user.id, steam_id)
                 synced = stats.get('synced', 0)
                 total = stats.get('total', 0)
                 Notification.objects.create(
@@ -287,34 +346,130 @@ class UserViewSet(viewsets.ModelViewSet):
                     verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.'
                 )
             except Exception as e:
-                print(f"Background Steam sync failed for user {user_id}: {e}")
-                try:
-                    user = UserModel.objects.get(id=user_id)
-                    Notification.objects.create(
-                        recipient=user,
-                        actor=user,
-                        verb='Steam library sync failed. Please check your privacy settings and try again.'
-                    )
-                except Exception:
-                    pass
-
+                print(f"Background Steam sync failed for user {user.id}: {e}")
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb='Steam library sync failed. Please check your privacy settings.'
+                )
         threading.Thread(target=run_sync, daemon=True).start()
+        
+        return HttpResponseRedirect(f"{frontend_url}/settings?sync=steam_success")
 
-        return Response({
-            "status": "sync_started",
-            "message": "Steam library sync has been started. You will be notified when it's complete."
-        }, status=status.HTTP_200_OK)
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def xbox_auth_url(self, request):
+        from django.core import signing
+        from api.services.oauth import get_xbox_oauth_url
+        
+        state = signing.dumps({'user_id': request.user.id})
+        # Hardcode to localhost to avoid Azure 127.0.0.1 validation errors
+        callback_url = 'http://localhost:8000/api/users/xbox_auth_callback/'
+        
+        try:
+            url = get_xbox_oauth_url(callback_url)
+            # Append state to the Microsoft OAuth URL
+            url = f"{url}&state={state}"
+            return Response({"url": url}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def xbox_auth_callback(self, request):
+        from django.core import signing
+        from django.http import HttpResponseRedirect
+        from django.conf import settings
+        from api.services.oauth import process_xbox_oauth_flow
+        from api.models import User as UserModel, Notification
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        code = request.GET.get('code')
+        state = request.GET.get('state')
+        
+        if not code or not state:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=missing_params")
+            
+        try:
+            state_data = signing.loads(state, max_age=3600)
+            user_id = state_data['user_id']
+            user = UserModel.objects.get(id=user_id)
+        except Exception:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=invalid_state")
+            
+        # Hardcode to localhost to avoid Azure 127.0.0.1 validation errors
+        callback_url = 'http://localhost:8000/api/users/xbox_auth_callback/'
+        result = process_xbox_oauth_flow(code, callback_url)
+        
+        if not result:
+            return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=xbox_auth_failed")
+            
+        gamertag, xuid, xsts_token, user_hash = result
+            
+        user.xbox_gamertag = gamertag
+        user.save()
+        
+        Notification.objects.create(
+            recipient=user,
+            actor=user,
+            verb=f'Started syncing Xbox Live library for {gamertag}...'
+        )
+        
+        import threading
+        def run_sync():
+            from api.services.xbox import sync_xbox_library
+            try:
+                sync_xbox_library(user, xuid, xsts_token, user_hash)
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb=f'Your Xbox Live library for {gamertag} has been synced successfully.'
+                )
+            except Exception as e:
+                print(f"Background Xbox sync failed for user {user.id}: {e}")
+                Notification.objects.create(
+                    recipient=user,
+                    actor=user,
+                    verb='Xbox library sync failed. Please check your Xbox Live privacy settings.'
+                )
+        threading.Thread(target=run_sync, daemon=True).start()
+        
+        return HttpResponseRedirect(f"{frontend_url}/settings?sync=xbox_success")
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def disconnect_xbox(self, request):
+        request.user.xbox_gamertag = ""
+        request.user.save()
+        
+        from api.models import LibraryEntry
+        entries = LibraryEntry.objects.filter(user=request.user, platform__icontains='xbox')
+        for entry in entries:
+            entry.xbox_playtime = 0
+            entry.playtime_forever = entry.steam_playtime
+            platforms = [p.strip() for p in entry.platform.split(',') if p.strip().lower() != 'xbox']
+            entry.platform = ', '.join(platforms)
+            if not entry.platform:
+                entry.delete()
+            else:
+                entry.save()
+                
+        return Response({'status': 'disconnected'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def disconnect_steam(self, request):
-        # Clear Steam ID
         request.user.steam_id = ""
         request.user.save()
         
-        # Remove Steam Games from Library
         from api.models import LibraryEntry
-        LibraryEntry.objects.filter(user=request.user, platform__iexact='steam').delete()
-        
+        entries = LibraryEntry.objects.filter(user=request.user, platform__icontains='steam')
+        for entry in entries:
+            entry.steam_playtime = 0
+            entry.playtime_forever = entry.xbox_playtime
+            platforms = [p.strip() for p in entry.platform.split(',') if p.strip().lower() != 'steam']
+            entry.platform = ', '.join(platforms)
+            if not entry.platform:
+                entry.delete()
+            else:
+                entry.save()
+                
         return Response({'status': 'disconnected'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='change-password')
@@ -333,13 +488,105 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({'error': list(e.messages) if hasattr(e, 'messages') else str(e)}, status=status.HTTP_400_BAD_REQUEST)
         user.set_password(new_password)
         user.save()
-        return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+        # Rotate the auth token so a previously-issued (possibly stolen) token can't outlive the
+        # password change — DRF tokens otherwise never expire. Return the fresh token and refresh
+        # the httpOnly cookie so the caller's own session stays valid without a re-login.
+        Token.objects.filter(user=user).delete()
+        new_token = Token.objects.create(user=user)
+        response = Response(
+            {'message': 'Password changed successfully', 'token': new_token.key},
+            status=status.HTTP_200_OK,
+        )
+        return set_auth_cookie(response, new_token.key)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='delete-account')
     def delete_account(self, request):
         user = request.user
+        password = request.data.get('password')
+        if not password:
+            return Response({'error': 'Password is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.check_password(password):
+            return Response({'error': 'Incorrect password'}, status=status.HTTP_400_BAD_REQUEST)
         user.delete()
         return Response({'message': 'Account deleted successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='request-email-change')
+    def request_email_change(self, request):
+        # Every account must map to exactly one real, reachable email — the actual
+        # `email` field on the model stays read-only everywhere else (see UserSerializer)
+        # so this verified request/confirm pair is the ONLY way it can ever change.
+        user = request.user
+        new_email = (request.data.get('new_email') or '').strip()
+
+        if not new_email:
+            return Response({'error': 'A new email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_email(new_email)
+        except DjangoValidationError:
+            return Response({'error': 'Enter a valid email address'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_email.lower() == (user.email or '').lower():
+            return Response({'error': 'This is already your current email address'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email__iexact=new_email).exclude(pk=user.pk).exists():
+            return Response({'error': 'A user with that email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+        code = PendingEmailChange.generate_code()
+        PendingEmailChange.objects.update_or_create(
+            user=user,
+            defaults={
+                'new_email': new_email,
+                'code': code,
+                'failed_attempts': 0,
+                'expires_at': timezone.now() + timedelta(minutes=5),
+            }
+        )
+        send_email_change_verification_email(new_email, code)
+
+        return Response({'status': 'verification_required', 'new_email': new_email}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='confirm-email-change')
+    def confirm_email_change(self, request):
+        user = request.user
+        code = request.data.get('code')
+
+        if not code:
+            return Response({'error': 'Verification code is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Uniform error for every failure case (no pending request, expired, wrong code)
+        # so a caller can't distinguish them — same principle as VerifyEmailView.
+        GENERIC_ERROR = 'Invalid or expired verification code.'
+
+        pending = PendingEmailChange.objects.filter(user=user).first()
+        if not pending:
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.is_expired():
+            pending.delete()
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.code != str(code).strip():
+            pending.failed_attempts += 1
+            if pending.failed_attempts >= PendingEmailChange.MAX_VERIFY_ATTEMPTS:
+                pending.delete()
+            else:
+                pending.save(update_fields=['failed_attempts'])
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Re-check uniqueness at confirm time too — a race where someone else claims
+        # the same address between the request and confirm steps.
+        if User.objects.filter(email__iexact=pending.new_email).exclude(pk=user.pk).exists():
+            pending.delete()
+            return Response({'error': 'That email address was just taken by another account'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.email = pending.new_email
+        user.save(update_fields=['email'])
+        pending.delete()
+
+        return Response({'email': user.email}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='steam-status')
     def steam_status(self, request, username=None):
@@ -375,48 +622,77 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         
-        # Playtime > 0 olan tüm oyunları dahil et (dropped dahil)
-        # Böylece Steam kütüphanesindeki oynanan her oyun Game DNA'ya etki eder
         entries = LibraryEntry.objects.filter(
-            user=user,
-            playtime_forever__gt=0
-        ).select_related('game')
+            user=user
+        ).exclude(status='dropped').select_related('game')
 
-        # Playtime-ağırlıklı tür hesaplaması
-        # Her oyunun playtime'ı (dakika) o oyunun türlerine ağırlık olarak eklenir
-        # Böylece 300 saat oynanan aksiyon oyunu, 5 saat oynanan RPG'den çok daha fazla etki eder
         from api.services.steam import normalize_genre
-        genre_weights = {}  # genre -> total playtime in minutes
-        genre_game_counts = {}  # genre -> number of games (for display)
+        genre_weights = {}
+        genre_game_counts = {}
+        platform_weights = {}
+        platform_game_counts = {}
+
         for entry in entries:
-            # Playtime 0 ise minimum 1 dakika ağırlık ver (oyun yine de sayılsın)
-            weight = max(entry.playtime_forever, 1)
+            weight = entry.playtime_forever if entry.playtime_forever > 0 else 120
+            
+            # Genre calculations
             for genre in (entry.game.genres or []):
                 normalized = normalize_genre(genre)
                 genre_weights[normalized] = genre_weights.get(normalized, 0) + weight
                 genre_game_counts[normalized] = genre_game_counts.get(normalized, 0) + 1
+                
+            # Platform calculations
+            platforms = [p.strip() for p in entry.platform.split(',') if p.strip()] if entry.platform else []
+            if not platforms:
+                platforms = ['Unknown']
+            import re
+            for plat in platforms:
+                # Sanitize platform name: strip HTML tags, truncate
+                plat = re.sub(r'<[^>]+>', '', plat).strip()[:100]
+                if not plat:
+                    plat = 'Unknown'
+                platform_weights[plat] = platform_weights.get(plat, 0) + weight
+                platform_game_counts[plat] = platform_game_counts.get(plat, 0) + 1
 
-        total_weight = sum(genre_weights.values())
-        if total_weight == 0:
-            return Response([])
+        total_genre_weight = sum(genre_weights.values())
+        total_platform_weight = sum(platform_weights.values())
 
-        # Yüzde hesapla ve sırala (playtime ağırlığına göre)
         colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
-        result = []
-        for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
-            percentage = round((weight / total_weight) * 100)
-            if percentage == 0:
-                continue
-            total_hours = round(weight / 60, 1)
-            result.append({
-                "genre": genre,
-                "percentage": percentage,
-                "color": colors[len(result) % len(colors)],
-                "total_hours": total_hours,
-                "game_count": genre_game_counts.get(genre, 0)
-            })
+        
+        genres_result = []
+        if total_genre_weight > 0:
+            for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
+                percentage = round((weight / total_genre_weight) * 100)
+                if percentage == 0:
+                    continue
+                total_hours = round(weight / 60, 1)
+                genres_result.append({
+                    "name": genre,
+                    "percentage": percentage,
+                    "color": colors[len(genres_result) % len(colors)],
+                    "total_hours": total_hours,
+                    "game_count": genre_game_counts.get(genre, 0)
+                })
 
-        return Response(result)
+        platforms_result = []
+        if total_platform_weight > 0:
+            for i, (plat, weight) in enumerate(sorted(platform_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
+                percentage = round((weight / total_platform_weight) * 100)
+                if percentage == 0:
+                    continue
+                total_hours = round(weight / 60, 1)
+                platforms_result.append({
+                    "name": plat,
+                    "percentage": percentage,
+                    "color": colors[len(platforms_result) % len(colors)],
+                    "total_hours": total_hours,
+                    "game_count": platform_game_counts.get(plat, 0)
+                })
+
+        return Response({
+            "genres": genres_result,
+            "platforms": platforms_result
+        })
 
     @action(detail=True, methods=['get'], url_path='recommended-games')
     def recommended_games(self, request, username=None):
@@ -473,21 +749,26 @@ class UserViewSet(viewsets.ModelViewSet):
             english_genre = translation_map.get(target_genre.lower(), target_genre)
             genre_query = Q(genres__icontains=target_genre) | Q(genres__icontains=english_genre)
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
-                
+
         elif not genre_counts:
             recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
         else:
             # Get top 3 genres
             top_genres = [g[0] for g in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]]
-            
+
             # 2. Query games that matching any of top genres
             # using Postgres jsonb array filtering or Q objects
             genre_query = Q()
             for genre in top_genres:
                 english_genre = translation_map.get(genre.lower(), genre)
                 genre_query |= Q(genres__icontains=genre) | Q(genres__icontains=english_genre)
-                
+
             recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
+
+        # Fallback — a user who has already played/reviewed every unplayed game matching
+        # their own top genres would otherwise see an empty shelf with no explanation.
+        if not recommended.exists():
+            recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
 
         # 3. Serialize output using GameSerializer for consistent URL handling
         from api.serializers import GameSerializer
@@ -684,6 +965,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
+    throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -744,14 +1026,15 @@ class RegisterView(generics.CreateAPIView):
             
         except Exception as e:
             import traceback
-            traceback.print_exc()
+            traceback.print_exc()  # full detail stays in server logs only
             return Response({
-                'error': f'Registration processing failed: {str(e)}'
+                'error': 'Registration processing failed. Please try again.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class VerifyEmailView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'verify_email'
 
     def post(self, request, *args, **kwargs):
         email = request.data.get('email')
@@ -760,19 +1043,28 @@ class VerifyEmailView(generics.GenericAPIView):
         if not email or not code:
             return Response({'error': 'Email and verification code are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Uniform error for every failure case so callers can't tell "already verified"
+        # from "no such pending" from "wrong code" — that distinction leaks which emails
+        # are registered (enumeration).
+        GENERIC_ERROR = 'Invalid or expired verification code.'
+
         # Look up pending registration
         pending = PendingRegistration.objects.filter(email=email).first()
         if not pending:
-            user_exists = User.objects.filter(email=email, is_active=True).exists()
-            if user_exists:
-                return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
-            return Response({'error': 'No pending registration found for this email.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if pending.code != str(code).strip():
-            return Response({'error': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
 
         if pending.is_expired():
-            return Response({'error': 'Verification code has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+            pending.delete()
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.code != str(code).strip():
+            # Lock out brute force (even from distributed IPs) after N wrong codes.
+            pending.failed_attempts += 1
+            if pending.failed_attempts >= PendingRegistration.MAX_VERIFY_ATTEMPTS:
+                pending.delete()
+            else:
+                pending.save(update_fields=['failed_attempts'])
+            return Response({'error': GENERIC_ERROR}, status=status.HTTP_400_BAD_REQUEST)
 
         # Success! Extract registration data and create user
         data = pending.registration_data
@@ -782,10 +1074,13 @@ class VerifyEmailView(generics.GenericAPIView):
 
         try:
             with transaction.atomic():
+                # Only clean up leftover *unverified* accounts — never delete an already
+                # active user that happens to collide (registration validation prevents
+                # active collisions, but this stays safe if that invariant ever slips).
                 if email:
-                    User.objects.filter(email=email).delete()
+                    User.objects.filter(email=email, is_active=False).delete()
                 if username:
-                    User.objects.filter(username=username).delete()
+                    User.objects.filter(username=username, is_active=False).delete()
 
                 interests_data = data.pop('interests', [])
                 roles_data = data.pop('roles', [])
@@ -815,24 +1110,26 @@ class VerifyEmailView(generics.GenericAPIView):
                 pending.delete()
         except Exception as e:
             import traceback
-            traceback.print_exc()
+            traceback.print_exc()  # full detail stays in server logs only
             return Response({
-                'error': f'Registration processing failed: {str(e)}'
+                'error': 'Registration processing failed. Please try again.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Login user immediately by generating auth token
         token, created = Token.objects.get_or_create(user=user)
-        return Response({
+        response = Response({
             'token': token.key,
             'user_id': user.pk,
             'email': user.email,
             'username': user.username,
             'message': 'Email verified and account created successfully.'
         }, status=status.HTTP_200_OK)
+        return set_auth_cookie(response, token.key)
 
 
 class ResendVerificationView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'resend_verification'
 
     def post(self, request, *args, **kwargs):
         email = request.data.get('email')
@@ -840,31 +1137,56 @@ class ResendVerificationView(generics.GenericAPIView):
         if not email:
             return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Only actually send when a pending registration exists, but always return the
+        # same response so this endpoint can't be used to probe which emails are registered.
         pending = PendingRegistration.objects.filter(email=email).first()
-        if not pending:
-            user_exists = User.objects.filter(email=email, is_active=True).exists()
-            if user_exists:
-                return Response({'error': 'Account is already verified.'}, status=status.HTTP_400_BAD_REQUEST)
-            return Response({'error': 'No pending registration found for this email.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pending:
+            code = PendingRegistration.generate_code()
+            pending.code = code
+            pending.expires_at = timezone.now() + timedelta(minutes=5)
+            pending.failed_attempts = 0  # fresh code, fresh attempt budget
+            pending.save()
+            # Send Email (async - does not block response)
+            send_verification_email(email, code)
 
-        # Generate new code
-        code = PendingRegistration.generate_code()
-        pending.code = code
-        pending.expires_at = timezone.now() + timedelta(minutes=5)
-        pending.save()
-
-        # Send Email (async - does not block response)
-        send_verification_email(email, code)
-
-        return Response({'message': 'New verification code sent.'}, status=status.HTTP_200_OK)
+        return Response(
+            {'message': 'If a pending registration exists for this email, a new code has been sent.'},
+            status=status.HTTP_200_OK,
+        )
 
 
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+
+@method_decorator(ensure_csrf_cookie, name='dispatch')
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer
 
     def get_object(self):
         return self.request.user
+
+
+class LogoutView(generics.GenericAPIView):
+    """Clear the httpOnly auth cookie for the current browser session.
+
+    Only the browser cookie is cleared; the DRF token itself is left intact so that
+    header-based clients (mobile / other devices) sharing the token stay logged in.
+
+    Deliberately runs with no authentication: the endpoint only deletes a cookie from the
+    caller's own browser, so it needs no identity. Authenticating here would make logout
+    fail (401) for exactly the case that needs it most — an expired or revoked token —
+    leaving an httpOnly cookie the frontend cannot delete itself. That strands the user,
+    because the Next.js middleware gates routes on the cookie's presence. Being
+    auth-exempt also makes logout idempotent and safe to call defensively on a 401.
+    """
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        response = Response({'detail': 'Logged out.'}, status=status.HTTP_200_OK)
+        return clear_auth_cookie(response)
 
 class GameViewSet(viewsets.ModelViewSet):
     queryset = Game.objects.all()
@@ -1064,12 +1386,12 @@ class ReviewViewSet(viewsets.ModelViewSet):
             
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         
@@ -1094,33 +1416,65 @@ class ReviewViewSet(viewsets.ModelViewSet):
             
         return queryset
 
-    def _sync_library_status(self, review):
+    def _sync_library_status(self, review, playtime_hours=None, platform=None):
         """Sync LibraryEntry status based on review is_completed flag, and ensure logged games are in the library."""
         from api.models import LibraryEntry
+        
+        # Sanitize platform input
+        if platform:
+            import re
+            platform = str(platform).strip()[:100]  # Truncate to max field length
+            # Strip any HTML/script tags
+            platform = re.sub(r'<[^>]+>', '', platform)
+            if not platform:
+                platform = None
         
         entry, created = LibraryEntry.objects.get_or_create(
             user=review.user,
             game=review.game,
             defaults={
                 'status': 'completed' if review.is_completed else 'playing',
-                'platform': 'Manual'
+                'platform': platform if platform else 'Manual'
             }
         )
         
+        update_fields = []
+        
         if review.is_completed and entry.status != 'completed':
             entry.status = 'completed'
-            entry.save(update_fields=['status'])
+            update_fields.append('status')
         elif not review.is_completed and entry.status == 'completed':
             entry.status = 'playing'
-            entry.save(update_fields=['status'])
+            update_fields.append('status')
+
+        if playtime_hours is not None:
+            try:
+                hours = float(playtime_hours)
+                # Validate range: non-negative and capped at 50,000 hours (~5.7 years non-stop)
+                if 0 <= hours <= 50000:
+                    entry.playtime_forever = int(hours * 60)
+                    update_fields.append('playtime_forever')
+            except (ValueError, TypeError):
+                pass
+                
+        if platform:
+            entry.platform = platform
+            update_fields.append('platform')
+            
+        if update_fields:
+            entry.save(update_fields=update_fields)
 
     def perform_create(self, serializer):
         review = serializer.save(user=self.request.user)
-        self._sync_library_status(review)
+        playtime_hours = self.request.data.get('playtime_hours')
+        platform = self.request.data.get('platform')
+        self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
 
     def perform_update(self, serializer):
         review = serializer.save()
-        self._sync_library_status(review)
+        playtime_hours = self.request.data.get('playtime_hours')
+        platform = self.request.data.get('platform')
+        self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -1147,12 +1501,12 @@ class PostViewSet(viewsets.ModelViewSet):
             
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
             queryset = queryset.exclude(Q(user_id__in=private_ids) & Q(project_parent__isnull=True))
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             queryset = queryset.exclude(Q(user_id__in=private_ids) & Q(project_parent__isnull=True))
             
@@ -1206,16 +1560,16 @@ class PostViewSet(viewsets.ModelViewSet):
         try:
             serializer = self.get_serializer(data=request.data)
             if not serializer.is_valid():
-                print("VALIDATION ERROR:", serializer.errors)
+                logger.info("Post creation validation error: %s", serializer.errors)
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             self.perform_create(serializer)
             headers = self.get_success_headers(serializer.data)
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            print("ERROR IN POST CREATION:", tb)
-            return Response({"error": str(e), "traceback": tb}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            # Full traceback goes to structured logging (picked up by any log aggregator) —
+            # never returned to clients.
+            logger.exception("Error creating post for user %s", request.user.pk)
+            return Response({"error": "Failed to create post. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_create(self, serializer):
         project_parent = serializer.validated_data.get('project_parent')
@@ -1353,12 +1707,40 @@ class ConversationViewSet(viewsets.ModelViewSet):
         member_conversations = ConversationMember.objects.filter(
             user=self.request.user
         ).exclude(status__in=['declined', 'left', 'blocked']).values_list('conversation_id', flat=True)
-        
+
         qs = Conversation.objects.filter(id__in=member_conversations).order_by('-updated_at')
-        # Backfill memberships
-        for c in qs:
-            ConversationMember.objects.get_or_create(conversation=c, user=self.request.user)
-        return qs
+
+        # Backfill any legacy conversations missing this user's membership row — previously this
+        # ran a get_or_create per conversation on every single list request (an N+1 that alone
+        # could account for ~200 queries on a 200-conversation inbox); now it's one existence
+        # check per legacy conversation, and zero once every membership exists (the normal case).
+        conv_ids = list(qs.values_list('id', flat=True))
+        if conv_ids:
+            existing_ids = set(ConversationMember.objects.filter(
+                conversation_id__in=conv_ids, user=self.request.user
+            ).values_list('conversation_id', flat=True))
+            missing_ids = [cid for cid in conv_ids if cid not in existing_ids]
+            for cid in missing_ids:
+                ConversationMember.objects.get_or_create(conversation_id=cid, user=self.request.user)
+
+        # Annotate last-message fields and unread count via correlated subqueries/aggregation
+        # instead of letting the serializer query obj.messages per conversation (was 2 extra
+        # queries per row — get_last_message + get_unread_count — on top of the base query).
+        from django.db.models import OuterRef, Subquery, Count, Q
+        last_msg_qs = Message.objects.filter(conversation=OuterRef('pk')).order_by('-created_at')
+        qs = qs.annotate(
+            ann_last_content=Subquery(last_msg_qs.values('content')[:1]),
+            ann_last_created_at=Subquery(last_msg_qs.values('created_at')[:1]),
+            ann_last_sender=Subquery(last_msg_qs.values('sender__username')[:1]),
+            ann_last_is_deleted=Subquery(last_msg_qs.values('is_deleted')[:1]),
+            ann_unread_count=Count(
+                'messages',
+                filter=Q(messages__is_read=False) & ~Q(messages__sender=self.request.user),
+                distinct=True,
+            ),
+        )
+
+        return qs.prefetch_related('members__user', 'members__invited_by', 'participants')
 
     @action(detail=False, methods=['post'])
     def start_chat(self, request):
@@ -1764,17 +2146,81 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         conversation_id = request.query_params.get('conversation_id')
-        if conversation_id:
-            # Mark unread messages from other users as read
-            updated_count = Message.objects.filter(
-                conversation_id=conversation_id,
-                is_read=False
-            ).exclude(sender=request.user).update(is_read=True)
-            if updated_count > 0:
-                from api.consumers import send_user_update
-                send_user_update(request.user.id)
-        
-        return super().list(request, *args, **kwargs)
+        if not conversation_id:
+            return Response({'results': [], 'has_more': False})
+
+        if request.query_params.get('pinned') == 'true':
+            pinned_qs = self.filter_queryset(self.get_queryset()).filter(
+                is_pinned=True
+            ).order_by('pinned_at')
+            serializer = self.get_serializer(pinned_qs, many=True)
+            return Response({'results': serializer.data, 'has_more': False})
+
+        # Full-history search — the in-conversation search box used to filter only the
+        # ~30 messages already loaded client-side (a correctness regression once the main
+        # list became paginated), so it now searches the whole conversation server-side.
+        search_query = request.query_params.get('search')
+        if search_query:
+            matched_qs = self.filter_queryset(self.get_queryset()).filter(
+                content__icontains=search_query
+            ).order_by('-created_at')[:50]
+            serializer = self.get_serializer(matched_qs, many=True)
+            return Response({'results': serializer.data, 'has_more': False})
+
+        # Jump to an arbitrary message (e.g. from a search result) that may not be in the
+        # currently-loaded page — returns a window of messages around it so the frontend
+        # can render it in place, like tapping a search hit in WhatsApp.
+        around_id = request.query_params.get('around_id')
+        if around_id:
+            queryset = self.filter_queryset(self.get_queryset())
+            target = queryset.filter(id=around_id).first()
+            if not target:
+                return Response({'results': [], 'has_more': False})
+            before_full_qs = queryset.filter(id__lt=around_id)
+            before_page = list(before_full_qs.order_by('-created_at')[:15])
+            after_page = list(queryset.filter(id__gt=around_id).order_by('created_at')[:15])
+            combined = list(reversed(before_page)) + [target] + after_page
+            has_more = before_full_qs.count() > len(before_page)
+            serializer = self.get_serializer(combined, many=True)
+            return Response({'results': serializer.data, 'has_more': has_more})
+
+        # Mark unread messages from other users as read
+        Message.objects.filter(
+            conversation_id=conversation_id,
+            is_read=False
+        ).exclude(sender=request.user).update(is_read=True)
+
+        # Bounded pagination — a chat's full history used to be refetched on every single
+        # 3-second poll (unbounded, ever-growing payload). Three modes, all ordered oldest-
+        # to-newest in the response:
+        #   - neither param: latest `limit` messages (initial load)
+        #   - before_id: the `limit` messages immediately preceding before_id ("load earlier")
+        #   - after_id: only messages newer than after_id (polling delta, no history refetch)
+        queryset = self.filter_queryset(self.get_queryset())
+        try:
+            limit = int(request.query_params.get('limit', 30))
+        except (TypeError, ValueError):
+            limit = 30
+        after_id = request.query_params.get('after_id')
+        before_id = request.query_params.get('before_id')
+
+        if after_id:
+            newer = queryset.filter(id__gt=after_id)
+            serializer = self.get_serializer(newer, many=True)
+            return Response({'results': serializer.data, 'has_more': False})
+
+        if before_id:
+            older_qs = queryset.filter(id__lt=before_id)
+            page = list(older_qs.order_by('-created_at')[:limit])
+            has_more = older_qs.count() > len(page)
+            serializer = self.get_serializer(list(reversed(page)), many=True)
+            return Response({'results': serializer.data, 'has_more': has_more})
+
+        total_count = queryset.count()
+        page = list(queryset.order_by('-created_at')[:limit])
+        has_more = total_count > len(page)
+        serializer = self.get_serializer(list(reversed(page)), many=True)
+        return Response({'results': serializer.data, 'has_more': has_more})
 
     def perform_create(self, serializer):
         conversation = serializer.validated_data['conversation']
@@ -1837,12 +2283,42 @@ class MessageViewSet(viewsets.ModelViewSet):
             "message": serializer.data
         }, status=status.HTTP_200_OK)
 
+    # Matches the WhatsApp pin model: at most 3 pinned messages per conversation —
+    # pinning a 4th evicts whichever pin is oldest (by pinned_at, not by when the
+    # message itself was originally sent).
+    MAX_PINNED_MESSAGES = 3
+
     @action(detail=True, methods=['post'], url_path='pin')
     def pin(self, request, pk=None):
         message = self.get_object()
-        message.is_pinned = not message.is_pinned
-        message.save()
-        return Response({"status": "success", "is_pinned": message.is_pinned})
+        evicted_message_id = None
+
+        if message.is_pinned:
+            message.is_pinned = False
+            message.pinned_at = None
+            message.save(update_fields=['is_pinned', 'pinned_at'])
+        else:
+            message.is_pinned = True
+            message.pinned_at = timezone.now()
+            message.save(update_fields=['is_pinned', 'pinned_at'])
+
+            pinned_qs = Message.objects.filter(
+                conversation=message.conversation, is_pinned=True
+            ).order_by('pinned_at')
+            if pinned_qs.count() > self.MAX_PINNED_MESSAGES:
+                oldest = pinned_qs.first()
+                evicted_message_id = oldest.id
+                oldest.is_pinned = False
+                oldest.pinned_at = None
+                oldest.save(update_fields=['is_pinned', 'pinned_at'])
+
+        serializer = self.get_serializer(message)
+        return Response({
+            "status": "success",
+            "is_pinned": message.is_pinned,
+            "message": serializer.data,
+            "evicted_message_id": evicted_message_id,
+        })
 
     @action(detail=True, methods=['post'], url_path='edit')
     def edit(self, request, pk=None):
@@ -1931,12 +2407,12 @@ class LibraryViewSet(viewsets.ModelViewSet):
             
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=request.user.id).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             queryset = queryset.exclude(user_id__in=private_ids)
         return queryset
@@ -1999,7 +2475,8 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
         post_id = request.data.get('post')
         review_id = request.data.get('review')
         news_id = request.data.get('news')
-        
+        playtest_feedback_id = request.data.get('playtest_feedback')
+
         # Check block restrictions before liking content
         target_author = None
         if post_id:
@@ -2012,14 +2489,14 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
             review = Review.objects.filter(id=review_id).first()
             if review:
                 target_author = review.user
-                
+
         if target_author:
             from api.models import Block
             if Block.objects.filter(blocker=user, blocked=target_author).exists() or \
                Block.objects.filter(blocker=target_author, blocked=user).exists():
                 return Response({"error": "Cannot like content from this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
-                
-        existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id).first()
+
+        existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id, playtest_feedback_id=playtest_feedback_id).first()
         
         if existing:
             existing.delete()
@@ -2068,7 +2545,16 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = ProjectMember.objects.all()
+        # Scope to rosters the requester can actually see: projects they own, are a
+        # member of, or whose organisation they belong to. Without this, any authenticated
+        # user could enumerate every project's membership/roles (and retrieve any row by id).
+        from django.db.models import Q
+        user = self.request.user
+        queryset = ProjectMember.objects.filter(
+            Q(project__owner=user)
+            | Q(project__members__user=user)
+            | Q(project__organisation__members__user=user)
+        ).distinct()
         project_id = self.request.query_params.get('project')
         if project_id:
             queryset = queryset.filter(project_id=project_id)
@@ -2082,7 +2568,19 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if project.owner != user and not project.members.filter(user=user, role='admin').exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only project admins can add members.")
-        
+
+        if target_user == user:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("You can't invite yourself.")
+
+        if target_user == project.owner:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("The project owner already has full access and can't be invited.")
+
+        if not serializer.validated_data.get('custom_role'):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("A role must be selected.")
+
         # Check if already a member or pending
         if ProjectMember.objects.filter(project=project, user=target_user).exists():
             from rest_framework.exceptions import ValidationError
@@ -2104,6 +2602,9 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if project.owner != user and not project.members.filter(user=user, role='admin').exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only project admins can update members.")
+        if serializer.instance.user_id == project.owner_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("The project owner's access can't be changed here.")
         serializer.save()
 
     @action(detail=True, methods=['post'])
@@ -2112,32 +2613,67 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if instance.user != request.user:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You can only accept your own invites.")
-        
+
         instance.status = 'active'
         instance.save()
-        
-        # Trigger notification to project owner
+
+        # A project always belongs to its organisation as a whole, not just to whichever members
+        # happen to have their own org-level invite — so accepting a project invite implicitly
+        # joins that organisation too, at a fixed base 'member' level regardless of the project
+        # role picked (the project role only ever controls project-scoped access, never org-wide
+        # standing). No-op if they're already an org member (any role).
+        if instance.project.organisation_id:
+            from .permission_catalog import create_default_roles
+            member_role = create_default_roles(instance.project.organisation)['member']
+            OrganisationMember.objects.get_or_create(
+                organisation=instance.project.organisation,
+                user=instance.user,
+                defaults={'role': 'member', 'custom_role': member_role},
+            )
+
         from api.models import Notification
+        from django.contrib.contenttypes.models import ContentType
+
+        # Resolve (and stop offering Accept/Decline on) the "invited you" notification. Without
+        # this, an already-active member could hit stale Accept/Decline buttons on the old
+        # notification — Decline would unconditionally delete their now-active membership.
+        Notification.objects.filter(
+            recipient=instance.user,
+            target_type=ContentType.objects.get_for_model(ProjectMember),
+            target_id=instance.id,
+        ).delete()
+
         Notification.objects.create(
             recipient=instance.project.owner,
             actor=request.user,
             verb='accepted your invite to join the project',
             target=instance
         )
-        
+
         return Response({'status': 'active'}, status=status.HTTP_200_OK)
+
     def perform_destroy(self, instance):
         project = instance.project
         user = self.request.user
-        
-        # Allow the user to decline/remove themselves
-        if instance.user == user:
-            instance.delete()
-            return
+        invitee = instance.user
 
-        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Only project admins can remove members.")
+        if invitee == project.owner:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("The project owner can't be removed from their own project.")
+
+        if invitee != user:
+            if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only project admins can remove members.")
+
+        from api.models import Notification
+        from django.contrib.contenttypes.models import ContentType
+        Notification.objects.filter(
+            recipient=invitee,
+            target_type=ContentType.objects.get_for_model(ProjectMember),
+            target_id=instance.id,
+        ).delete()
+
         instance.delete()
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -2186,7 +2722,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
             if not org.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("You do not have permission to create projects for this organisation.")
-            serializer.save(owner=self.request.user, organisation=org)
+            project = serializer.save(owner=self.request.user, organisation=org)
+            from api.permission_catalog import create_default_project_roles
+            create_default_project_roles(project)
         else:
             serializer.save(owner=self.request.user)
 
@@ -2310,14 +2848,36 @@ class FeedViewSet(viewsets.ViewSet):
             # Exclude private profiles the user does not follow, unless it's their own profile
             following_ids = list(user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).exclude(id__in=following_ids).exclude(id=user.id).values_list('id', flat=True)
             exclude_ids.update(private_ids)
         else:
             private_ids = User.objects.filter(
-                settings__privateProfile=True
+                is_private=True
             ).values_list('id', flat=True)
             exclude_ids.update(private_ids)
+
+        # Precompute engagement counts in the query (single subquery each) so the scoring loop
+        # and the serializer don't fire a per-item .count() — the N+1 that made this endpoint
+        # issue hundreds of queries per request.
+        from .serializers import count_subquery
+        post_anns = dict(
+            likes_count_ann=count_subquery(Like, 'post'),
+            replies_count_ann=count_subquery(Post, 'parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            bookmarks_count_ann=count_subquery(Bookmark, 'post'),
+        )
+        review_anns = dict(
+            likes_count_ann=count_subquery(Like, 'review'),
+            replies_count_ann=count_subquery(Post, 'review_parent'),
+            bookmarks_count_ann=count_subquery(Bookmark, 'review'),
+        )
+
+        # select_related('user') alone still leaves the author's M2M interests (UserSerializer's
+        # StringRelatedField) and each post's media set to be fetched with one query per item —
+        # prefetch both so the whole feed resolves those in 2 queries total, not 2 per item.
+        post_prefetch = ('user__interests', 'media')
+        review_prefetch = ('user__interests',)
 
         posts = Post.objects.filter(
             parent__isnull=True,
@@ -2327,8 +2887,8 @@ class FeedViewSet(viewsets.ViewSet):
         )
         if exclude_ids:
             posts = posts.exclude(user_id__in=exclude_ids)
-        posts = posts.select_related('user').order_by('-timestamp')[:80]
-        
+        posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
+
         if posts.count() < 40:
             posts = Post.objects.filter(
                 parent__isnull=True,
@@ -2337,18 +2897,18 @@ class FeedViewSet(viewsets.ViewSet):
             )
             if exclude_ids:
                 posts = posts.exclude(user_id__in=exclude_ids)
-            posts = posts.select_related('user').order_by('-timestamp')[:80]
-            
+            posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
+
         reviews = Review.objects.filter(timestamp__gte=time_limit)
         if exclude_ids:
             reviews = reviews.exclude(user_id__in=exclude_ids)
-        reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
+        reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
 
         if reviews.count() < 40:
             reviews = Review.objects.all()
             if exclude_ids:
                 reviews = reviews.exclude(user_id__in=exclude_ids)
-            reviews = reviews.select_related('user', 'game').order_by('-timestamp')[:80]
+            reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
 
         followed_users_ids = set()
         library_game_ids = set()
@@ -2384,10 +2944,10 @@ class FeedViewSet(viewsets.ViewSet):
             recency_multiplier = 1.0 / (1.0 + age_in_days * 0.5)
             score *= recency_multiplier
             
-            # Social / Engagement factor
-            likes = item.likes.count() if hasattr(item, 'likes') else 0
-            replies = item.replies.count() if hasattr(item, 'replies') else 0
-            
+            # Social / Engagement factor (read the annotations set above; no per-item queries)
+            likes = getattr(item, 'likes_count_ann', 0) or 0
+            replies = getattr(item, 'replies_count_ann', 0) or 0
+
             score += likes * 0.5
             score += replies * 0.8
             
@@ -2445,14 +3005,26 @@ class FeedViewSet(viewsets.ViewSet):
         if exclude_ids:
             followed_users_ids = [uid for uid in followed_users_ids if uid not in exclude_ids]
         
+        # Annotate engagement counts so the serializers below read them instead of firing a
+        # per-item .count() (see for_you / count_subquery).
+        from .serializers import count_subquery
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
-        ).select_related('user').order_by('-timestamp')[:50]
-        
-        reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').order_by('-timestamp')[:50]
+        ).select_related('user').prefetch_related('user__interests', 'media').annotate(
+            likes_count_ann=count_subquery(Like, 'post'),
+            replies_count_ann=count_subquery(Post, 'parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            bookmarks_count_ann=count_subquery(Bookmark, 'post'),
+        ).order_by('-timestamp')[:50]
+
+        reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').prefetch_related('user__interests').annotate(
+            likes_count_ann=count_subquery(Like, 'review'),
+            replies_count_ann=count_subquery(Post, 'review_parent'),
+            bookmarks_count_ann=count_subquery(Bookmark, 'review'),
+        ).order_by('-timestamp')[:50]
         
         merged_items = []
         for p in posts:
@@ -2471,7 +3043,7 @@ class FeedViewSet(viewsets.ViewSet):
 class OrganisationViewSet(viewsets.ModelViewSet):
     queryset = Organisation.objects.all().order_by('-created_at')
     serializer_class = OrganisationSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, OrganisationAccessPermission]
     lookup_field = 'slug'
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'slug', 'description']
@@ -2488,11 +3060,18 @@ class OrganisationViewSet(viewsets.ModelViewSet):
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
         try:
-            return get_object_or_404(queryset, **filter_kwargs)
+            obj = get_object_or_404(queryset, **filter_kwargs)
         except Exception:
             if self.kwargs[lookup_url_kwarg].isdigit():
-                return get_object_or_404(queryset, id=int(self.kwargs[lookup_url_kwarg]))
-            raise
+                obj = get_object_or_404(queryset, id=int(self.kwargs[lookup_url_kwarg]))
+            else:
+                raise
+        # The base ModelViewSet.get_object() calls this automatically — this override replaced
+        # that default (to add the slug-or-id fallback lookup above) but had been skipping the
+        # object-level permission check ever since, silently letting OrganisationAccessPermission
+        # never actually run for update/destroy requests.
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def perform_create(self, serializer):
         from api.serializers import RESERVED_USERNAMES
@@ -2518,6 +3097,35 @@ class OrganisationViewSet(viewsets.ModelViewSet):
                 user=self.request.user,
                 role='owner'
             )
+            from .permission_catalog import create_default_roles
+            create_default_roles(organisation)
+
+    def destroy(self, request, *args, **kwargs):
+        organisation = self.get_object()
+        # Projects survive org deletion (Project.organisation is on_delete=SET_NULL), but their
+        # WorkspaceState rows are FK'd to the organisation with on_delete=CASCADE — without this
+        # step every surviving project would silently lose its entire Kanban/GDD/Asset workspace
+        # data the instant the org is deleted. Migrate each project's row to the same solo-project
+        # key format _project_workspace_state() already uses for orgless projects, before the
+        # organisation (and its CASCADE-linked rows) is actually removed.
+        from core.models import WorkspaceState
+        for project in organisation.projects.all():
+            old_key = f"workspace__org_{organisation.id}_board_project_{project.id}"
+            new_key = f"workspace__solo_board_project_{project.id}"
+            old_state = WorkspaceState.objects.filter(key=old_key, organisation=organisation).first()
+            if not old_state:
+                continue
+            if WorkspaceState.objects.filter(key=new_key, user_id=project.owner_id).exclude(pk=old_state.pk).exists():
+                # A solo-scoped row already exists at the destination (shouldn't normally happen
+                # for a still-org-linked project, but guard against violating the unique
+                # constraint rather than crashing the whole deletion).
+                old_state.delete()
+            else:
+                old_state.key = new_key
+                old_state.organisation = None
+                old_state.user_id = project.owner_id
+                old_state.save(update_fields=['key', 'organisation', 'user'])
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def follow(self, request, slug=None):
@@ -2543,36 +3151,93 @@ class OrganisationViewSet(viewsets.ModelViewSet):
             
         user_id = request.data.get('user_id')
         role = request.data.get('role', 'member')
-        
+        custom_role_id = request.data.get('custom_role')
+
         if not user_id:
             return Response({"error": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        if not custom_role_id:
+            return Response({"error": "A role must be selected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        custom_role = Role.objects.filter(id=custom_role_id, organisation=organisation, project__isnull=True).first()
+        if not custom_role:
+            return Response({"error": "Invalid role for this organisation."}, status=status.HTTP_400_BAD_REQUEST)
+        if custom_role.is_default_for == 'owner':
+            return Response({"error": "The Owner role can't be assigned through an invite."}, status=status.HTTP_400_BAD_REQUEST)
+
         target_user = get_object_or_404(User, id=user_id)
-        
+
+        if target_user == request.user:
+            return Response({"error": "You can't invite yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
         if organisation.members.filter(user=target_user).exists():
             return Response({"error": "User is already a member of this organisation."}, status=status.HTTP_400_BAD_REQUEST)
-            
-        if OrganisationInvitation.objects.filter(organisation=organisation, user=target_user, is_active=True).exists():
-            return Response({"error": "User has already been invited."}, status=status.HTTP_400_BAD_REQUEST)
-            
-        invitation = OrganisationInvitation.objects.create(
+
+        # update_or_create reuses the same row/id if this user was previously invited (even if
+        # declined/inactive) instead of colliding with the (organisation, user) unique constraint —
+        # this both fixes re-inviting after a decline and keeps a stable target_id for notifications.
+        invitation, _ = OrganisationInvitation.objects.update_or_create(
             organisation=organisation,
             user=target_user,
-            role=role,
-            invited_by=request.user
+            defaults={'role': role, 'custom_role': custom_role, 'invited_by': request.user, 'is_active': True}
         )
-        
+
         from django.contrib.contenttypes.models import ContentType
         content_type = ContentType.objects.get_for_model(invitation.__class__)
-        Notification.objects.create(
+        Notification.objects.get_or_create(
             recipient=target_user,
             actor=request.user,
             verb=f'invited you to join {organisation.name}',
             target_type=content_type,
             target_id=invitation.id
         )
-        
+
         return Response(OrganisationInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='transfer-ownership')
+    def transfer_ownership(self, request, slug=None):
+        organisation = self.get_object()
+        current_owner_membership = organisation.members.filter(user=request.user, role='owner').first()
+        if not current_owner_membership:
+            return Response({"error": "Only the current owner can transfer ownership."}, status=status.HTTP_403_FORBIDDEN)
+
+        new_owner_user_id = request.data.get('new_owner_user_id')
+        if not new_owner_user_id:
+            return Response({"error": "new_owner_user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if str(new_owner_user_id) == str(request.user.id):
+            return Response({"error": "You're already the owner."}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_owner_membership = organisation.members.filter(user_id=new_owner_user_id).first()
+        if not new_owner_membership:
+            return Response({"error": "That user is not a member of this organisation."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            current_owner_membership.role = 'admin'
+            current_owner_membership.custom_role = None
+            current_owner_membership.save()
+
+            new_owner_membership.role = 'owner'
+            new_owner_membership.custom_role = None
+            new_owner_membership.save()
+
+            from django.contrib.contenttypes.models import ContentType
+            org_content_type = ContentType.objects.get_for_model(organisation.__class__)
+            Notification.objects.create(
+                recipient=new_owner_membership.user,
+                actor=request.user,
+                verb=f'transferred ownership of {organisation.name} to you',
+                target_type=org_content_type,
+                target_id=organisation.id
+            )
+            Notification.objects.create(
+                recipient=request.user,
+                actor=request.user,
+                verb=f'transferred ownership of {organisation.name} to {new_owner_membership.user.username}',
+                target_type=org_content_type,
+                target_id=organisation.id
+            )
+
+        return Response({"message": f"Ownership transferred to @{new_owner_membership.user.username}."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def projects(self, request, slug=None):
@@ -2597,11 +3262,59 @@ class OrganisationMemberViewSet(viewsets.ModelViewSet):
     serializer_class = OrganisationMemberSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        # Scope to organisations the requester belongs to, so members/roles of arbitrary
+        # organisations can't be enumerated or retrieved by id.
+        user = self.request.user
+        queryset = OrganisationMember.objects.filter(
+            organisation__members__user=user
+        ).distinct()
+        organisation_id = self.request.query_params.get('organisation')
+        if organisation_id:
+            queryset = queryset.filter(organisation_id=organisation_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        # Without this guard any authenticated user could POST themselves (or anyone) straight
+        # into any organisation as admin/owner — the serializer exposes organisation/user_id/role
+        # as writable. Membership additions must go through an org owner/admin, mirroring the
+        # privileged OrganisationViewSet.invite action and ProjectMemberViewSet.perform_create.
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        organisation = serializer.validated_data['organisation']
+        if not organisation.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+            raise PermissionDenied("Only organisation owners and admins can add members.")
+
+        # Ownership is only ever granted via the transfer-ownership action, never by creating a row.
+        if serializer.validated_data.get('role') == 'owner':
+            raise ValidationError("Use the ownership transfer action to make someone the owner.")
+        custom_role = serializer.validated_data.get('custom_role')
+        if custom_role and custom_role.is_default_for == 'owner':
+            raise ValidationError("The Owner role can't be assigned directly. Use ownership transfer instead.")
+
+        target_user = serializer.validated_data['user']
+        if organisation.members.filter(user=target_user).exists():
+            raise ValidationError("This user is already a member of the organisation.")
+
+        serializer.save()
+
     def update(self, request, *args, **kwargs):
         member = self.get_object()
         requesting_member = member.organisation.members.filter(user=request.user).first()
         if not requesting_member or requesting_member.role not in ['owner', 'admin']:
             return Response({"error": "Only admins and owners can modify member roles."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Ownership can only change via the dedicated transfer-ownership action (owner-only,
+        # confirmation-gated) — not this generic endpoint, which any admin can otherwise reach.
+        if member.role == 'owner':
+            return Response({"error": "The owner's role can't be changed here. Use ownership transfer instead."}, status=status.HTTP_400_BAD_REQUEST)
+        if request.data.get('role') == 'owner':
+            return Response({"error": "Use the ownership transfer action to make someone the owner."}, status=status.HTTP_400_BAD_REQUEST)
+        custom_role_id = request.data.get('custom_role')
+        if custom_role_id:
+            target_role = Role.objects.filter(id=custom_role_id).first()
+            if target_role and target_role.is_default_for == 'owner':
+                return Response({"error": "The Owner role can't be assigned directly. Use ownership transfer instead."}, status=status.HTTP_400_BAD_REQUEST)
+
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -2615,7 +3328,14 @@ class OrganisationMemberViewSet(viewsets.ModelViewSet):
             
         if member.user != request.user and requesting_member.role not in ['owner', 'admin']:
             return Response({"error": "Only admins and owners can remove members."}, status=status.HTTP_403_FORBIDDEN)
-            
+
+        # An organisation's projects are implicitly available to all its members (mirrors
+        # ProjectMemberViewSet.accept's auto-join the other way round) — so leaving/being removed
+        # from the organisation must also remove them from every project under it. Otherwise
+        # they'd keep project-level access (and show up in project rosters) via a membership the
+        # UI has no way to reach or explain anymore.
+        ProjectMember.objects.filter(project__organisation=member.organisation, user=member.user).delete()
+
         return super().destroy(request, *args, **kwargs)
 
 
@@ -2636,7 +3356,40 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
                 return queryset.filter(organisation=org, is_active=True).order_by('-created_at')
             else:
                 raise PermissionDenied("You do not have permission to view invitations for this organisation.")
-        return queryset.filter(user=self.request.user, is_active=True).order_by('-created_at')
+        # Without an explicit organisation_slug (e.g. a plain DELETE/accept/decline on a detail URL),
+        # make both "invitations sent to me" and "invitations I can manage as an org owner/admin"
+        # reachable — previously this only included the former, so an org admin cancelling an
+        # invite they sent (dashboard's DELETE /organisation-invitations/{id}/, no query params)
+        # would 404 before even reaching the destroy() permission check.
+        from django.db.models import Q
+        return queryset.filter(
+            Q(user=self.request.user) |
+            Q(organisation__members__user=self.request.user, organisation__members__role__in=['owner', 'admin']),
+            is_active=True,
+        ).distinct().order_by('-created_at')
+
+    def perform_create(self, serializer):
+        # Same class of hole as OrganisationMemberViewSet: without this, a user could POST an
+        # invitation to themselves with role='admin' and then accept it. Only org owners/admins
+        # may create invitations, and invited_by is always the requester (never client-supplied).
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        organisation = serializer.validated_data['organisation']
+        if not organisation.members.filter(user=self.request.user, role__in=['owner', 'admin']).exists():
+            raise PermissionDenied("Only organisation owners and admins can invite members.")
+
+        if serializer.validated_data.get('role') == 'owner':
+            raise ValidationError("The Owner role can't be assigned through an invite. Use ownership transfer instead.")
+        custom_role = serializer.validated_data.get('custom_role')
+        if custom_role and custom_role.is_default_for == 'owner':
+            raise ValidationError("The Owner role can't be assigned through an invite.")
+
+        target_user = serializer.validated_data['user']
+        if target_user == self.request.user:
+            raise ValidationError("You can't invite yourself.")
+        if organisation.members.filter(user=target_user).exists():
+            raise ValidationError("This user is already a member of the organisation.")
+
+        serializer.save(invited_by=self.request.user, is_active=True)
 
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
@@ -2644,23 +3397,33 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
         if invitation.user != request.user:
             return Response({"error": "This invitation was not sent to you."}, status=status.HTTP_403_FORBIDDEN)
             
+        from django.contrib.contenttypes.models import ContentType
+        content_type = ContentType.objects.get_for_model(OrganisationInvitation)
+
         with transaction.atomic():
             member, created = OrganisationMember.objects.get_or_create(
                 organisation=invitation.organisation,
                 user=request.user,
-                defaults={'role': invitation.role}
+                defaults={'role': invitation.role, 'custom_role': invitation.custom_role}
             )
             invitation.is_active = False
             invitation.save()
-            
+
             OrganisationFollow.objects.get_or_create(user=request.user, organisation=invitation.organisation)
-            
+
+            # Resolve (and stop offering Accept/Decline on) the "invited you" notification —
+            # mirrors FollowRequest.approve_request's cleanup of its own pending-request notification.
+            Notification.objects.filter(
+                recipient=invitation.user, target_type=content_type, target_id=invitation.id
+            ).delete()
+
             Notification.objects.create(
                 recipient=invitation.invited_by,
                 actor=request.user,
-                verb=f'accepted your invitation to join {invitation.organisation.name}'
+                verb=f'accepted your invitation to join {invitation.organisation.name}',
+                target=invitation,
             )
-            
+
         return Response({"message": f"Successfully joined {invitation.organisation.name}."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
@@ -2668,9 +3431,17 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
         invitation = self.get_object()
         if invitation.user != request.user:
             return Response({"error": "This invitation was not sent to you."}, status=status.HTTP_403_FORBIDDEN)
-            
+
         invitation.is_active = False
         invitation.save()
+
+        from django.contrib.contenttypes.models import ContentType
+        Notification.objects.filter(
+            recipient=invitation.user,
+            target_type=ContentType.objects.get_for_model(OrganisationInvitation),
+            target_id=invitation.id,
+        ).delete()
+
         return Response({"message": "Invitation declined."}, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
@@ -2679,11 +3450,245 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
         is_org_admin = invitation.organisation.members.filter(user=request.user, role__in=['owner', 'admin']).exists()
         if not is_invitee and not is_org_admin:
             return Response({"error": "You do not have permission to delete this invitation."}, status=status.HTTP_403_FORBIDDEN)
+
+        from django.contrib.contenttypes.models import ContentType
+        Notification.objects.filter(
+            recipient=invitation.user,
+            target_type=ContentType.objects.get_for_model(OrganisationInvitation),
+            target_id=invitation.id,
+        ).delete()
+
         return super().destroy(request, *args, **kwargs)
+
+
+from core.models import Role
+from .serializers import RoleSerializer
+from .permission_catalog import PERMISSION_CATALOG
+from .permissions_service import get_effective_permissions, user_has_permission
+
+
+class RoleViewSet(viewsets.ModelViewSet):
+    queryset = Role.objects.all()
+    serializer_class = RoleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        from django.db.models import Q
+        user = self.request.user
+        # Only roles for organisations/projects the requester actually belongs to are visible.
+        # Without this scoping, any authenticated user could enumerate every organisation's role
+        # names, descriptions and exact granular permission sets (list or retrieve-by-id).
+        queryset = Role.objects.filter(
+            Q(organisation__members__user=user)
+            | Q(project__members__user=user)
+            | Q(project__owner=user)
+            | Q(project__organisation__members__user=user)
+        ).distinct()
+        project_id = self.request.query_params.get('project')
+        organisation_id = self.request.query_params.get('organisation')
+        if project_id:
+            # Project-scoped roles are their own separate catalog — never mixed with
+            # the organisation's own roles, even when the project belongs to an org.
+            queryset = queryset.filter(project_id=project_id)
+        elif organisation_id:
+            queryset = queryset.filter(organisation_id=organisation_id, project__isnull=True)
+        return queryset
+
+    def _require_manage_permission(self, organisation, project=None):
+        if not user_has_permission(self.request.user, 'team.role.manage', organisation=organisation, project=project):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You do not have permission to manage roles for this scope.")
+
+    def _require_owner(self, organisation):
+        if not organisation.members.filter(user=self.request.user, role='owner').exists():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only the organisation owner can edit the Owner role.")
+
+    def perform_create(self, serializer):
+        organisation = serializer.validated_data.get('organisation')
+        project = serializer.validated_data.get('project')
+        self._require_manage_permission(organisation, project=project)
+        serializer.save(is_system=False, is_default_for='')
+
+    def perform_update(self, serializer):
+        role = serializer.instance
+        self._require_manage_permission(role.organisation, project=role.project)
+        if role.is_default_for == 'owner':
+            # The Owner role is the only system role that's fully locked: anyone with plain
+            # team.role.manage (today: every admin too, since Owner/Admin share the same
+            # seeded permission set) could otherwise silently strip/grant owner-level access
+            # via this role's permissions, or rename it in a way that breaks the "this org's
+            # Owner role" lookup elsewhere. Admin/Member may be freely renamed and
+            # have their permissions edited — is_default_for (not name) is what the rest of the
+            # system actually keys off of, so renaming them is safe.
+            self._require_owner(role.organisation)
+            from rest_framework.exceptions import ValidationError
+            serializer.validated_data.pop('name', None)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_manage_permission(instance.organisation, project=instance.project)
+        if instance.is_system:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("System roles cannot be deleted.")
+
+        # Role selection is mandatory everywhere else in this system, so deleting a role must
+        # never leave anyone without one — reassign affected members to this scope's baseline
+        # "Member" role instead of nulling custom_role out (this scope always has one: Member is
+        # a system role that can't itself be deleted).
+        from .permission_catalog import create_default_roles, create_default_project_roles
+        fallback_roles = create_default_project_roles(instance.project) if instance.project_id else create_default_roles(instance.organisation)
+        fallback_role = fallback_roles['member']
+        OrganisationMember.objects.filter(custom_role=instance).update(custom_role=fallback_role)
+        ProjectMember.objects.filter(custom_role=instance).update(custom_role=fallback_role)
+        OrganisationInvitation.objects.filter(custom_role=instance, is_active=True).update(custom_role=fallback_role)
+
+        instance.delete()
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def permission_catalog_view(request):
+    from .permission_catalog import PERMISSION_HIERARCHY
+    return Response({"catalog": PERMISSION_CATALOG, "hierarchy": PERMISSION_HIERARCHY})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def my_permissions_view(request):
+    organisation = None
+    project = None
+    org_id = request.query_params.get('organisation')
+    project_id = request.query_params.get('project')
+    if org_id:
+        from core.models import Organisation
+        organisation = get_object_or_404(Organisation, id=org_id)
+    if project_id:
+        from core.models import Project
+        project = get_object_or_404(Project, id=project_id)
+        if organisation is None:
+            organisation = project.organisation
+
+    perms = get_effective_permissions(request.user, organisation=organisation, project=project)
+    if perms is None:
+        return Response({"role": None, "permissions": []})
+
+    role = None
+    if organisation is not None:
+        member = None
+        if project is not None:
+            member = project.members.filter(user=request.user, status='active').first()
+        if member is None:
+            member = organisation.members.filter(user=request.user).first()
+        if member and member.custom_role_id:
+            role = {"id": member.custom_role.id, "name": member.custom_role.name, "is_system": member.custom_role.is_system}
+
+    return Response({"role": role, "permissions": perms})
 
 
 from core.models import WorkspaceState
 from .serializers import WorkspaceStateSerializer
+
+def _parse_org_workspace_key(key):
+    """
+    Parses 'workspace__org_<org_id>_board_org' or
+    'workspace__org_<org_id>_board_project_<project_id>' into (org_id, project_id).
+    Raises ValueError on malformed keys.
+    """
+    import re
+    match = re.match(r'^workspace__org_(\d+)_board_(.+)$', key)
+    if not match:
+        raise ValueError("Malformed org workspace key.")
+    org_id = int(match.group(1))
+    board = match.group(2)
+    project_id = int(board[len('project_'):]) if board.startswith('project_') else None
+    return org_id, project_id
+
+
+def _check_org_board_access(org, project_id, user):
+    """
+    Coarse membership gate for an org-scoped WorkspaceState key. Org owners/admins
+    may access every board in their org (mirrors ProjectViewSet's manageable-filter
+    precedent). Plain members may access the org-root board, but a project-specific
+    board additionally requires actual membership on that project — closing a prior
+    gap where any org member could write to a project's board without being on it.
+    """
+    if org.members.filter(user=user, role__in=['owner', 'admin']).exists():
+        return True
+    if not org.members.filter(user=user).exists():
+        return False
+    if project_id is None:
+        return True
+    from core.models import Project
+    project = Project.objects.filter(id=project_id).first()
+    if project is None:
+        return True
+    return project.owner_id == user.id or project.members.filter(user=user, status='active').exists()
+
+
+def _parse_solo_project_key(key):
+    """Return the project id for a non-org (personal) project board key, else None.
+
+    Format: 'workspace__solo_board_project_<project_id>' — note there is NO per-user
+    suffix: a project board is shared by all its members and always stored under the
+    project owner's WorkspaceState row (the canonical row), so every member reads/writes
+    the same board instead of a per-viewer copy.
+    """
+    import re
+    match = re.match(r'^workspace__solo_board_project_(\d+)$', key)
+    return int(match.group(1)) if match else None
+
+
+def _check_solo_project_access(project, user):
+    """Membership gate for a non-org project board: owner or active project member."""
+    return project.owner_id == user.id or project.members.filter(user=user, status='active').exists()
+
+
+def _project_workspace_state(project):
+    """
+    Get-or-creates the WorkspaceState row backing a project's Kanban board (and everything else
+    in its Devs workspace), using the exact same key format the frontend's storageKey() builds —
+    see _parse_org_workspace_key above for the org-linked half of this format.
+    """
+    if project.organisation_id:
+        key = f"workspace__org_{project.organisation_id}_board_project_{project.id}"
+        obj, _ = WorkspaceState.objects.get_or_create(key=key, organisation_id=project.organisation_id, user=None, defaults={'data': {}})
+    else:
+        # Shared, owner-canonical row (no per-user suffix) so all project members see the
+        # same board — see _parse_solo_project_key.
+        key = f"workspace__solo_board_project_{project.id}"
+        obj, _ = WorkspaceState.objects.get_or_create(key=key, user_id=project.owner_id, organisation=None, defaults={'data': {}})
+    return obj
+
+
+def _versioned_workspace_upsert(*, key, data, base_version, user=None, organisation=None, user_id=None):
+    """Upsert a WorkspaceState row with optimistic-concurrency protection.
+
+    Returns (obj, conflict). If base_version is provided and doesn't match the stored row's
+    version, nothing is written and conflict=True — the caller returns 409 with the current
+    state so the client reconciles instead of silently clobbering a teammate's change on a
+    shared board. When base_version is None the write proceeds unconditionally (legacy
+    last-write-wins), so older clients that don't send a version keep working. The read-modify-
+    write runs under select_for_update so concurrent writers serialise rather than race.
+    """
+    identity = {'key': key, 'organisation': organisation}
+    if user_id is not None:
+        identity['user_id'] = user_id
+    else:
+        identity['user'] = user
+
+    with transaction.atomic():
+        obj = WorkspaceState.objects.select_for_update().filter(**identity).first()
+        if obj is None:
+            obj = WorkspaceState.objects.create(data=data, version=1, **identity)
+            return obj, False
+        if base_version is not None and base_version != obj.version:
+            return obj, True
+        obj.data = data
+        obj.version = obj.version + 1
+        obj.save()
+        return obj, False
+
 
 class WorkspaceStateViewSet(viewsets.ModelViewSet):
     queryset = WorkspaceState.objects.all()
@@ -2691,97 +3696,360 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'key'
     lookup_value_regex = '[^/]+'
+    # Only GET (read) and POST (guarded create) are allowed. PUT/PATCH/DELETE are removed
+    # because those verbs bypassed the granular TOOL_WRITE_PERMISSIONS check that only
+    # create() enforces, letting a view-only member overwrite or wipe the whole board blob.
+    # All writes must go through create().
+    http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
         user = self.request.user
         from django.db.models import Q
         return WorkspaceState.objects.filter(
-            Q(user=user) | 
+            Q(user=user) |
             Q(organisation__members__user=user)
         ).distinct()
 
     def get_object(self):
         key = self.kwargs.get('key')
         user = self.request.user
-        
+
         if key.startswith('workspace__org_'):
             try:
-                # Key format: workspace__org_<org_id>_board_<board_name>...
-                prefix = 'workspace__org_'
-                rest = key[len(prefix):]
-                org_id_str = rest.split('_')[0]
-                org_id = int(org_id_str)
+                org_id, project_id = _parse_org_workspace_key(key)
                 from core.models import Organisation
                 from django.shortcuts import get_object_or_404
                 from rest_framework.exceptions import PermissionDenied
-                
+
                 org = get_object_or_404(Organisation, id=org_id)
-                if not org.members.filter(user=user).exists():
+                if not _check_org_board_access(org, project_id, user):
                     raise PermissionDenied("You do not have access to this organization's workspace.")
-                
-                obj, created = WorkspaceState.objects.get_or_create(
-                    key=key,
-                    organisation=org,
-                    user=None,
-                    defaults={'data': {}}
-                )
+
+                # Do not create rows on read (GET must not mutate). Return an unsaved,
+                # empty instance when the key doesn't exist yet; writes go through create().
+                obj = WorkspaceState.objects.filter(key=key, organisation=org, user=None).first()
+                if obj is None:
+                    obj = WorkspaceState(key=key, organisation=org, user=None, data={})
                 return obj
-            except (ValueError, IndexError):
+            except ValueError:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError("Invalid workspace key format.")
         else:
-            obj, created = WorkspaceState.objects.get_or_create(
-                key=key,
-                user=user,
-                organisation=None,
-                defaults={'data': {}}
-            )
+            solo_project_id = _parse_solo_project_key(key)
+            if solo_project_id is not None:
+                from core.models import Project
+                from django.shortcuts import get_object_or_404
+                from rest_framework.exceptions import PermissionDenied
+                project = get_object_or_404(Project, id=solo_project_id)
+                if not _check_solo_project_access(project, user):
+                    raise PermissionDenied("You do not have access to this project's workspace.")
+                # Canonical owner row shared by all members (do not create on read).
+                obj = WorkspaceState.objects.filter(key=key, user_id=project.owner_id, organisation=None).first()
+                if obj is None:
+                    obj = WorkspaceState(key=key, user_id=project.owner_id, organisation=None, data={})
+                return obj
+
+            obj = WorkspaceState.objects.filter(key=key, user=user, organisation=None).first()
+            if obj is None:
+                obj = WorkspaceState(key=key, user=user, organisation=None, data={})
             return obj
 
     def create(self, request, *args, **kwargs):
         key = request.data.get('key')
         data = request.data.get('data')
+        tool = request.data.get('tool')
         if not key:
             return Response({"error": "key is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Optimistic-concurrency token (the version the client last loaded). Optional so older
+        # clients that omit it fall back to last-write-wins; malformed values are ignored.
+        base_version = request.data.get('base_version')
+        try:
+            base_version = int(base_version) if base_version is not None else None
+        except (TypeError, ValueError):
+            base_version = None
+
+        def conflict_response(obj):
+            return Response(
+                {
+                    "error": "conflict",
+                    "detail": "This board was updated by someone else. Reload before saving.",
+                    "current": self.get_serializer(obj).data,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         user = request.user
         if key.startswith('workspace__org_'):
             try:
-                prefix = 'workspace__org_'
-                rest = key[len(prefix):]
-                org_id_str = rest.split('_')[0]
-                org_id = int(org_id_str)
-                from core.models import Organisation
+                org_id, project_id = _parse_org_workspace_key(key)
+                from core.models import Organisation, Project
                 from django.shortcuts import get_object_or_404
-                
+
                 org = get_object_or_404(Organisation, id=org_id)
-                if not org.members.filter(user=user).exists():
+                if not _check_org_board_access(org, project_id, user):
                     return Response({"error": "You do not have access to this organization's workspace."}, status=status.HTTP_403_FORBIDDEN)
-                
-                obj, created = WorkspaceState.objects.update_or_create(
-                    key=key,
-                    organisation=org,
-                    user=None,
-                    defaults={'data': data}
+
+                if tool:
+                    from .permission_catalog import TOOL_WRITE_PERMISSIONS
+                    from .permissions_service import user_has_any_permission
+                    write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
+                    project = Project.objects.filter(id=project_id).first() if project_id else None
+                    if write_perms and not user_has_any_permission(user, write_perms, organisation=org, project=project):
+                        return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
+
+                obj, conflict = _versioned_workspace_upsert(
+                    key=key, data=data, base_version=base_version, organisation=org, user=None,
                 )
-                if not created:
-                    obj.data = data
-                    obj.save()
-            except (ValueError, IndexError):
+                if conflict:
+                    return conflict_response(obj)
+            except ValueError:
                 return Response({"error": "Invalid workspace key format."}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            obj, created = WorkspaceState.objects.update_or_create(
-                key=key,
-                user=user,
-                organisation=None,
-                defaults={'data': data}
-            )
-            if not created:
-                obj.data = data
-                obj.save()
-                
+            solo_project_id = _parse_solo_project_key(key)
+            if solo_project_id is not None:
+                from core.models import Project
+                from django.shortcuts import get_object_or_404
+                project = get_object_or_404(Project, id=solo_project_id)
+                if not _check_solo_project_access(project, user):
+                    return Response({"error": "You do not have access to this project's workspace."}, status=status.HTTP_403_FORBIDDEN)
+
+                if tool:
+                    from .permission_catalog import TOOL_WRITE_PERMISSIONS
+                    from .permissions_service import user_has_any_permission
+                    write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
+                    if write_perms and not user_has_any_permission(user, write_perms, organisation=None, project=project):
+                        return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
+
+                # Write to the canonical owner row so all members share one board.
+                obj, conflict = _versioned_workspace_upsert(
+                    key=key, data=data, base_version=base_version, user_id=project.owner_id, organisation=None,
+                )
+                if conflict:
+                    return conflict_response(obj)
+            else:
+                obj, conflict = _versioned_workspace_upsert(
+                    key=key, data=data, base_version=base_version, user=user, organisation=None,
+                )
+                if conflict:
+                    return conflict_response(obj)
+
         serializer = self.get_serializer(obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+from core.models import PlaytestFeedback
+from .serializers import PlaytestFeedbackSerializer
+
+
+# Mirrors frontend/src/components/devs/WorkspaceTypes.ts's DEFAULT_COLUMNS — a WorkspaceState
+# row with no 'columns' key is treated by the frontend as "not yet loaded" and silently ignored
+# in its entirety (see WorkspaceContext.tsx's `if (backendData && backendData.columns?.length)`
+# load guard), so convert_to_task must seed real columns before a fresh project's board has ever
+# been opened, or the task it just wrote would never actually appear in the Kanban board.
+_DEFAULT_KANBAN_COLUMNS = [
+    {'id': 'backlog', 'label': 'Backlog', 'color': 'border-zinc-700/50', 'dotColor': 'bg-zinc-500', 'isDefault': True},
+    {'id': 'inProgress', 'label': 'In Progress', 'color': 'border-blue-500/30', 'dotColor': 'bg-blue-500', 'isDefault': True, 'wipLimit': 3},
+    {'id': 'review', 'label': 'Review', 'color': 'border-amber-500/30', 'dotColor': 'bg-amber-500', 'isDefault': True, 'wipLimit': 2},
+    {'id': 'done', 'label': 'Done', 'color': 'border-emerald-500/30', 'dotColor': 'bg-emerald-500', 'isDefault': True},
+]
+
+
+class PlaytestFeedbackViewSet(viewsets.ModelViewSet):
+    """
+    Public, membership-free playtest feedback on a project — see core.models.PlaytestFeedback's
+    docstring for why this is a real model rather than the generic WorkspaceState blob everything
+    else in the Devs workspace uses. Anyone can read; any logged-in user can submit feedback for
+    any project (no project/org membership required); only the author can edit/delete their own
+    submission. Pinning, status changes, converting to (and pulling back from) a Kanban task, and
+    deleting *other* people's feedback are each gated by their own granular 'feedback.*' permission
+    (see api.permission_catalog) rather than one blanket manager flag.
+    """
+    queryset = PlaytestFeedback.objects.select_related('author', 'project').prefetch_related('likes').all()
+    serializer_class = PlaytestFeedbackSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        project_id = self.request.query_params.get('project')
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+
+        status_filter = self.request.query_params.get('status')
+        if status_filter == 'pinned':
+            qs = qs.filter(is_pinned=True)
+        elif status_filter in ('open', 'in_progress', 'resolved'):
+            qs = qs.filter(status=status_filter)
+
+        priority_filter = self.request.query_params.get('priority')
+        if priority_filter in ('low', 'medium', 'high', 'urgent'):
+            qs = qs.filter(priority=priority_filter)
+
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        # Reconcile against the Kanban board before serializing: a task can be deleted directly
+        # from the Kanban board (a plain WorkspaceState blob edit the backend has no other hook
+        # into), which would otherwise leave converted_task_id pointing at a task that no longer
+        # exists — the feedback would show "In Kanban" forever with no way to convert it again.
+        # This keeps both surfaces (Devs workspace and the public project page) self-healing
+        # without either needing to know about the other's state.
+        queryset = self.filter_queryset(self.get_queryset())
+        feedback_list = self._reconcile_converted_tasks(queryset)
+        page = self.paginate_queryset(feedback_list)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(feedback_list, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self._reconcile_converted_tasks([instance])
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def _reconcile_converted_tasks(self, feedback_iterable):
+        feedback_list = list(feedback_iterable)
+        by_project = {}
+        for fb in feedback_list:
+            if fb.converted_task_id:
+                by_project.setdefault(fb.project_id, []).append(fb)
+        for project_id, items in by_project.items():
+            project = items[0].project
+            workspace_state = _project_workspace_state(project)
+            existing_task_ids = {t.get('id') for t in (workspace_state.data or {}).get('tasks', [])}
+            for fb in items:
+                if fb.converted_task_id not in existing_task_ids:
+                    fb.converted_task_id = ''
+                    fb.save(update_fields=['converted_task_id'])
+        return feedback_list
+
+    def perform_create(self, serializer):
+        from django.utils import timezone
+        serializer.save(author=self.request.user, submitted_at=timezone.now())
+
+    def destroy(self, request, *args, **kwargs):
+        # Deliberately bypasses self.get_object()'s automatic IsOwnerOrReadOnly check (which would
+        # otherwise 403 a project manager deleting someone *else's* feedback) — the real rule here
+        # is "author OR feedback.delete", checked explicitly below.
+        from rest_framework.exceptions import PermissionDenied
+        feedback = get_object_or_404(PlaytestFeedback, pk=kwargs.get('pk'))
+        project = feedback.project
+        is_author = feedback.author_id == request.user.id
+        can_delete = user_has_permission(request.user, 'feedback.delete', organisation=project.organisation, project=project)
+        if not (is_author or can_delete):
+            raise PermissionDenied("You do not have permission to delete this feedback.")
+        feedback.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _require_permission(self, request, feedback, perm_key):
+        from rest_framework.exceptions import PermissionDenied
+        project = feedback.project
+        if not user_has_permission(request.user, perm_key, organisation=project.organisation, project=project):
+            raise PermissionDenied("You do not have permission to do that.")
+
+    @action(detail=True, methods=['post'], url_path='toggle-pin', permission_classes=[permissions.IsAuthenticated])
+    def toggle_pin(self, request, pk=None):
+        # Not gated by IsOwnerOrReadOnly — a manager pins feedback submitted by other people too.
+        feedback = get_object_or_404(PlaytestFeedback, pk=pk)
+        self._require_permission(request, feedback, 'feedback.pin')
+        feedback.is_pinned = not feedback.is_pinned
+        feedback.save(update_fields=['is_pinned'])
+        return Response(PlaytestFeedbackSerializer(feedback, context={'request': request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='set-status', permission_classes=[permissions.IsAuthenticated])
+    def set_status(self, request, pk=None):
+        feedback = get_object_or_404(PlaytestFeedback, pk=pk)
+        new_status = request.data.get('status')
+        if new_status not in ('open', 'in_progress', 'resolved'):
+            return Response({"error": "Invalid status."}, status=status.HTTP_400_BAD_REQUEST)
+        if new_status == 'in_progress':
+            perm_key = 'feedback.mark_in_progress'
+        elif new_status == 'resolved':
+            perm_key = 'feedback.mark_resolved'
+        else:
+            # Reverting to 'open' undoes whichever status is currently set, so it's gated by
+            # the same permission that set it in the first place.
+            perm_key = 'feedback.mark_in_progress' if feedback.status == 'in_progress' else 'feedback.mark_resolved'
+        self._require_permission(request, feedback, perm_key)
+        feedback.status = new_status
+        feedback.save(update_fields=['status'])
+        return Response(PlaytestFeedbackSerializer(feedback, context={'request': request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='convert-to-task', permission_classes=[permissions.IsAuthenticated])
+    def convert_to_task(self, request, pk=None):
+        from django.utils import timezone
+        import time as time_module
+
+        feedback = get_object_or_404(PlaytestFeedback, pk=pk)
+        self._require_permission(request, feedback, 'feedback.convert_to_task')
+        if feedback.converted_task_id:
+            return Response({"error": "This feedback has already been converted to a task."}, status=status.HTTP_400_BAD_REQUEST)
+
+        project = feedback.project
+        workspace_state = _project_workspace_state(project)
+        data = workspace_state.data or {}
+        if not data.get('columns'):
+            data['columns'] = _DEFAULT_KANBAN_COLUMNS
+        columns = data['columns']
+        target_column = columns[0]
+        target_column_id = target_column['id']
+
+        tasks = data.setdefault('tasks', [])
+        wip_limit = target_column.get('wipLimit')
+        if wip_limit is not None:
+            current_count = sum(1 for t in tasks if t.get('columnId') == target_column_id)
+            if current_count >= wip_limit:
+                column_label = target_column.get('label', target_column_id)
+                return Response(
+                    {"error": f"Cannot convert: the \"{column_label}\" column is full ({current_count}/{wip_limit}). Raise its WIP limit or move a task out first."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        task_id = f"task-{int(time_module.time() * 1000)}"
+        new_task = {
+            'id': task_id,
+            'title': f"[Feedback] {(feedback.title or feedback.description)[:60]}",
+            'description': feedback.description,
+            'priority': feedback.priority,
+            'category': 'qa',
+            'columnId': target_column_id,
+            'subtasks': [],
+            'comments': [],
+            'createdAt': timezone.now().isoformat(),
+        }
+        tasks.append(new_task)
+        workspace_state.data = data
+        workspace_state.save(update_fields=['data'])
+
+        feedback.converted_task_id = task_id
+        feedback.save(update_fields=['converted_task_id'])
+        return Response(PlaytestFeedbackSerializer(feedback, context={'request': request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='revert-task', permission_classes=[permissions.IsAuthenticated])
+    def revert_task(self, request, pk=None):
+        """Pulls a feedback item back out of Kanban: deletes the linked task from the board (if
+        it's still there) and clears converted_task_id so it can be converted again."""
+        feedback = get_object_or_404(PlaytestFeedback, pk=pk)
+        self._require_permission(request, feedback, 'feedback.convert_to_task')
+        if not feedback.converted_task_id:
+            return Response({"error": "This feedback isn't in Kanban."}, status=status.HTTP_400_BAD_REQUEST)
+
+        project = feedback.project
+        workspace_state = _project_workspace_state(project)
+        data = workspace_state.data or {}
+        tasks = data.get('tasks', [])
+        remaining_tasks = [t for t in tasks if t.get('id') != feedback.converted_task_id]
+        if len(remaining_tasks) != len(tasks):
+            data['tasks'] = remaining_tasks
+            workspace_state.data = data
+            workspace_state.save(update_fields=['data'])
+
+        feedback.converted_task_id = ''
+        feedback.save(update_fields=['converted_task_id'])
+        return Response(PlaytestFeedbackSerializer(feedback, context={'request': request}).data, status=status.HTTP_200_OK)
+
 
 class ExplorePostsViewSet(viewsets.ViewSet):
     """Explore posts with category filtering and trending sorting."""
@@ -2799,11 +4067,22 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         page = int(request.query_params.get('page', 1))
         page_size = min(int(request.query_params.get('page_size', 20)), 50)
         
+        from api.serializers import count_subquery
+        from core.models import Like, Bookmark
         posts = Post.objects.filter(
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
-        ).select_related('user').prefetch_related('likes', 'replies', 'reposts', 'bookmarks', 'media')
+        ).select_related('user').prefetch_related('user__interests', 'media').annotate(
+            # Counts only, not the full related objects — prefetching the actual likes/replies/
+            # reposts/bookmarks rows here fetched (and discarded) every row of engagement for
+            # every post on the page, which is unbounded for a viral post. The serializer no
+            # longer renders those relations, only their counts.
+            likes_count_ann=count_subquery(Like, 'post'),
+            replies_count_ann=count_subquery(Post, 'parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            bookmarks_count_ann=count_subquery(Bookmark, 'post'),
+        )
         
         if (ordering == 'popular' or not ordering) and not hashtag:
             cutoff = timezone.now() - timedelta(days=7)
@@ -2815,10 +4094,13 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         if hashtag:
             if hashtag.startswith('#'):
                 hashtag = hashtag[1:]
+            import re
             from django.db import connection
             # PostgreSQL case-insensitive regex word boundary matches with \y, others with \b
             boundary = '\\y' if connection.vendor == 'postgresql' else '\\b'
-            posts = posts.filter(content__iregex=rf'#{hashtag}{boundary}')
+            # Escape the user input before it goes into a DB-side regex — otherwise a crafted
+            # pattern (e.g. "(a+)+$") causes catastrophic backtracking / a CPU-exhaustion DoS.
+            posts = posts.filter(content__iregex=rf'#{re.escape(hashtag)}{boundary}')
             
         if ordering == 'newest':
             posts = posts.order_by('-timestamp')

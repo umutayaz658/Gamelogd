@@ -2,14 +2,21 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-    const token = request.cookies.get('access_token')?.value;
+    // Header mode stores 'access_token' (JS cookie); cookie mode uses the backend's
+    // httpOnly 'auth_token'. Accept either so this presence-gate works in both modes.
+    // Note: this only checks *presence* — an expired/revoked token is caught by the API
+    // 401 interceptor, which is the real validity guard.
+    const token = request.cookies.get('access_token')?.value
+        || request.cookies.get('auth_token')?.value;
     const { pathname } = request.nextUrl;
 
     // List of public paths that don't require authentication
     const publicPaths = ['/login', '/register', '/verify-email', '/favicon.ico'];
 
-    // Check if the current path is public
-    const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
+    // Exact match only — startsWith would also treat e.g. '/login-as-admin' or '/registered' as
+    // public, letting an unauthenticated request reach a route that was never meant to bypass
+    // the auth gate.
+    const isPublicPath = publicPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
 
     // Also allow Next.js internal paths and API routes (handled by backend)
     if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.startsWith('/static')) {

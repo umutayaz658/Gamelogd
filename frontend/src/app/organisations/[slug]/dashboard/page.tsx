@@ -1,25 +1,28 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
-import { Organisation, OrganisationMember, OrganisationInvitation, User } from '@/types';
+import { Organisation, OrganisationInvitation } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
-import { 
-    Check, X, Upload, Shield, Users, Search, Mail, 
-    Globe, Twitter, Youtube, ArrowLeft, Trash2, Edit3 
+import {
+    Check, X, Upload,
+    Globe, Twitter, Youtube, ArrowLeft
 } from 'lucide-react';
 import Link from 'next/link';
+import InviteMemberButton from '@/components/team/InviteMemberButton';
+import ExtraLinksEditor, { ExtraLink } from '@/components/ui/ExtraLinksEditor';
+import { useToast } from '@/context/ToastContext';
 
 export default function OrganisationDashboardPage() {
     const { slug } = useParams() as { slug: string };
     const { t } = useTranslation();
     const { user: currentUser } = useAuth();
-    const router = useRouter();
+    const toast = useToast();
 
     const [organisation, setOrganisation] = useState<Organisation | null>(null);
     const [invitations, setInvitations] = useState<OrganisationInvitation[]>([]);
@@ -27,7 +30,7 @@ export default function OrganisationDashboardPage() {
     const [saveLoading, setSaveLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'general' | 'members' | 'invites'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'invites'>('general');
 
     // Edit form states
     const [name, setName] = useState('');
@@ -35,6 +38,7 @@ export default function OrganisationDashboardPage() {
     const [website, setWebsite] = useState('');
     const [twitter, setTwitter] = useState('');
     const [youtube, setYoutube] = useState('');
+    const [extraLinks, setExtraLinks] = useState<ExtraLink[]>([]);
 
     const [logo, setLogo] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -44,53 +48,44 @@ export default function OrganisationDashboardPage() {
     const logoInputRef = useRef<HTMLInputElement>(null);
     const bannerInputRef = useRef<HTMLInputElement>(null);
 
-    // Invite states
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<User[]>([]);
-    const [searchLoading, setSearchLoading] = useState(false);
-    const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member');
-    const [invitingUserId, setInvitingUserId] = useState<number | null>(null);
+    const fetchData = async () => {
+        if (!slug) return;
+        try {
+            const orgRes = await api.get(`/organisations/${slug}/`);
+            const orgData = orgRes.data as Organisation;
+
+            // Check permissions
+            const requestingMember = orgData.members?.find(m => m.user.id === currentUser?.id);
+            if (!requestingMember || (requestingMember.role !== 'owner' && requestingMember.role !== 'admin')) {
+                setError("Access Denied: You do not have permission to manage this organisation.");
+                setOrganisation(orgData);
+                return;
+            }
+
+            setOrganisation(orgData);
+            setName(orgData.name);
+            setDescription(orgData.description || '');
+            setWebsite(orgData.website || '');
+            setTwitter(orgData.twitter || '');
+            setYoutube(orgData.youtube || '');
+            setExtraLinks(orgData.extra_links ?? []);
+
+            if (orgData.logo) setLogoPreview(getImageUrl(orgData.logo));
+            if (orgData.banner) setBannerPreview(getImageUrl(orgData.banner));
+
+            // Fetch pending invitations
+            const invitesRes = await api.get(`/organisation-invitations/?organisation_slug=${slug}`);
+            setInvitations(invitesRes.data.results || invitesRes.data);
+        } catch (err: any) {
+            console.error("Error fetching dashboard details:", err);
+            setError(err.response?.data?.detail || "Failed to load dashboard data.");
+        }
+    };
 
     useEffect(() => {
-        if (!slug) return;
-
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const orgRes = await api.get(`/organisations/${slug}/`);
-                const orgData = orgRes.data as Organisation;
-
-                // Check permissions
-                const requestingMember = orgData.members?.find(m => m.user.id === currentUser?.id);
-                if (!requestingMember || (requestingMember.role !== 'owner' && requestingMember.role !== 'admin')) {
-                    setError("Access Denied: You do not have permission to manage this organisation.");
-                    setOrganisation(orgData);
-                    setLoading(false);
-                    return;
-                }
-
-                setOrganisation(orgData);
-                setName(orgData.name);
-                setDescription(orgData.description || '');
-                setWebsite(orgData.website || '');
-                setTwitter(orgData.twitter || '');
-                setYoutube(orgData.youtube || '');
-
-                if (orgData.logo) setLogoPreview(getImageUrl(orgData.logo));
-                if (orgData.banner) setBannerPreview(getImageUrl(orgData.banner));
-
-                // Fetch pending invitations
-                const invitesRes = await api.get(`/organisation-invitations/?organisation_slug=${slug}`);
-                setInvitations(invitesRes.data.results || invitesRes.data);
-            } catch (err: any) {
-                console.error("Error fetching dashboard details:", err);
-                setError(err.response?.data?.detail || "Failed to load dashboard data.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
+        setLoading(true);
+        fetchData().finally(() => setLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug, currentUser]);
 
     // Handle updates
@@ -109,6 +104,7 @@ export default function OrganisationDashboardPage() {
             formData.append('website', website);
             formData.append('twitter', twitter);
             formData.append('youtube', youtube);
+            formData.append('extra_links', JSON.stringify(extraLinks.filter((l) => l.url.trim())));
 
             if (logo) formData.append('logo', logo);
             if (banner) formData.append('banner', banner);
@@ -127,79 +123,6 @@ export default function OrganisationDashboardPage() {
         }
     };
 
-    // Member updates
-    const handleRoleChange = async (memberId: number, newRole: 'admin' | 'member') => {
-        try {
-            const res = await api.patch(`/organisation-members/${memberId}/`, { role: newRole });
-            setOrganisation(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    members: prev.members?.map(m => m.id === memberId ? { ...m, role: res.data.role } : m)
-                };
-            });
-            setSuccessMessage("Member role updated.");
-        } catch (err: any) {
-            alert(err.response?.data?.detail || "Failed to update member role.");
-        }
-    };
-
-    const handleRemoveMember = async (memberId: number) => {
-        if (!confirm("Are you sure you want to remove this member from the studio?")) return;
-
-        try {
-            await api.delete(`/organisation-members/${memberId}/`);
-            setOrganisation(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    members: prev.members?.filter(m => m.id !== memberId)
-                };
-            });
-            setSuccessMessage("Member removed from organisation.");
-        } catch (err: any) {
-            alert(err.response?.data?.detail || "Failed to remove member.");
-        }
-    };
-
-    // User Search for Invite
-    const handleSearchUser = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!searchQuery.trim()) return;
-
-        setSearchLoading(true);
-        try {
-            const res = await api.get(`/users/?search=${searchQuery}`);
-            const data = res.data.results || res.data;
-            // Filter out current members
-            const currentMemberUsernames = organisation?.members?.map(m => m.user.username) || [];
-            const filteredUsers = data.filter((u: User) => !currentMemberUsernames.includes(u.username));
-            setSearchResults(filteredUsers);
-        } catch (err) {
-            console.error("Search users failed:", err);
-        } finally {
-            setSearchLoading(false);
-        }
-    };
-
-    // Send invite
-    const handleSendInvite = async (userId: number) => {
-        setInvitingUserId(userId);
-        try {
-            const res = await api.post(`/organisations/${slug}/invite/`, {
-                user_id: userId,
-                role: inviteRole
-            });
-            setInvitations(prev => [res.data, ...prev]);
-            setSearchResults(prev => prev.filter(u => u.id !== userId));
-            setSuccessMessage("Invitation sent successfully!");
-        } catch (err: any) {
-            alert(err.response?.data?.error || err.response?.data?.detail || "Failed to send invitation.");
-        } finally {
-            setInvitingUserId(null);
-        }
-    };
-
     // Cancel invite
     const handleCancelInvite = async (inviteId: number) => {
         try {
@@ -208,7 +131,7 @@ export default function OrganisationDashboardPage() {
             setSuccessMessage("Invitation cancelled.");
         } catch (err) {
             console.error("Failed to cancel invitation:", err);
-            alert("Failed to cancel invitation.");
+            toast.error("Failed to cancel invitation.");
         }
     };
 
@@ -231,7 +154,7 @@ export default function OrganisationDashboardPage() {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-sans">
                 <Navbar />
-                <div className="container mx-auto px-4 py-20 text-center">
+                <div className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 py-20 text-center">
                     <h2 className="text-2xl font-bold mb-4">Access Denied</h2>
                     <p className="text-zinc-400 mb-8">You do not have permission to access the management dashboard for this studio.</p>
                     <Link href={`/organisations/${slug}`} className="bg-zinc-900 hover:bg-zinc-800 px-6 py-2.5 rounded-xl font-bold border border-zinc-800 transition-all">
@@ -246,7 +169,7 @@ export default function OrganisationDashboardPage() {
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-blue-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6 pb-12">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-12">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar */}
                     <div className="hidden lg:block col-span-3">
@@ -259,7 +182,11 @@ export default function OrganisationDashboardPage() {
                         {/* Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
                             <div className="flex items-center gap-3">
-                                <Link href={`/organisations/${slug}`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:text-blue-400 hover:border-zinc-700 transition-all">
+                                <Link
+                                    href={organisation ? `/devs?workspace=org_${organisation.id}&tool=settings&board=org` : '/devs'}
+                                    className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:text-blue-400 hover:border-zinc-700 transition-all"
+                                    title="Back to Workspace Settings"
+                                >
                                     <ArrowLeft className="h-5 w-5" />
                                 </Link>
                                 <div>
@@ -292,13 +219,6 @@ export default function OrganisationDashboardPage() {
                             >
                                 General Settings
                                 {activeTab === 'general' && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />}
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('members')}
-                                className={`pb-4 px-2 text-base font-bold transition-all relative ${activeTab === 'members' ? 'text-white' : 'text-zinc-550 hover:text-zinc-350'}`}
-                            >
-                                Members ({organisation?.members?.length || 0})
-                                {activeTab === 'members' && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />}
                             </button>
                             <button
                                 onClick={() => setActiveTab('invites')}
@@ -447,7 +367,7 @@ export default function OrganisationDashboardPage() {
 
                                         <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1 focus-within:border-blue-500/50 transition-all">
                                             <Youtube className="h-4 w-4 text-zinc-650 mr-2" />
-                                            <input 
+                                            <input
                                                 type="url"
                                                 className="flex-1 bg-transparent border-none text-white text-xs outline-none py-2"
                                                 value={youtube}
@@ -455,6 +375,8 @@ export default function OrganisationDashboardPage() {
                                                 placeholder="YouTube URL"
                                             />
                                         </div>
+
+                                        <ExtraLinksEditor value={extraLinks} onChange={setExtraLinks} />
                                     </div>
 
                                     <div className="flex justify-end pt-4 border-t border-zinc-800/40">
@@ -477,128 +399,22 @@ export default function OrganisationDashboardPage() {
                                         </button>
                                     </div>
                                 </form>
-                            ) : activeTab === 'members' ? (
-                                <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl overflow-hidden">
-                                    <div className="p-4 bg-zinc-950/60 border-b border-zinc-800">
-                                        <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Active Developers & Team</h3>
-                                    </div>
-                                    <div className="divide-y divide-zinc-850">
-                                        {organisation?.members?.map((member) => (
-                                            <div key={member.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-xl bg-zinc-950 overflow-hidden flex items-center justify-center font-bold text-white shrink-0">
-                                                        {member.user.avatar ? (
-                                                            <img src={getImageUrl(member.user.avatar)} alt={member.user.username} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            member.user.username.charAt(0).toUpperCase()
-                                                        )}
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-white text-sm hover:underline">
-                                                            <Link href={`/${member.user.username}`}>{member.user.real_name || member.user.username}</Link>
-                                                        </h4>
-                                                        <span className="text-xs text-zinc-550 block">@{member.user.username} • Joined {new Date(member.joined_at).toLocaleDateString()}</span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-3 self-end sm:self-auto">
-                                                    {/* Role modifier */}
-                                                    {member.role === 'owner' ? (
-                                                        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                                                            <Shield className="h-3.5 w-3.5" />
-                                                            <span>Owner</span>
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <select
-                                                                className="bg-zinc-950 border border-zinc-800 text-white rounded-xl text-xs font-semibold px-3 py-1.5 outline-none focus:border-zinc-700"
-                                                                value={member.role}
-                                                                onChange={(e) => handleRoleChange(member.id, e.target.value as 'admin' | 'member')}
-                                                            >
-                                                                <option value="admin">Admin</option>
-                                                                <option value="member">Developer</option>
-                                                            </select>
-
-                                                            <button
-                                                                onClick={() => handleRemoveMember(member.id)}
-                                                                className="p-2 bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-red-400 hover:border-red-500/20 rounded-xl transition-all"
-                                                                title="Remove developer"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
                             ) : (
                                 <div className="space-y-6">
-                                    {/* Send new Invitation */}
-                                    <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6">
-                                        <h3 className="text-base font-bold text-white border-b border-zinc-800/40 pb-2 mb-4">Invite Developer</h3>
-                                        <form onSubmit={handleSearchUser} className="flex gap-2">
-                                            <div className="flex-1 flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1 focus-within:border-zinc-700 transition-all">
-                                                <Search className="h-4 w-4 text-zinc-650 mr-2" />
-                                                <input 
-                                                    type="text"
-                                                    required
-                                                    className="flex-1 bg-transparent border-none text-white text-xs outline-none py-2 placeholder:text-zinc-650"
-                                                    value={searchQuery}
-                                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                                    placeholder="Search developer by username or real name..."
-                                                />
-                                            </div>
-                                            <button 
-                                                type="submit" 
-                                                disabled={searchLoading}
-                                                className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white font-bold px-4 rounded-xl text-xs transition-all flex items-center gap-1.5"
-                                            >
-                                                {searchLoading ? 'Searching...' : 'Search'}
-                                            </button>
-                                        </form>
-
-                                        {/* Search results */}
-                                        {searchResults.length > 0 && (
-                                            <div className="mt-4 border border-zinc-800 bg-zinc-950/40 rounded-xl overflow-hidden divide-y divide-zinc-850 animate-in slide-in-from-top-2 duration-300">
-                                                {searchResults.map((user) => (
-                                                    <div key={user.id} className="p-3.5 flex items-center justify-between gap-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-zinc-950 overflow-hidden flex items-center justify-center font-bold text-white shrink-0 text-xs">
-                                                                {user.avatar ? (
-                                                                    <img src={getImageUrl(user.avatar)} alt={user.username} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    user.username.charAt(0).toUpperCase()
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <h5 className="font-bold text-white text-xs leading-none">{user.real_name || user.username}</h5>
-                                                                <span className="text-[10px] text-zinc-550 font-mono">@{user.username}</span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2">
-                                                            <select
-                                                                className="bg-zinc-950 border border-zinc-800 text-white rounded-lg text-[10px] font-bold px-2 py-1 outline-none"
-                                                                value={inviteRole}
-                                                                onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member')}
-                                                            >
-                                                                <option value="member">Developer</option>
-                                                                <option value="admin">Admin</option>
-                                                            </select>
-                                                            <button
-                                                                onClick={() => handleSendInvite(user.id)}
-                                                                disabled={invitingUserId === user.id}
-                                                                className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1"
-                                                            >
-                                                                <Mail className="h-3 w-3" />
-                                                                <span>Invite</span>
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                    {/* Invite Member */}
+                                    <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap">
+                                        <div>
+                                            <h3 className="text-base font-bold text-white">Invite a developer</h3>
+                                            <p className="text-xs text-zinc-500 mt-0.5">Search for a user and assign them a role — same flow as Team &amp; Roles.</p>
+                                        </div>
+                                        {organisation && (
+                                            <InviteMemberButton
+                                                scope="organisation"
+                                                organisationId={organisation.id}
+                                                organisationSlug={organisation.slug}
+                                                excludeUserIds={(organisation.members ?? []).map((m) => m.user.id)}
+                                                onInvited={fetchData}
+                                            />
                                         )}
                                     </div>
 
@@ -611,7 +427,7 @@ export default function OrganisationDashboardPage() {
                                             {invitations.length > 0 ? (
                                                 invitations.map((invite) => (
                                                     <div key={invite.id} className="p-4 flex items-center justify-between gap-4">
-                                                        <div className="flex items-center gap-3">
+                                                        <Link href={`/${invite.user.username}`} className="flex items-center gap-3 group min-w-0">
                                                             <div className="w-9 h-9 rounded-xl bg-zinc-950 overflow-hidden flex items-center justify-center font-bold text-white shrink-0 text-sm">
                                                                 {invite.user.avatar ? (
                                                                     <img src={getImageUrl(invite.user.avatar)} alt={invite.user.username} className="w-full h-full object-cover" />
@@ -619,15 +435,15 @@ export default function OrganisationDashboardPage() {
                                                                     invite.user.username.charAt(0).toUpperCase()
                                                                 )}
                                                             </div>
-                                                            <div>
-                                                                <h4 className="font-bold text-white text-sm">{invite.user.real_name || invite.user.username}</h4>
-                                                                <span className="text-xs text-zinc-550 block">@{invite.user.username} • Invited to be <strong className="text-zinc-400 capitalize">{invite.role}</strong></span>
+                                                            <div className="min-w-0">
+                                                                <h4 className="font-bold text-white text-sm truncate group-hover:underline">{invite.user.real_name || invite.user.username}</h4>
+                                                                <span className="text-xs text-zinc-550 block truncate">@{invite.user.username} • Invited to be <strong className="text-zinc-400 capitalize">{invite.role}</strong></span>
                                                             </div>
-                                                        </div>
+                                                        </Link>
 
                                                         <button
                                                             onClick={() => handleCancelInvite(invite.id)}
-                                                            className="flex items-center gap-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 hover:border-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl text-xs font-bold transition-all"
+                                                            className="flex items-center gap-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 hover:border-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl text-xs font-bold transition-all flex-shrink-0"
                                                         >
                                                             <X className="h-3.5 w-3.5" />
                                                             <span>Cancel</span>

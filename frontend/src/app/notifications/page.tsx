@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2, UserPlus, Heart, AtSign, MessageSquare, Users, Star, CheckCircle2, Repeat, Lock, Check, X } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
@@ -11,58 +11,27 @@ import RightSidebar from "@/components/RightSidebar";
 import api from "@/lib/api";
 import { getImageUrl, getRelativeTime } from "@/lib/utils";
 import { useNotifications } from "@/context/NotificationContext";
+import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/lib/useTranslation";
-
-interface Notification {
-    id: number;
-    actor: {
-        username: string;
-        avatar: string;
-        is_verified?: boolean;
-    };
-    verb: string;
-    target_type?: string;
-    target_id?: number;
-    is_read: boolean;
-    created_at: string;
-    target_url?: string | null;
-}
-
-interface FollowRequestUser {
-    id: number;
-    username: string;
-    real_name?: string;
-    avatar?: string;
-}
+import type { Notification } from "@/types";
+import {
+    resolveNotificationType,
+    getNotificationText,
+    isSystemNotification,
+    getSystemTargetUrl,
+    getInviteEndpoints,
+    isInviteType,
+    getFilterGroup,
+} from "@/lib/notifications";
 
 export default function NotificationsPage() {
     const router = useRouter();
     const { t, language } = useTranslation();
+    const { user } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
-    const [followRequests, setFollowRequests] = useState<FollowRequestUser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isRequestsLoading, setIsRequestsLoading] = useState(true);
-    const [filter, setFilter] = useState<'all' | 'mentions' | 'verified' | 'follow_requests'>('all');
+    const [filter, setFilter] = useState<'all' | 'mentions' | 'follow_requests'>('all');
     const [processingRequest, setProcessingRequest] = useState<string | null>(null);
-
-    const getTranslatedVerb = (verb: string) => {
-        const lower = verb.toLowerCase();
-        if (lower.includes('liked your post')) return t('verbLikedYourPost');
-        if (lower.includes('liked your review')) return t('verbLikedYourReview');
-        if (lower.includes('liked your comment')) return t('verbLikedYourComment');
-        if (lower.includes('mentioned you in a post')) return t('verbMentionedYouPost');
-        if (lower.includes('mentioned you in a comment')) return t('verbMentionedYouComment');
-        if (lower.includes('replied to your post')) return t('verbRepliedYourPost');
-        if (lower.includes('replied to your review')) return t('verbRepliedYourReview');
-        if (lower.includes('replied to your comment')) return t('verbRepliedYourComment');
-        if (lower.includes('reposted your post')) return t('verbRepostedYourPost');
-        if (lower.includes('quoted your post')) return t('verbQuotedYourPost');
-        if (lower.includes('followed you')) return t('verbFollowedYou');
-        if (lower.includes('requested to follow you')) return t('verbRequestedFollowYou');
-        if (lower.includes('accepted your follow request')) return t('verbAcceptedFollowRequest');
-        if (lower.includes('invited you to join')) return t('verbInvitedYouToJoin');
-        return verb;
-    };
 
     const { markNotificationsRead } = useNotifications();
 
@@ -74,16 +43,6 @@ export default function NotificationsPage() {
             setFilter('follow_requests');
         }
     }, []);
-
-    const handleNotificationClick = (e: React.MouseEvent, targetUrl: string | null | undefined) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('a') || target.closest('button')) {
-            return;
-        }
-        if (targetUrl) {
-            router.push(targetUrl);
-        }
-    };
 
     useEffect(() => {
         const fetchNotifications = async () => {
@@ -100,47 +59,30 @@ export default function NotificationsPage() {
         };
 
         fetchNotifications();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => {
-        const fetchFollowRequests = async () => {
-            setIsRequestsLoading(true);
-            try {
-                const res = await api.get('/users/follow-requests/');
-                setFollowRequests(res.data);
-            } catch (error) {
-                console.error("Failed to fetch follow requests:", error);
-            } finally {
-                setIsRequestsLoading(false);
-            }
-        };
-
-        fetchFollowRequests();
-    }, []);
-
-    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined, verb: string) => {
+    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined, type: ReturnType<typeof resolveNotificationType>) => {
         e.preventDefault();
         if (!targetId) return;
         try {
-            if (verb.toLowerCase().includes('join the project')) {
-                await api.post(`/project-members/${targetId}/accept/`);
-            } else {
-                await api.post(`/organisation-invitations/${targetId}/accept/`);
-            }
+            const endpoints = getInviteEndpoints(type, targetId);
+            await api.post(endpoints.accept);
             setNotifications(prev => prev.filter(n => n.target_id !== targetId));
         } catch (error) {
             console.error('Failed to accept invite:', error);
         }
     };
 
-    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined, verb: string) => {
+    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined, type: ReturnType<typeof resolveNotificationType>) => {
         e.preventDefault();
         if (!targetId) return;
         try {
-            if (verb.toLowerCase().includes('join the project')) {
-                await api.delete(`/project-members/${targetId}/`);
+            const endpoints = getInviteEndpoints(type, targetId);
+            if (endpoints.declineMethod === 'delete') {
+                await api.delete(endpoints.decline);
             } else {
-                await api.post(`/organisation-invitations/${targetId}/decline/`);
+                await api.post(endpoints.decline);
             }
             setNotifications(prev => prev.filter(n => n.target_id !== targetId));
         } catch (error) {
@@ -153,8 +95,6 @@ export default function NotificationsPage() {
         setProcessingRequest(username);
         try {
             await api.post(`/users/${username}/approve-request/`);
-            setFollowRequests(prev => prev.filter(u => u.username !== username));
-            // Also remove the corresponding notification from the list
             setNotifications(prev => prev.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === username)));
         } catch (error) {
             console.error('Failed to approve follow request:', error);
@@ -168,7 +108,6 @@ export default function NotificationsPage() {
         setProcessingRequest(username);
         try {
             await api.post(`/users/${username}/reject-request/`);
-            setFollowRequests(prev => prev.filter(u => u.username !== username));
             setNotifications(prev => prev.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === username)));
         } catch (error) {
             console.error('Failed to reject follow request:', error);
@@ -177,22 +116,14 @@ export default function NotificationsPage() {
         }
     };
 
-    const getIcon = (verb: string) => {
-        if (verb.includes('liked')) return <Heart className="h-5 w-5 text-rose-500" />;
-        if (verb.includes('mentioned')) return <AtSign className="h-5 w-5 text-sky-500" />;
-        if (verb.includes('replied')) return <MessageSquare className="h-5 w-5 text-emerald-500" />;
-        if (verb.includes('reposted') || verb.includes('quoted')) return <Repeat className="h-5 w-5 text-emerald-500" />;
-        if (verb.includes('invited') || verb.includes('accepted')) return <Users className="h-5 w-5 text-amber-500" />;
-        if (verb.includes('requested to follow')) return <Lock className="h-5 w-5 text-indigo-400" />;
-        if (verb.includes('followed') || verb.includes('following')) return <UserPlus className="h-5 w-5 text-indigo-500" />;
-        return <Star className="h-5 w-5 text-yellow-500" />;
-    };
+    const isSelfActor = (notif: Notification) => !!user && notif.actor.id === user.id;
 
     const filteredNotifications = notifications.filter(notif => {
         if (filter === 'all') return true;
-        if (filter === 'mentions') return notif.verb.includes('mentioned') || notif.verb.includes('replied');
-        if (filter === 'verified') return notif.actor.is_verified;
-        if (filter === 'follow_requests') return notif.verb.includes('requested to follow');
+        const type = resolveNotificationType(notif.verb, isSelfActor(notif));
+        const group = getFilterGroup(type);
+        if (filter === 'mentions') return group === 'mentions';
+        if (filter === 'follow_requests') return group === 'follow_requests';
         return true;
     });
 
@@ -200,13 +131,15 @@ export default function NotificationsPage() {
         return getRelativeTime(dateString, language);
     };
 
-    const pendingRequestCount = followRequests.length;
+    const pendingRequestCount = notifications.filter(
+        n => getFilterGroup(resolveNotificationType(n.verb, isSelfActor(n))) === 'follow_requests'
+    ).length;
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
 
-            <main className="container mx-auto px-4 pt-6">
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Sidebar */}
                     <div className="hidden lg:block col-span-3">
@@ -215,31 +148,35 @@ export default function NotificationsPage() {
 
                     {/* Main Content */}
                     <div className="col-span-12 lg:col-span-6">
-                        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 min-h-[calc(100vh-6rem)]">
+                        <div className="min-h-[calc(100vh-6rem)] lg:bg-zinc-900 lg:rounded-2xl lg:border lg:border-zinc-800">
 
                             {/* Header */}
-                            <div className="p-4 border-b border-zinc-800 sticky top-0 bg-zinc-900/95 backdrop-blur-sm z-10 rounded-t-2xl">
+                            <div className="p-4 border-b border-zinc-800 sticky top-16 bg-zinc-950/95 lg:bg-zinc-900/95 backdrop-blur-sm z-10 lg:rounded-t-2xl">
                                 <h1 className="text-xl font-bold mb-4">{t('notifications')}</h1>
 
-                                {/* Filters */}
-                                <div className="flex gap-2 flex-wrap">
+                                {/* Filters — single scrollable row on mobile, wraps on desktop.
+                                    These only ever filter which notifications show; the row markup
+                                    below is identical regardless of which filter is active. */}
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5 lg:flex-wrap lg:overflow-visible lg:pb-0">
                                     {[
                                         { key: 'all', label: t('all') },
                                         { key: 'follow_requests', label: t('followRequests') },
                                         { key: 'mentions', label: t('mentions') },
-                                        { key: 'verified', label: t('verified') },
                                     ].map((f) => (
                                         <button
                                             key={f.key}
                                             onClick={() => setFilter(f.key as any)}
-                                            className={`px-4 py-1.5 rounded-full text-sm font-bold capitalize transition-all flex items-center gap-1.5 ${filter === f.key
+                                            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold capitalize transition-all flex items-center gap-1.5 ${filter === f.key
                                                 ? 'bg-emerald-600 text-white'
                                                 : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
                                                 }`}
                                         >
                                             {f.label}
                                             {f.key === 'follow_requests' && pendingRequestCount > 0 && (
-                                                <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded-full px-1.5 py-0.5 border border-emerald-500/30">
+                                                <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 border ${filter === f.key
+                                                    ? 'bg-white/20 text-white border-white/30'
+                                                    : 'bg-zinc-700/50 text-zinc-400 border-zinc-600/50'
+                                                    }`}>
                                                     {pendingRequestCount}
                                                 </span>
                                             )}
@@ -248,182 +185,124 @@ export default function NotificationsPage() {
                                 </div>
                             </div>
 
-                            {/* Follow Requests Tab Content */}
-                            {filter === 'follow_requests' ? (
-                                <div className="divide-y divide-zinc-800">
-                                    {isRequestsLoading ? (
-                                        <div className="flex justify-center py-12">
-                                            <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
-                                        </div>
-                                    ) : followRequests.length > 0 ? (
-                                        followRequests.map((reqUser) => {
-                                            const isProcessing = processingRequest === reqUser.username;
-                                            return (
-                                                <div
-                                                    key={reqUser.id}
-                                                    className="p-4 flex items-center justify-between gap-4 hover:bg-zinc-800/20 transition-colors"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <Link href={`/${reqUser.username}`} className="h-11 w-11 rounded-full overflow-hidden bg-zinc-800 hover:ring-2 hover:ring-emerald-500 transition-all flex-shrink-0">
-                                                            <img
-                                                                src={getImageUrl(reqUser.avatar, reqUser.username)}
-                                                                alt={reqUser.username}
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </Link>
-                                                        <div>
-                                                            <Link href={`/${reqUser.username}`} className="font-bold text-white hover:underline block">
-                                                                {reqUser.real_name || reqUser.username}
-                                                            </Link>
-                                                            <span className="text-sm text-zinc-500">@{reqUser.username}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        <button
-                                                            onClick={(e) => handleApproveFollowRequest(e, reqUser.username)}
-                                                            disabled={isProcessing}
-                                                            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all cursor-pointer"
-                                                        >
-                                                            {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                                                            {t('accept')}
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => handleRejectFollowRequest(e, reqUser.username)}
-                                                            disabled={isProcessing}
-                                                            className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 font-bold px-4 py-2 rounded-xl text-sm border border-zinc-700 transition-all cursor-pointer"
-                                                        >
-                                                            {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                                                            {t('decline')}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    ) : (
-                                        <div className="p-12 text-center text-zinc-500">
-                                            <div className="inline-block p-4 rounded-full bg-zinc-800/50 mb-4">
-                                                <UserPlus className="h-8 w-8 text-zinc-600" />
-                                            </div>
-                                            <p className="font-medium">{t('noPendingFollowRequests')}</p>
-                                            <p className="text-sm text-zinc-600 mt-1">{t('noPendingFollowRequestsDesc')}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                /* Standard Notification List */
-                                <div className="divide-y divide-zinc-800">
-                                    {isLoading ? (
-                                        <div className="flex justify-center py-12">
-                                            <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
-                                        </div>
-                                    ) : filteredNotifications.length > 0 ? (
-                                        filteredNotifications.map((notif) => {
-                                            const isFollowRequest = notif.verb.includes('requested to follow');
-                                            const isProcessing = processingRequest === notif.actor.username;
-                                            // Follow requests → navigate to sender's profile; others → navigate to target_url
-                                            const clickTarget = isFollowRequest ? `/${notif.actor.username}` : (notif.target_url || `/${notif.actor.username}`);
+                            {/* Notification List — one row template shared by every filter/type */}
+                            <div className="divide-y divide-zinc-800">
+                                {isLoading ? (
+                                    <div className="flex justify-center py-12">
+                                        <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+                                    </div>
+                                ) : filteredNotifications.length > 0 ? (
+                                    filteredNotifications.map((notif) => {
+                                        const type = resolveNotificationType(notif.verb, isSelfActor(notif));
+                                        const text = getNotificationText(type, notif.verb, t);
+                                        const isSystem = isSystemNotification(type);
+                                        const isFollowRequest = type === 'follow_request';
+                                        const isProcessing = processingRequest === notif.actor.username;
 
+                                        const clickTarget = isSystem
+                                            ? getSystemTargetUrl(type, notif.actor.username, notif.target_url)
+                                            : isFollowRequest
+                                                ? `/${notif.actor.username}`
+                                                : (notif.target_url || `/${notif.actor.username}`);
+
+                                        if (isSystem) {
                                             return (
                                                 <div
                                                     key={notif.id}
                                                     role="link"
                                                     tabIndex={0}
-                                                    className={`p-4 flex gap-4 transition-colors cursor-pointer hover:bg-zinc-800/30 ${!notif.is_read ? 'bg-zinc-800/20' : ''}`}
-                                                    onClick={(e) => {
-                                                        const target = e.target as HTMLElement;
-                                                        if (target.closest('button') || target.closest('a')) return;
-                                                        router.push(clickTarget);
-                                                    }}
+                                                    className="p-4 flex gap-4 transition-colors cursor-pointer hover:bg-zinc-800/30"
+                                                    onClick={() => { if (clickTarget) router.push(clickTarget); }}
                                                 >
-                                                    {/* Icon Column */}
-                                                    <div className="pt-1">
-                                                        {getIcon(notif.verb)}
-                                                    </div>
+                                                    <p className="text-zinc-300 flex-1">
+                                                        {text}. <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
 
-                                                    {/* Content Column */}
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <Link href={`/${notif.actor.username}`} className="h-8 w-8 rounded-full overflow-hidden bg-zinc-800 group hover:ring-2 hover:ring-emerald-500 transition-all">
-                                                                <img
-                                                                    src={getImageUrl(notif.actor.avatar, notif.actor.username)}
-                                                                    alt={notif.actor.username}
-                                                                    className="w-full h-full object-cover"
-                                                                />
-                                                            </Link>
+                                        return (
+                                            <div
+                                                key={notif.id}
+                                                role="link"
+                                                tabIndex={0}
+                                                className="p-4 flex items-start gap-4 transition-colors cursor-pointer hover:bg-zinc-800/30"
+                                                onClick={(e) => {
+                                                    const target = e.target as HTMLElement;
+                                                    if (target.closest('button') || target.closest('a')) return;
+                                                    if (clickTarget) router.push(clickTarget);
+                                                }}
+                                            >
+                                                <Link href={`/${notif.actor.username}`} className="h-11 w-11 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0 hover:ring-2 hover:ring-emerald-500 transition-all">
+                                                    <img
+                                                        src={getImageUrl(notif.actor.avatar, notif.actor.username)}
+                                                        alt={notif.actor.username}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                </Link>
 
-                                                            <div className="flex flex-wrap items-baseline gap-1">
-                                                                <Link href={`/${notif.actor.username}`} className="font-bold text-white hover:underline flex items-center gap-1">
-                                                                    {notif.actor.username}
-                                                                    {notif.actor.is_verified && <CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />}
-                                                                </Link>
-                                                                <span className="text-zinc-400">{getTranslatedVerb(notif.verb)}</span>
-                                                            </div>
+                                                {/* Content Column */}
+                                                <div className="flex-1">
+                                                    <p>
+                                                        <Link href={`/${notif.actor.username}`} className="font-bold text-white hover:underline">
+                                                            {notif.actor.username}
+                                                        </Link>{' '}
+                                                        <span className="text-zinc-400">{text}.</span>{' '}
+                                                        <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
+                                                    </p>
+
+                                                    {/* Action Buttons for Project/Organisation/Group Invites */}
+                                                    {isInviteType(type) && (
+                                                        <div className="mt-3 flex gap-2">
+                                                            <button
+                                                                onClick={(e) => handleAcceptInvite(e, notif.target_id, type)}
+                                                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
+                                                            >
+                                                                {t('accept')}
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => handleDeclineInvite(e, notif.target_id, type)}
+                                                                className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700"
+                                                            >
+                                                                {t('decline')}
+                                                            </button>
                                                         </div>
+                                                    )}
 
-                                                        {/* Action Buttons for Project & Organisation Invites */}
-                                                        {notif.verb.toLowerCase().includes('invited') && (
-                                                            <div className="mt-3 flex gap-2 pl-10 mb-2">
-                                                                <button
-                                                                    onClick={(e) => handleAcceptInvite(e, notif.target_id, notif.verb)}
-                                                                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
-                                                                >
-                                                                    {t('accept')}
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => handleDeclineInvite(e, notif.target_id, notif.verb)}
-                                                                    className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700"
-                                                                >
-                                                                    {t('decline')}
-                                                                </button>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Action Buttons for Follow Requests */}
-                                                        {isFollowRequest && (
-                                                            <div className="mt-3 flex gap-2 pl-10 mb-2">
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleApproveFollowRequest(e, notif.actor.username); }}
-                                                                    disabled={isProcessing}
-                                                                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition-all cursor-pointer"
-                                                                >
-                                                                    {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                                                                    {t('accept')}
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleRejectFollowRequest(e, notif.actor.username); }}
-                                                                    disabled={isProcessing}
-                                                                    className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700 cursor-pointer"
-                                                                >
-                                                                    {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                                                                    {t('decline')}
-                                                                </button>
-                                                            </div>
-                                                        )}
-
-                                                        <div className="text-xs text-zinc-500 font-medium pl-10">
-                                                            {formatTime(notif.created_at)}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Unread Indicator */}
-                                                    {!notif.is_read && (
-                                                        <div className="pt-2">
-                                                            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                                                    {/* Action Buttons for Follow Requests */}
+                                                    {isFollowRequest && (
+                                                        <div className="mt-3 flex gap-2">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleApproveFollowRequest(e, notif.actor.username); }}
+                                                                disabled={isProcessing}
+                                                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition-all cursor-pointer"
+                                                            >
+                                                                {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                                                                {t('accept')}
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleRejectFollowRequest(e, notif.actor.username); }}
+                                                                disabled={isProcessing}
+                                                                className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm transition-colors border border-zinc-700 cursor-pointer"
+                                                            >
+                                                                {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                                                                {t('decline')}
+                                                            </button>
                                                         </div>
                                                     )}
                                                 </div>
-                                            );
-                                        })
-                                    ) : (
-                                        <div className="p-12 text-center text-zinc-500">
-                                            <div className="inline-block p-4 rounded-full bg-zinc-800/50 mb-4">
-                                                <Bell className="h-8 w-8 text-zinc-600" />
                                             </div>
-                                            <p className="font-medium">{t('noNotifications')}</p>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="p-12 text-center text-zinc-500">
+                                        <div className="inline-block p-4 rounded-full bg-zinc-800/50 mb-4">
+                                            <Bell className="h-8 w-8 text-zinc-600" />
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                        <p className="font-medium">{t('noNotifications')}</p>
+                                    </div>
+                                )}
+                            </div>
 
                         </div>
                     </div>

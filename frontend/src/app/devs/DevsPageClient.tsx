@@ -11,7 +11,8 @@ import KanbanBoard from '@/components/devs/KanbanBoard';
 import GDDHub from '@/components/devs/GDDHub';
 import AssetRegistry from '@/components/devs/AssetRegistry';
 import LocalisationManager from '@/components/devs/LocalisationManager';
-import TeamManagement from '@/components/devs/TeamManagement';
+import TeamRoles from '@/components/devs/TeamRoles';
+import PlaytestFeedback from '@/components/devs/PlaytestFeedback';
 import WorkspaceSettings from '@/components/devs/WorkspaceSettings';
 import PostCard from '@/components/PostCard';
 import ProjectCard from '@/components/ProjectCard';
@@ -95,9 +96,13 @@ export default function DevsPageClient() {
             case 'assets':
                 return <AssetRegistry />;
             case 'localisation':
+                // Still under active development — hidden in production, same as /collabs and /invest.
+                if (process.env.NODE_ENV === 'production') return <WorkspaceDashboard />;
                 return <LocalisationManager />;
             case 'members':
-                return <TeamManagement />;
+                return <TeamRoles />;
+            case 'playtest':
+                return <PlaytestFeedback />;
             case 'settings':
                 return <WorkspaceSettings />;
 

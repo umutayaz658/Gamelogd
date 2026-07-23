@@ -130,12 +130,15 @@ function VerifyEmailForm() {
 
             setSuccessMsg('Verification successful! Logging in...');
 
-            // Login user via AuthContext to fetch details and set cookie
+            // login() navigates away on success but only toasts (never throws or navigates) if
+            // the follow-up /users/me/ fetch fails — without the finally below, that left this
+            // page stuck showing "Logging in..." forever with the button disabled.
             const token = res.data.token;
             await login(token);
-
+            setSuccessMsg('Verification successful! If you are not redirected automatically, please log in.');
         } catch (err: any) {
             setError(err.response?.data?.error || 'Verification failed. Please check the code you entered.');
+        } finally {
             setIsSubmitting(false);
         }
     };

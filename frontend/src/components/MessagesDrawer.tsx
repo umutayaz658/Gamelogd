@@ -16,6 +16,7 @@ import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
 
 // API Data Types
 interface MessageReaction {
@@ -101,8 +102,7 @@ export default function MessagesDrawer() {
     const { user } = useAuth();
     const { unreadMessages } = useNotifications();
     const { t } = useTranslation();
-
-    if (pathname?.startsWith('/messages')) return null;
+    const toast = useToast();
 
     const [isOpen, setIsOpen] = useState(false);
     const [activeChatId, setActiveChatId] = useState<number | null>(null);
@@ -111,6 +111,7 @@ export default function MessagesDrawer() {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const lastMessageIdRef = useRef<number | null>(null);
 
     // Confirm Modal State
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -151,7 +152,7 @@ export default function MessagesDrawer() {
         if (!file) return;
         
         if (file.size > 10 * 1024 * 1024) {
-            alert("File size must be less than 10MB");
+            toast.error("File size must be less than 10MB");
             return;
         }
         
@@ -187,28 +188,55 @@ export default function MessagesDrawer() {
     useEffect(() => {
         let isMounted = true;
         let pollInterval: NodeJS.Timeout;
+        lastMessageIdRef.current = null;
 
-        const fetchMessages = async (showLoader = false) => {
+        const fetchInitial = async () => {
             if (!activeChatId) return;
-            if (showLoader) setIsLoading(true);
+            setIsLoading(true);
             try {
                 const res = await api.get(`/messages/?conversation_id=${activeChatId}`);
                 if (isMounted) {
-                    setMessages(res.data);
+                    const results: Message[] = res.data.results;
+                    setMessages(results);
+                    lastMessageIdRef.current = results.length > 0 ? results[results.length - 1].id : null;
                 }
             } catch (error) {
                 console.error("Failed to fetch messages:", error);
             } finally {
-                if (isMounted && showLoader) setIsLoading(false);
+                if (isMounted) setIsLoading(false);
+            }
+        };
+
+        // Polling only fetches messages newer than the last one we know about — a chat's
+        // full history used to be refetched wholesale every 3 seconds.
+        const fetchNewMessages = async () => {
+            if (!activeChatId) return;
+            try {
+                const url = lastMessageIdRef.current != null
+                    ? `/messages/?conversation_id=${activeChatId}&after_id=${lastMessageIdRef.current}`
+                    : `/messages/?conversation_id=${activeChatId}`;
+                const res = await api.get(url);
+                if (!isMounted) return;
+                const newOnes: Message[] = res.data.results;
+                if (newOnes.length > 0) {
+                    setMessages(prev => {
+                        if (lastMessageIdRef.current == null) return newOnes;
+                        // Defensive dedup — guards against ever double-appending a message
+                        // that was already added optimistically (e.g. by a local send).
+                        const existingIds = new Set(prev.map(m => m.id));
+                        return [...prev, ...newOnes.filter(m => !existingIds.has(m.id))];
+                    });
+                    lastMessageIdRef.current = newOnes[newOnes.length - 1].id;
+                }
+            } catch (error) {
+                console.error("Failed to poll messages:", error);
             }
         };
 
         if (activeChatId) {
-            fetchMessages(true);
+            fetchInitial();
             // Poll every 3 seconds
-            pollInterval = setInterval(() => {
-                fetchMessages(false);
-            }, 3000);
+            pollInterval = setInterval(fetchNewMessages, 3000);
         }
 
         return () => {
@@ -258,6 +286,7 @@ export default function MessagesDrawer() {
             }
 
             setMessages(prev => [...prev, resData]);
+            lastMessageIdRef.current = resData.id;
             setInputText('');
             clearAttachments();
             setReplyingTo(null);
@@ -365,10 +394,10 @@ export default function MessagesDrawer() {
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
 
-    if (!user) return null;
+    if (!user || pathname?.startsWith('/messages')) return null;
 
     return (
-        <div className="fixed bottom-0 right-4 z-50 hidden md:flex flex-col items-end">
+        <div className="fixed bottom-0 right-4 z-50 hidden lg:flex flex-col items-end">
 
             {/* Drawer Container */}
             <div
@@ -377,8 +406,8 @@ export default function MessagesDrawer() {
                 }`}
             >
                 <div
-                    className={`h-12 bg-zinc-900 flex items-center justify-between px-4 cursor-pointer hover:bg-zinc-850 transition-colors ${
-                        isOpen ? 'border-b border-zinc-850' : ''
+                    className={`h-12 bg-zinc-900 flex items-center justify-between px-4 cursor-pointer hover:bg-zinc-800 transition-colors ${
+                        isOpen ? 'border-b border-zinc-800' : ''
                     }`}
                     onClick={() => !activeChatId && setIsOpen(!isOpen)}
                 >
@@ -463,7 +492,7 @@ export default function MessagesDrawer() {
                                                                 </button>
                                                                 
                                                                 {activeEmojiMenuMsgId === msg.id && (
-                                                                    <div className="absolute bottom-6 right-0 bg-zinc-900 border border-zinc-850 rounded-full py-1 px-1.5 flex gap-1 shadow-2xl z-50">
+                                                                    <div className="absolute bottom-6 right-0 bg-zinc-900 border border-zinc-800 rounded-full py-1 px-1.5 flex gap-1 shadow-2xl z-50">
                                                                         {QUICK_EMOJIS.map(emoji => (
                                                                             <button
                                                                                 key={emoji}
@@ -508,7 +537,7 @@ export default function MessagesDrawer() {
 
                                                             {/* Content */}
                                                             {msg.is_deleted ? (
-                                                                <span className="italic text-zinc-550">This message was deleted</span>
+                                                                <span className="italic text-zinc-500">This message was deleted</span>
                                                             ) : (
                                                                 <span>{msg.content}</span>
                                                             )}
@@ -561,12 +590,12 @@ export default function MessagesDrawer() {
 
                                 {/* Reply Preview Box */}
                                 {replyingTo && (
-                                    <div className="px-3 py-1.5 bg-zinc-900 border-t border-zinc-850 flex items-center justify-between animate-in slide-in-from-bottom-1 duration-150">
+                                    <div className="px-3 py-1.5 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between animate-in slide-in-from-bottom-1 duration-150">
                                         <div className="min-w-0">
                                             <span className="text-[9px] font-bold text-emerald-500">Replying to @{replyingTo.sender.username}</span>
                                             <p className="text-[10px] text-zinc-400 truncate">{replyingTo.content || 'Attachment'}</p>
                                         </div>
-                                        <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-800 rounded-full text-zinc-550 hover:text-white">
+                                        <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white">
                                             <X className="h-3.5 w-3.5" />
                                         </button>
                                     </div>
@@ -574,7 +603,7 @@ export default function MessagesDrawer() {
 
                                 {/* WhatsApp-style Pending Invite Flow */}
                                 {activeChat.my_membership_status === 'pending' ? (
-                                    <div className="p-4 border-t border-zinc-850 bg-zinc-900 text-center flex flex-col gap-2">
+                                    <div className="p-4 border-t border-zinc-800 bg-zinc-900 text-center flex flex-col gap-2">
                                         <div className="text-xs font-bold text-zinc-400 mb-1 flex items-center justify-center gap-1.5">
                                             <Shield className="h-4 w-4 text-emerald-500" />
                                             <span>Group Invitation</span>
@@ -591,7 +620,7 @@ export default function MessagesDrawer() {
                                             </button>
                                             <button
                                                 onClick={() => handleDeclineInvite(activeChat.id)}
-                                                className="flex-1 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-lg text-xs font-bold transition-all"
+                                                className="flex-1 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold transition-all"
                                             >
                                                 Decline
                                             </button>
@@ -646,7 +675,7 @@ export default function MessagesDrawer() {
 
                                         {/* Image/GIF Previews */}
                                         {(selectedGif || imagePreview) && (
-                                            <div className="mt-2 relative inline-block bg-black/40 p-1 rounded-lg border border-zinc-850">
+                                            <div className="mt-2 relative inline-block bg-black/40 p-1 rounded-lg border border-zinc-800">
                                                 <img src={imagePreview || selectedGif!} alt="Preview" className="h-14 rounded object-cover" />
                                                 <button type="button" onClick={clearAttachments} className="absolute -top-1.5 -right-1.5 bg-zinc-950 text-zinc-450 border border-zinc-800 hover:text-white rounded-full p-0.5">
                                                     <X className="h-3 w-3" />
@@ -668,7 +697,7 @@ export default function MessagesDrawer() {
                                         )}
                                         {showGifPicker && (
                                             <div className="absolute bottom-14 left-0 z-50 w-full p-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl">
-                                                <div className="flex items-center justify-between mb-2 pb-1 border-b border-zinc-850">
+                                                <div className="flex items-center justify-between mb-2 pb-1 border-b border-zinc-800">
                                                     <span className="text-[10px] font-bold text-zinc-400">Select GIF</span>
                                                     <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white">
                                                         <X className="h-3 w-3" />
@@ -711,7 +740,7 @@ export default function MessagesDrawer() {
                                                     />
                                                 </div>
                                                 {chat.is_group && (
-                                                    <span className="absolute -bottom-1 -right-1 bg-zinc-900 border border-zinc-850 text-[8px] px-1 rounded font-bold text-zinc-500">
+                                                    <span className="absolute -bottom-1 -right-1 bg-zinc-900 border border-zinc-800 text-[8px] px-1 rounded font-bold text-zinc-500">
                                                         GP
                                                     </span>
                                                 )}

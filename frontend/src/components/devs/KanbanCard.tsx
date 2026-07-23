@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Flag, User, Tag, Trash2, CheckSquare, Square, Calendar, UserPlus } from 'lucide-react';
-import { Task, TaskPriority, TaskCategory, CATEGORY_EMOJI, PRIORITY_COLOR } from './WorkspaceTypes';
+import { Flag, User, Trash2, CheckSquare, Square, Calendar, UserPlus } from 'lucide-react';
+import { Task, PRIORITY_COLOR, DEFAULT_KANBAN_CATEGORIES } from './WorkspaceTypes';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -14,63 +14,11 @@ interface KanbanCardProps {
     onClick: () => void;
 }
 
-const getCategoryEmoji = (cat: string) => {
-    const emojis: Record<string, string> = {
-        code: '💻', art: '🎨', audio: '🎵', qa: '🧪', other: '📌'
-    };
-    if (emojis[cat] !== undefined) return emojis[cat];
-    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u;
-    const match = cat.match(emojiRegex);
-    return match ? match[0] : '';
-};
-
-const getCategoryLabel = (cat: string) => {
-    const labels: Record<string, string> = {
-        code: 'Code', art: 'Art', audio: 'Audio', qa: 'QA', other: 'Other'
-    };
-    if (labels[cat] !== undefined) return labels[cat];
-    
-    let clean = cat;
-    if (cat.includes('|')) {
-        clean = cat.split('|')[0];
-    }
-    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
-    const label = clean.replace(emojiRegex, '');
-    return label.charAt(0).toUpperCase() + label.slice(1);
-};
-
-const getCategoryColor = (cat: string) => {
-    const colors: Record<string, string> = {
-        code: 'text-blue-450',
-        art: 'text-violet-450',
-        audio: 'text-emerald-450',
-        qa: 'text-orange-405',
-        other: 'text-zinc-400',
-    };
-    if (colors[cat] !== undefined) return colors[cat];
-    
-    if (cat.includes('|')) {
-        const parts = cat.split('|');
-        const colorName = parts[1];
-        const colorMap: Record<string, string> = {
-            blue: 'text-blue-405',
-            violet: 'text-violet-405',
-            amber: 'text-amber-455',
-            pink: 'text-pink-405',
-            emerald: 'text-emerald-450',
-            cyan: 'text-cyan-405',
-            zinc: 'text-zinc-400',
-            red: 'text-red-405',
-            orange: 'text-orange-405',
-        };
-        if (colorMap[colorName]) return colorMap[colorName];
-    }
-    return 'text-zinc-400';
-};
-
 export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps) {
-    const { data, setTasks, activeWorkspace, activeBoard } = useWorkspace();
+    const { data, setTasks, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
+    const categories = data.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES;
+    const taskCategory = categories.find((c) => c.id === task.category);
     const [projectMembers, setProjectMembers] = useState<{ username: string; real_name?: string }[]>([]);
     const [showAssignDropdown, setShowAssignDropdown] = useState(false);
 
@@ -97,16 +45,9 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
             return projectMembers;
         }
         const orgMembers = activeWorkspace.org?.members ?? [];
-        if (orgMembers.length > 0) {
-            return orgMembers.map((m: any) => ({
-                username: m.user.username,
-                real_name: m.user.real_name || m.user.username,
-            }));
-        }
-        const localTeam = data?.teamMembers ?? [];
-        return localTeam.map((m) => ({
-            username: m.username,
-            real_name: m.username,
+        return orgMembers.map((m: any) => ({
+            username: m.user.username,
+            real_name: m.user.real_name || m.user.username,
         }));
     };
 
@@ -130,17 +71,19 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
         >
             {/* Category row */}
             <div className="flex items-center justify-between">
-                <span className={cn('text-[11px] font-bold flex items-center gap-1', getCategoryColor(task.category))}>
-                    {getCategoryEmoji(task.category) ? <span>{getCategoryEmoji(task.category)}</span> : null}
-                    <span>{getCategoryLabel(task.category)}</span>
+                <span className={cn('text-[11px] font-bold flex items-center gap-1', taskCategory?.color ?? 'text-zinc-400')}>
+                    {taskCategory?.emoji && <span>{taskCategory.emoji}</span>}
+                    <span>{taskCategory?.label ?? task.category}</span>
                 </span>
-                <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
-                    className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 p-0.5 rounded transition-all"
-                    aria-label="Delete task"
-                >
-                    <Trash2 className="w-3 h-3" />
-                </button>
+                {hasPermission('kanban.task.delete') && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                        className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 p-0.5 rounded transition-all"
+                        aria-label="Delete task"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                )}
             </div>
 
             {/* Title */}

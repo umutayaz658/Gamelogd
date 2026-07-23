@@ -88,10 +88,25 @@ class User(AbstractUser):
     platforms = models.JSONField(default=list, blank=True)  # Stores ['PC', 'PS5', etc.]
     top_favorites = models.JSONField(default=list, blank=True)  # Stores [{'slot': 0, 'game_id': 123, ...}]
 
-    # Steam Integration
+    # Steam & Xbox Integration
     steam_id = models.CharField(max_length=20, blank=True)
+    xbox_gamertag = models.CharField(max_length=50, blank=True, null=True)
+    
     settings = models.JSONField(default=default_user_settings, blank=True)
     dnd_mode = models.BooleanField(default=False)
+
+    # Denormalized mirror of settings['privateProfile'], kept in sync in save(). Indexed so the
+    # feed/list "exclude private profiles I don't follow" filter can use a plain boolean column
+    # instead of a settings__privateProfile JSON lookup that full-scans the users table on every
+    # feed/post request.
+    is_private = models.BooleanField(default=False, db_index=True)
+
+    def save(self, *args, **kwargs):
+        self.is_private = bool((self.settings or {}).get('privateProfile', False))
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'settings' in update_fields and 'is_private' not in update_fields:
+            kwargs['update_fields'] = list(update_fields) + ['is_private']
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.username
@@ -107,8 +122,10 @@ class LibraryEntry(models.Model):
     )
     user = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='library', on_delete=models.CASCADE)
     game = models.ForeignKey('core.Game', related_name='library_entries', on_delete=models.CASCADE)
-    playtime_forever = models.IntegerField(default=0) # In minutes
-    platform = models.CharField(max_length=50, default='Steam')
+    steam_playtime = models.IntegerField(default=0) # In minutes
+    xbox_playtime = models.IntegerField(default=0) # In minutes
+    playtime_forever = models.IntegerField(default=0) # Total combined playtime
+    platform = models.CharField(max_length=100, default='Steam')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='unplayed', db_index=True)
     added_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -187,22 +204,35 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 target=instance
             )
         
-        # 3. Handle mentions
+        # 3. Handle mentions — resolve all usernames in one query and bulk-create the
+        # notifications, instead of a User.objects.get() + Notification.objects.create() pair
+        # per @mention (an unbounded query loop on a long post with many mentions).
         import re
-        mentions = re.findall(r'@([a-zA-Z0-9_-]+)', instance.content or '')
-        for username in set(mentions):
-            if username.lower() == instance.user.username.lower():
-                continue
-            try:
-                mentioned_user = User.objects.get(username__iexact=username)
-                Notification.objects.create(
-                    recipient=mentioned_user,
+        from django.db.models import Q
+        from django.contrib.contenttypes.models import ContentType
+        mentions = set(re.findall(r'@([a-zA-Z0-9_-]+)', instance.content or ''))
+        mentions.discard(instance.user.username)
+        # Cap so a post crafted with dozens of @mentions can't be used to spam notifications.
+        mentions = list(mentions)[:20]
+        if mentions:
+            username_filter = Q()
+            for username in mentions:
+                username_filter |= Q(username__iexact=username)
+            mentioned_users = User.objects.filter(username_filter).exclude(
+                username__iexact=instance.user.username
+            ).distinct()
+
+            content_type = ContentType.objects.get_for_model(instance)
+            Notification.objects.bulk_create([
+                Notification(
+                    recipient=u,
                     actor=instance.user,
                     verb='mentioned you in a post',
-                    target=instance
+                    target_type=content_type,
+                    target_id=instance.id,
                 )
-            except User.DoesNotExist:
-                pass
+                for u in mentioned_users
+            ])
 
 @receiver(post_save, sender='core.Like')
 def create_like_notification(sender, instance, created, **kwargs):
@@ -288,6 +318,7 @@ class Message(models.Model):
 
     # Message states
     is_pinned = models.BooleanField(default=False)
+    pinned_at = models.DateTimeField(null=True, blank=True)
     is_edited = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
@@ -356,6 +387,13 @@ class PendingRegistration(models.Model):
     registration_data = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
+    # Wrong-code attempts against this code; used to lock out brute force even from
+    # distributed IPs that would slip past request throttling.
+    failed_attempts = models.PositiveIntegerField(default=0)
+
+    # After this many wrong codes the pending registration is invalidated and the user
+    # must request a fresh code.
+    MAX_VERIFY_ATTEMPTS = 5
 
     def save(self, *args, **kwargs):
         if not self.expires_at:
@@ -372,6 +410,36 @@ class PendingRegistration(models.Model):
 
     def __str__(self):
         return f"Pending registration for {self.email} (Code: {self.code})"
+
+
+class PendingEmailChange(models.Model):
+    """One pending email-change request per user, verified the same way
+    PendingRegistration verifies a fresh signup: a 6-digit code sent to the new
+    address, with the same expiry + brute-force lockout behavior."""
+    user = models.OneToOneField(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='pending_email_change')
+    new_email = models.EmailField()
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    failed_attempts = models.PositiveIntegerField(default=0)
+
+    MAX_VERIFY_ATTEMPTS = 5
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=5)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def generate_code(cls):
+        import secrets
+        return "".join(secrets.choice("0123456789") for _ in range(6))
+
+    def __str__(self):
+        return f"Pending email change for {self.user.username} -> {self.new_email} (Code: {self.code})"
 
 
 class Block(models.Model):

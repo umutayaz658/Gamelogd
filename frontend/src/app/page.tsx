@@ -41,7 +41,7 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
       <Navbar />
 
-      <main className="container mx-auto px-4 pt-6">
+      <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6">
         <div className="grid grid-cols-12 gap-6">
           {/* Left Sidebar - Hidden on mobile/tablet */}
           <div className="hidden lg:block col-span-3">

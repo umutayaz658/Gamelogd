@@ -2,14 +2,33 @@ import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send } from 'lucide-react';
 import { Post } from '@/types';
-import { getImageUrl, getRelativeTime } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, formatCount } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import ImageModal from '@/components/modals/ImageModal';
+import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
+import ReviewCard from '@/components/ReviewCard';
 import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
+
+// Normalizes a post's various legacy/modern media fields into one ordered array —
+// used for both the main media block and the nested quote/repost embed card.
+const getPostMediaItems = (p: Pick<Post, 'media' | 'media_file' | 'image' | 'media_type' | 'gif_url'>): GridMediaItem[] => {
+    if (p.media && p.media.length > 0) {
+        return p.media.map(m => ({ url: getImageUrl(m.file), type: m.media_type }));
+    }
+    if (p.media_file || p.image) {
+        return [{ url: getImageUrl(p.media_file || p.image || ''), type: p.media_type === 'video' ? 'video' : 'image' }];
+    }
+    if (p.gif_url) {
+        return [{ url: p.gif_url, type: 'image' }];
+    }
+    return [];
+};
 
 const renderContentWithLinks = (content: string | undefined) => {
     if (!content) return null;
@@ -76,13 +95,19 @@ interface PostCardProps {
     post: Post;
     isDetailView?: boolean;
     hideNewsQuote?: boolean;
+    // Set when this card is being rendered as the reposted original inside a plain
+    // "X reposted" wrapper — renders the label inside this card's own bordered
+    // container (at the top) instead of the caller stacking a separate div above it.
+    repostedBy?: { name: string };
 }
 
-export default function PostCard({ post, isDetailView = false, hideNewsQuote = false }: PostCardProps) {
+export default function PostCard({ post, isDetailView = false, hideNewsQuote = false, repostedBy }: PostCardProps) {
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
     const { t, language } = useTranslation();
+    const toast = useToast();
+    const confirm = useConfirm();
 
     const author = post.author_details || {
         type: 'user',
@@ -142,11 +167,15 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const [isImageModalOpen, setIsImageModalOpen] = useState(false);
     const [modalImages, setModalImages] = useState<string[]>([]);
     const [modalInitialIndex, setModalInitialIndex] = useState(0);
+    // Which post the open modal's thread panel belongs to — defaults to this card's own
+    // post, but the nested quote embed passes `post.repost_details` so clicking one of
+    // ITS images opens a modal for the quoted post, not this wrapping quote-repost.
+    const [modalPost, setModalPost] = useState<Post>(post);
 
-    const openImageModal = (images: string[], index: number, e: React.MouseEvent) => {
-        e.stopPropagation();
+    const openImageModal = (images: string[], index: number, contextPost: Post = post) => {
         setModalImages(images);
         setModalInitialIndex(index);
+        setModalPost(contextPost);
         setIsImageModalOpen(true);
     };
 
@@ -171,20 +200,23 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setLikesCount(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
         setIsBookmarked(post.is_bookmarked || false);
         setBookmarksCount(post.bookmarks_count || 0);
+        setIsReposted(post.is_reposted || false);
+        setRepostsCount(post.reposts_count || 0);
     }, [post]);
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!user) return router.push('/login');
-        
+
+        const wasLiked = isLiked;
         try {
-            setIsLiked(!isLiked);
-            setLikesCount(prev => Math.max(0, isLiked ? prev - 1 : prev + 1));
+            setIsLiked(!wasLiked);
+            setLikesCount(prev => Math.max(0, wasLiked ? prev - 1 : prev + 1));
             await api.post('/likes/', { post: post.id });
         } catch (error) {
             console.error('Failed to toggle like', error);
-            setIsLiked(isLiked);
-            setLikesCount(prev => Math.max(0, isLiked ? prev + 1 : prev - 1));
+            setIsLiked(wasLiked);
+            setLikesCount(prev => Math.max(0, wasLiked ? prev + 1 : prev - 1));
         }
     };
 
@@ -205,7 +237,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm("Are you sure you want to delete this post?")) return;
+        if (!(await confirm({ message: "Are you sure you want to delete this post?", confirmText: 'Delete', isDanger: true }))) return;
         
         try {
             await api.delete(`/posts/${post.id}/`);
@@ -261,7 +293,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 await navigator.share(shareData);
             } else {
                 await navigator.clipboard.writeText(url);
-                alert('Link copied to clipboard!');
+                toast.success('Link copied to clipboard!');
             }
         } catch (error) {
             // User cancelled share dialog, ignore
@@ -274,17 +306,32 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         }
     };
 
-    const isDirectRepost = post.repost_parent && !post.content && !post.image && !post.media_file && !post.gif_url && !post.poll_options;
+    // `poll_options` defaults to `[]` (not null) on the backend, and `![]` is always
+    // `false` in JS — so this used to never fire, and every plain repost fell through
+    // to the small "nested quoted post" card below, indistinguishable from an empty
+    // quote-repost. Checking `.length === 0` instead matches the poll-rendering check
+    // further down (line ~598) and makes this branch actually reachable.
+    const isEmptyRepostShell = !post.content && !post.image && !post.media_file && !post.gif_url && (!post.poll_options || post.poll_options.length === 0);
+    const isDirectRepost = post.repost_parent && isEmptyRepostShell;
+    const isDirectRepostReview = post.repost_parent_review && isEmptyRepostShell;
 
     if (isDirectRepost && post.repost_details) {
         return (
-            <div className="flex flex-col">
-                <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 mb-1.5 pl-12">
-                    <Repeat2 className="h-3.5 w-3.5 text-green-500" />
-                    <span>{post.user.real_name || post.user.username} {t('reposted')}</span>
-                </div>
-                <PostCard post={post.repost_details} isDetailView={isDetailView} hideNewsQuote={hideNewsQuote} />
-            </div>
+            <PostCard
+                post={post.repost_details}
+                isDetailView={isDetailView}
+                hideNewsQuote={hideNewsQuote}
+                repostedBy={{ name: post.user.real_name || post.user.username }}
+            />
+        );
+    }
+
+    if (isDirectRepostReview && post.repost_review_details) {
+        return (
+            <ReviewCard
+                review={post.repost_review_details}
+                repostedBy={{ name: post.user.real_name || post.user.username }}
+            />
         );
     }
 
@@ -293,6 +340,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             onClick={handleCardClick}
             className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-4 transition-colors ${!isDetailView ? 'hover:bg-zinc-900/80 cursor-pointer' : ''}`}
         >
+            {repostedBy && (
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 mb-2 pl-12">
+                    <Repeat2 className="h-3.5 w-3.5 text-zinc-500" />
+                    <span>{repostedBy.name} {t('reposted')}</span>
+                </div>
+            )}
             <div className="flex gap-4">
                 <div className="flex flex-col items-center flex-shrink-0 w-fit">
                     <Link
@@ -320,16 +373,16 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         </div>
                     )}
 
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden">
                             <Link
                                 href={authorLink}
-                                className="font-bold text-white hover:underline flex items-center gap-1.5"
+                                className="font-bold text-white hover:underline flex items-center gap-1.5 min-w-0 shrink"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                <span>{author.name}</span>
+                                <span className="truncate min-w-0">{author.name}</span>
                                 {author.is_verified && (
-                                    <span className="inline-flex items-center justify-center bg-blue-500 text-white rounded-full w-3.5 h-3.5" title="Verified Brand">
+                                    <span className="inline-flex items-center justify-center bg-blue-500 text-white rounded-full w-3.5 h-3.5 flex-shrink-0" title="Verified Brand">
                                         <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                         </svg>
@@ -339,27 +392,27 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             {author.type === 'user' ? (
                                 <Link
                                     href={authorLink}
-                                    className="text-zinc-500 text-sm hover:text-zinc-400"
+                                    className="text-zinc-500 text-sm hover:text-zinc-400 min-w-0 shrink truncate"
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     @{author.slug.toString().toLowerCase()}
                                 </Link>
                             ) : (
-                                <span className="text-zinc-500 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 border border-zinc-750 rounded uppercase select-none tracking-wider">
+                                <span className="text-zinc-500 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 border border-zinc-750 rounded uppercase select-none tracking-wider flex-shrink-0">
                                     {author.type}
                                 </span>
                             )}
-                            <span className="text-zinc-700 text-sm">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline" title={new Date(post.timestamp).toLocaleString()}>
-                                {new Date(post.timestamp).toLocaleDateString()} • {getRelativeTime(post.timestamp, language)}
+                            <span className="text-zinc-700 text-sm flex-shrink-0">•</span>
+                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(post.timestamp).toLocaleString()}>
+                                {getRelativeTime(post.timestamp, language)}
                             </span>
                             {post.news_details && !hideNewsQuote && (
-                                <span className="ml-2 text-zinc-500 text-sm font-normal">
+                                <span className="ml-2 text-zinc-500 text-sm font-normal truncate hidden sm:inline">
                                     • Commented on this news
                                 </span>
                             )}
                         </div>
-                        <div className="relative" ref={menuRef}>
+                        <div className="relative flex-shrink-0" ref={menuRef}>
                             <button
                                 className="text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-1 rounded-full transition-all"
                                 onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
@@ -439,118 +492,59 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             )}
                         </div>
 
-                        {/* Media (Images/Videos/Gifs) */}
-                        {((post.media && post.media.length > 0) || post.media_file || post.image || post.gif_url) && (
-                            <div className="w-full max-w-[450px]">
-                                {(post.media && post.media.length > 0) ? (
-                                    <div className={`grid gap-1 rounded-xl overflow-hidden border border-zinc-800 ${
-                                        post.media.length === 1 ? 'grid-cols-1' :
-                                        post.media.length === 2 ? 'grid-cols-2' :
-                                        post.media.length === 3 ? 'grid-cols-2' : 'grid-cols-2'
-                                    }`}>
-                                        {post.media.slice(0, 4).map((media, index) => (
-                                            <div
-                                                key={media.id}
-                                                className={`relative bg-black ${post.media!.length === 3 && index === 0 ? 'row-span-2' : ''} aspect-square`}
-                                            >
-                                                {media.media_type === 'video' ? (
-                                                    <video
-                                                        src={getImageUrl(media.file)}
-                                                        controls
-                                                        className="w-full h-full object-cover"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    />
-                                                ) : (
-                                                    <img
-                                                        src={getImageUrl(media.file)}
-                                                        alt={`Post media ${index + 1}`}
-                                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
-                                                        onClick={(e) => {
-                                                            const allImgUrls = post.media!.map(m => getImageUrl(m.file));
-                                                            openImageModal(allImgUrls, index, e);
-                                                        }}
-                                                    />
-                                                )}
-                                                {index === 3 && post.media!.length > 4 && (
-                                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-xl backdrop-blur-sm">
-                                                        +{post.media!.length - 4}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (post.media_file || post.image) ? (
-                                    <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black max-h-[512px] flex items-center justify-center">
-                                        {post.media_type === 'video' ? (
-                                            <video
-                                                src={getImageUrl(post.media_file || post.image || '')}
-                                                controls
-                                                className="w-full max-h-[512px] object-contain bg-black"
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
-                                        ) : (
-                                            <img
-                                                src={getImageUrl(post.media_file || post.image || '')}
-                                                alt="Post media"
-                                                className="w-full max-h-[512px] object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                                                onClick={(e) => {
-                                                    const imgUrl = getImageUrl(post.media_file || post.image || '');
-                                                    openImageModal([imgUrl], 0, e);
-                                                }}
-                                            />
-                                        )}
-                                    </div>
-                                ) : post.gif_url && (
-                                    <div className="rounded-xl overflow-hidden border border-zinc-800 max-h-[400px]">
-                                        <img
-                                            src={post.gif_url}
-                                            alt="GIF content"
-                                            className="w-full h-auto object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                                            onClick={(e) => {
-                                                openImageModal([post.gif_url || ''], 0, e);
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        {/* Media (Images/Videos/Gifs) — Twitter-standard grid, shared across all post types */}
+                        {(() => {
+                            const mediaItems = getPostMediaItems(post);
+                            if (mediaItems.length === 0) return null;
+                            return (
+                                <PostMediaGrid
+                                    items={mediaItems}
+                                    onItemClick={(index) => openImageModal(mediaItems.map(m => m.url), index)}
+                                />
+                            );
+                        })()}
 
-                        {/* Nested Quoted Post Card */}
+                        {/* Nested Quoted Post Card — this only ever renders for a real quote-repost
+                            (has its own content) now that isDirectRepost/isDirectRepostReview above
+                            correctly catch the empty-content plain-repost case first. */}
                         {post.repost_details && (
-                            <div 
+                            <div
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     router.push(`/${post.repost_details!.user.username}/status/${post.repost_details!.id}`);
                                 }}
-                                className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3 flex flex-col gap-2 transition-all cursor-pointer hover:bg-zinc-950/50"
+                                className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3.5 flex flex-col gap-2.5 transition-all cursor-pointer hover:bg-zinc-950/50"
                             >
                                 <div className="flex items-center gap-2">
                                     <img
                                         src={getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username)}
                                         alt={post.repost_details.user.username}
-                                        className="h-5 w-5 rounded-full object-cover"
+                                        className="h-8 w-8 rounded-full object-cover bg-zinc-800"
                                     />
-                                    <span className="font-bold text-white text-xs">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
-                                    <span className="text-zinc-500 text-xs">@{post.repost_details.user.username.toLowerCase()}</span>
-                                    <span className="text-zinc-600 text-xs">•</span>
-                                    <span className="text-zinc-500 text-xs">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                        <span className="font-bold text-white text-sm">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
+                                        <span className="text-zinc-500 text-sm">@{post.repost_details.user.username.toLowerCase()}</span>
+                                        <span className="text-zinc-600 text-sm">•</span>
+                                        <span className="text-zinc-500 text-sm">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
+                                    </div>
                                 </div>
                                 {post.repost_details.title && (
                                     <h4 className="font-bold text-sm text-white">{post.repost_details.title}</h4>
                                 )}
-                                <p className="text-zinc-300 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                <p className="text-zinc-300 text-sm line-clamp-3 whitespace-pre-wrap leading-relaxed">
                                     {renderContentWithLinks(post.repost_details.content)}
                                 </p>
-                                {(post.repost_details.media_file || post.repost_details.image) && (
-                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
-                                        <img src={getImageUrl(post.repost_details.media_file || post.repost_details.image || '')} className="w-full h-full object-cover" />
-                                    </div>
-                                )}
-                                {post.repost_details.gif_url && (
-                                    <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black aspect-video max-h-48 mt-1">
-                                        <img src={post.repost_details.gif_url} className="w-full h-full object-cover" />
-                                    </div>
-                                )}
+                                {(() => {
+                                    const quotedMediaItems = getPostMediaItems(post.repost_details);
+                                    if (quotedMediaItems.length === 0) return null;
+                                    return (
+                                        <PostMediaGrid
+                                            items={quotedMediaItems}
+                                            compact
+                                            onItemClick={(index) => openImageModal(quotedMediaItems.map(m => m.url), index, post.repost_details!)}
+                                        />
+                                    );
+                                })()}
                             </div>
                         )}
 
@@ -561,18 +555,20 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     e.stopPropagation();
                                     router.push(`/${post.repost_review_details!.user.username}/review/${post.repost_review_details!.id}`);
                                 }}
-                                className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3 flex flex-col gap-2 transition-all cursor-pointer hover:bg-zinc-950/50"
+                                className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3.5 flex flex-col gap-2.5 transition-all cursor-pointer hover:bg-zinc-950/50"
                             >
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-2">
                                     <img
                                         src={getImageUrl(post.repost_review_details.user.avatar, post.repost_review_details.user.username)}
                                         alt={post.repost_review_details.user.username}
-                                        className="h-5 w-5 rounded-full object-cover"
+                                        className="h-8 w-8 rounded-full object-cover bg-zinc-800"
                                     />
-                                    <span className="font-bold text-white text-xs">{post.repost_review_details.user.real_name || post.repost_review_details.user.username}</span>
-                                    <span className="text-zinc-500 text-xs">@{post.repost_review_details.user.username.toLowerCase()}</span>
-                                    <span className="text-zinc-600 text-xs">•</span>
-                                    <span className="text-zinc-500 text-xs">{new Date(post.repost_review_details.timestamp).toLocaleDateString()}</span>
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                        <span className="font-bold text-white text-sm">{post.repost_review_details.user.real_name || post.repost_review_details.user.username}</span>
+                                        <span className="text-zinc-500 text-sm">@{post.repost_review_details.user.username.toLowerCase()}</span>
+                                        <span className="text-zinc-600 text-sm">•</span>
+                                        <span className="text-zinc-500 text-sm">{new Date(post.repost_review_details.timestamp).toLocaleDateString()}</span>
+                                    </div>
                                 </div>
                                 <div className="flex gap-3">
                                     {post.repost_review_details.game?.cover_image && (
@@ -581,7 +577,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold text-sm text-white mb-0.5">{post.repost_review_details.game?.title}</div>
                                         <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {post.repost_review_details.rating}/10</div>
-                                        <p className="text-zinc-300 text-xs line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                        <p className="text-zinc-300 text-sm line-clamp-3 whitespace-pre-wrap leading-relaxed">
                                             {renderContentWithLinks(post.repost_review_details.content) || 'No review written.'}
                                         </p>
                                     </div>
@@ -644,121 +640,126 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     )}
 
                     <div className="flex items-center justify-between mt-2 text-zinc-500">
-                        <button
-                            className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                openReplyModal({ ...post, type: 'post' });
-                            }}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
-                                <MessageCircle className="h-4 w-4" />
-                            </div>
-                            <span className="text-sm">{post.comments || 0}</span>
-                        </button>
-
-                        <div className="relative" ref={repostMenuRef}>
+                        {/* Comment / Repost / Like / Share — evenly distributed across the
+                            full width (equal gaps between each). Bookmark alone stays
+                            snug against Share at the right edge. */}
+                        <div className="flex items-center justify-between flex-1">
                             <button
-                                className={`flex items-center gap-2 hover:text-green-500 group transition-colors ${isReposted ? 'text-green-500' : ''}`}
+                                className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    setShowRepostMenu(!showRepostMenu);
+                                    openReplyModal({ ...post, type: 'post' });
                                 }}
                             >
-                                <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
-                                    <Repeat2 className="h-4 w-4" />
+                                <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
+                                    <MessageCircle className="h-4 w-4" />
                                 </div>
-                                <span className="text-sm">{repostsCount || 0}</span>
+                                <span className="text-sm">{formatCount(post.comments || 0)}</span>
                             </button>
-                            {showRepostMenu && (
-                                <div className="absolute left-0 mt-1 w-32 bg-zinc-900 border border-zinc-850 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                    <button
-                                        onClick={handleRepost}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
-                                    >
-                                        <Repeat2 className="h-3.5 w-3.5" />
-                                        {isReposted ? t('undoRepost') : t('repost')}
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowRepostMenu(false);
-                                            openQuoteModal({ ...post, type: 'post' });
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                                        {t('quotePost')}
-                                    </button>
+
+                            <div className="relative" ref={repostMenuRef}>
+                                <button
+                                    className={`flex items-center gap-2 hover:text-green-500 group transition-colors ${isReposted ? 'text-green-500' : ''}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowRepostMenu(!showRepostMenu);
+                                    }}
+                                >
+                                    <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
+                                        <Repeat2 className="h-4 w-4" />
+                                    </div>
+                                    <span className="text-sm">{formatCount(repostsCount || 0)}</span>
+                                </button>
+                                {showRepostMenu && (
+                                    <div className="absolute left-0 mt-1 w-32 bg-zinc-900 border border-zinc-850 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={handleRepost}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                        >
+                                            <Repeat2 className="h-3.5 w-3.5" />
+                                            {isReposted ? t('undoRepost') : t('repost')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowRepostMenu(false);
+                                                openQuoteModal({ ...post, type: 'post' });
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                            {t('quotePost')}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <button
+                                className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
+                                onClick={handleLike}
+                            >
+                                <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
+                                    <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
                                 </div>
-                            )}
+                                <span className="text-sm">{formatCount(likesCount)}</span>
+                            </button>
+
+                            <div className="relative" ref={shareMenuRef}>
+                                <button
+                                    className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowShareMenu(!showShareMenu);
+                                    }}
+                                >
+                                    <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
+                                        <Share2 className="h-4 w-4" />
+                                    </div>
+                                </button>
+                                {showShareMenu && (
+                                    <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                setIsShareModalOpen(true);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                        >
+                                            <Send className="h-3.5 w-3.5 text-emerald-500" />
+                                            {t('sendViaDm')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
+                                                navigator.clipboard.writeText(url);
+                                                toast.success(t('linkCopied'));
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
+                                            {t('copyLink')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                handleShare(e);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                            {t('shareVia')}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <button
-                            className={`flex items-center gap-2 hover:text-pink-500 group transition-colors ${isLiked ? 'text-pink-500' : ''}`}
-                            onClick={handleLike}
-                        >
-                            <div className="p-2 rounded-full group-hover:bg-pink-500/10 transition-colors">
-                                <Heart className={`h-4 w-4 ${isLiked ? 'fill-pink-500' : ''}`} />
-                            </div>
-                            <span className="text-sm">{likesCount}</span>
-                        </button>
-
-                        <div className="relative" ref={shareMenuRef}>
-                            <button
-                                className="flex items-center gap-2 hover:text-blue-500 group transition-colors"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowShareMenu(!showShareMenu);
-                                }}
-                            >
-                                <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-colors">
-                                    <Share2 className="h-4 w-4" />
-                                </div>
-                            </button>
-                            {showShareMenu && (
-                                <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowShareMenu(false);
-                                            setIsShareModalOpen(true);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
-                                    >
-                                        <Send className="h-3.5 w-3.5 text-emerald-500" />
-                                        {t('sendViaDm')}
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowShareMenu(false);
-                                            const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
-                                            navigator.clipboard.writeText(url);
-                                            alert(t('linkCopied'));
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                    >
-                                        <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
-                                        {t('copyLink')}
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowShareMenu(false);
-                                            handleShare(e);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                    >
-                                        <Share2 className="h-3.5 w-3.5 text-zinc-550" />
-                                        {t('shareVia')}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        <button
-                            className={`flex items-center gap-2 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
+                            className={`flex items-center gap-2 ml-1 hover:text-emerald-500 group transition-colors ${isBookmarked ? 'text-emerald-500' : ''}`}
                             onClick={handleBookmark}
                         >
                             <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
@@ -780,7 +781,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 onClose={() => setIsImageModalOpen(false)}
                 images={modalImages}
                 initialIndex={modalInitialIndex}
-                post={post}
+                post={modalPost}
             />
         </div>
     );
