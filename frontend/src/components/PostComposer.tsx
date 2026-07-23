@@ -11,6 +11,7 @@ import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import PostMediaGrid from '@/components/PostMediaGrid';
+import MentionAutocomplete from '@/components/MentionAutocomplete';
 
 // Grid display still caps at 4 visible cells (Twitter standard, with a "+N" overlay
 // past that) — this only bounds how many files a single post can attach.
@@ -40,6 +41,19 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     const [category, setCategory] = useState('general');
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Mention Autocomplete
+    const { handleKeyDown: handleMentionKeyDown, renderSuggestions } = MentionAutocomplete({
+        textareaRef,
+        value: content,
+        onChange: setContent,
+        onKeyDown: (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handlePost();
+            }
+        },
+    });
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -167,9 +181,6 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     formData.append('type', 'reply');
                 } else if (parentType === 'news') {
                     formData.append('news_parent', parentId.toString());
-                    // We treat news comments as root posts linked to news, 
-                    // unless they are replies to other comments (which would be handled differently if intended, 
-                    // but for now, direct news comments are cleaner as is)
                 } else {
                     // Standard post reply
                     formData.append('parent', parentId.toString());
@@ -194,7 +205,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                 },
             });
 
-            onPostCreated({ ...response.data, type: 'reply' }); // Ensure type is set for context if needed
+            onPostCreated({ ...response.data, type: 'reply' });
 
             // Reset
             setContent('');
@@ -239,13 +250,11 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
                         maxLength={350}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handlePost();
-                            }
-                        }}
+                        onKeyDown={handleMentionKeyDown}
                     />
+
+                    {/* Mention Suggestions Popup */}
+                    {renderSuggestions()}
 
                     {/* Media Preview */}
                     {mediaItems.length > 0 && (
@@ -430,3 +439,4 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
         </div>
     );
 }
+
