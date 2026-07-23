@@ -14,6 +14,8 @@ import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import api from '@/lib/api';
 
+import MentionAutocomplete from '@/components/MentionAutocomplete';
+
 // Grid display still caps at 4 visible cells (Twitter standard, with a "+N" overlay
 // past that) — this only bounds how many files a single post can attach.
 const MAX_MEDIA_ITEMS = 10;
@@ -50,6 +52,13 @@ export default function ReplyModal() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Mention Autocomplete
+    const { handleKeyDown: handleMentionKeyDown, renderSuggestions } = MentionAutocomplete({
+        textareaRef,
+        value: content,
+        onChange: setContent,
+    });
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -285,7 +294,11 @@ export default function ReplyModal() {
                                     className="w-full bg-transparent text-lg text-zinc-200 placeholder-zinc-500 border-none focus:outline-none focus:ring-0 resize-none min-h-[100px] p-0 mb-2 overflow-hidden"
                                     autoFocus
                                     maxLength={350}
+                                    onKeyDown={handleMentionKeyDown}
                                 />
+
+                                {/* Mention Suggestions Popup */}
+                                {renderSuggestions()}
 
                                 {/* Embedded Quoted Post (ONLY if mode === 'quote') */}
                                 {mode === 'quote' && (
