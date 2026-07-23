@@ -10,6 +10,7 @@ import {
     Users,
     Settings,
     FileText,
+    Bug,
     ChevronDown,
     ChevronRight,
 } from 'lucide-react';
@@ -33,8 +34,10 @@ const NAV_ITEMS: { key: WorkspaceTool; icon: React.ElementType; labelKey: string
     { key: 'projects', icon: FolderOpen, labelKey: 'projects' },
     { key: 'gdd', icon: BookOpen, labelKey: 'gddHub' },
     { key: 'assets', icon: FolderOpen, labelKey: 'assetRegistry' },
-    { key: 'localisation', icon: Globe, labelKey: 'localisationManager' },
+    // Still under active development — hidden in production, same as /collabs and /invest.
+    ...(process.env.NODE_ENV === 'production' ? [] : [{ key: 'localisation' as WorkspaceTool, icon: Globe, labelKey: 'localisationManager' }]),
     { key: 'members', icon: Users, labelKey: 'teamAndRoles' },
+    { key: 'playtest', icon: Bug, labelKey: 'playtestFeedback' },
     { key: 'settings', icon: Settings, labelKey: 'workspaceSettings' },
 ];
 

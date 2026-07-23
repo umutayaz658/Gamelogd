@@ -1,9 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView, 
-    GoogleLoginView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet, 
-    LibraryViewSet, CustomAuthToken, VerifyEmailView, ResendVerificationView
+    UserViewSet, GameViewSet, ReviewViewSet, PostViewSet, RegisterView,
+    GoogleLoginView, CurrentUserView, NotificationViewSet, ConversationViewSet, MessageViewSet,
+    LibraryViewSet, CustomAuthToken, VerifyEmailView, ResendVerificationView, LogoutView
 )
 
 router = DefaultRouter()
@@ -32,6 +32,10 @@ router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call'
 router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 router.register(r'feed', FeedViewSet, basename='feed')
 router.register(r'workspace-state', WorkspaceStateViewSet, basename='workspace-state')
+from .views import RoleViewSet, permission_catalog_view, my_permissions_view
+router.register(r'organisation-roles', RoleViewSet, basename='organisation-role')
+from .views import PlaytestFeedbackViewSet
+router.register(r'playtest-feedback', PlaytestFeedbackViewSet, basename='playtest-feedback')
 from .views import ExplorePostsViewSet
 router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
 
@@ -41,6 +45,9 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('google-login/', GoogleLoginView.as_view(), name='google-login'),
     path('login/', CustomAuthToken.as_view(), name='api_token_auth'),
+    path('logout/', LogoutView.as_view(), name='api_logout'),
     path('verify-email/', VerifyEmailView.as_view(), name='verify-email'),
     path('resend-verification/', ResendVerificationView.as_view(), name='resend-verification'),
+    path('permission-catalog/', permission_catalog_view, name='permission-catalog'),
+    path('my-permissions/', my_permissions_view, name='my-permissions'),
 ]

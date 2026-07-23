@@ -16,6 +16,7 @@ export interface User {
     show_birth_date?: boolean;
     dnd_mode?: boolean;
     steam_id?: string;
+    xbox_gamertag?: string | null;
     settings?: any;
     phone_number?: string;
     gender?: string;
@@ -83,18 +84,74 @@ export interface Project {
     title: string;
     description: string;
     cover_image: string | null;
+    logo: string | null;
     tech_stack: string[];
     status: 'in_dev' | 'alpha' | 'beta' | 'released';
+    website?: string;
+    twitter?: string;
+    youtube?: string;
+    extra_links?: { label: string; url: string }[];
     members?: ProjectMember[];
     followers_count?: number;
     is_following?: boolean;
     created_at: string;
 }
 
+export type FeedbackType = 'bug' | 'suggestion' | 'crash' | 'ui_ux' | 'performance' | 'other';
+// Deliberately identical to devs/WorkspaceTypes.ts's TaskPriority — a feedback item's priority
+// carries over 1:1 when converted to a Kanban task.
+export type FeedbackPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved';
+
+export interface PlaytestFeedback {
+    id: number;
+    project: number;
+    author: User | null;
+    title: string;
+    type: FeedbackType;
+    priority: FeedbackPriority;
+    build_version: string;
+    description: string;
+    status: FeedbackStatus;
+    is_pinned: boolean;
+    converted_task_id: string;
+    likes_count: number;
+    is_liked: boolean;
+    submitted_at: string;
+    created_at: string;
+}
+
+export interface Role {
+    id: number;
+    organisation: number;
+    project: number | null;
+    name: string;
+    description: string;
+    permissions: string[];
+    is_system: boolean;
+    is_default_for: string;
+}
+
+export interface PermissionCatalog {
+    [category: string]: [string, string][];
+}
+
+export interface PermissionTier {
+    label: string;
+    description: string;
+    keys: string[];
+}
+
+export interface PermissionHierarchy {
+    [category: string]: PermissionTier[];
+}
+
 export interface ProjectMember {
     id: number;
     user: User;
     role: 'participant' | 'editor' | 'admin';
+    custom_role: number | null;
+    custom_role_details: { id: number; name: string; is_system: boolean } | null;
     status: 'pending' | 'active';
     created_at: string;
 }
@@ -204,6 +261,7 @@ export interface Notification {
     target_id?: number;
     is_read: boolean;
     created_at: string;
+    target_url?: string | null;
 }
 
 export interface ConversationMember {
@@ -313,6 +371,7 @@ export interface Organisation {
     website?: string;
     twitter?: string;
     youtube?: string;
+    extra_links?: { label: string; url: string }[];
     is_verified?: boolean;
     members?: OrganisationMember[];
     followers_count?: number;
@@ -326,6 +385,8 @@ export interface OrganisationMember {
     organisation: number;
     user: User;
     role: 'owner' | 'admin' | 'member';
+    custom_role: number | null;
+    custom_role_details: { id: number; name: string; is_system: boolean } | null;
     joined_at: string;
 }
 
@@ -340,6 +401,8 @@ export interface OrganisationInvitation {
     };
     user: User;
     role: 'owner' | 'admin' | 'member';
+    custom_role: number | null;
+    custom_role_details: { id: number; name: string; is_system: boolean } | null;
     invited_by: number;
     invited_by_details: User;
     created_at: string;

@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import api, { isCookieAuth, setAccessToken as setTokenCookie } from '@/lib/api';
+import { useToast } from '@/context/ToastContext';
 
 // Define User Interface based on backend response
 interface User {
@@ -27,6 +28,7 @@ interface User {
     date_joined?: string;
     gender?: string;
     steam_id?: string;
+    xbox_gamertag?: string | null;
     dnd_mode?: boolean;
     settings?: any;
     phone_number?: string;
@@ -36,7 +38,7 @@ interface AuthContextType {
     user: User | null;
     isLoading: boolean;
     login: (token: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     updateUser: (userData: User) => void;
     isAuthenticated: boolean;
 }
@@ -47,21 +49,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
+    const toast = useToast();
 
     // Check for token and fetch user on mount
     useEffect(() => {
         const checkAuth = async () => {
-            const token = Cookies.get('access_token');
-
-            if (token) {
+            // Cookie mode: we can't read the httpOnly cookie, so just ask the API who we
+            // are — a 401 (handled below) means logged out. Header mode: only bother if a
+            // token cookie is present.
+            const shouldCheck = isCookieAuth || !!Cookies.get('access_token');
+            if (shouldCheck) {
                 try {
-                    // Token exists, fetch user data
                     const response = await api.get('/users/me/');
                     setUser(response.data);
                 } catch (error) {
-                    console.error('Failed to fetch user:', error);
-                    // If fetch fails (e.g. invalid token), clear auth
-                    Cookies.remove('access_token');
+                    if (!isCookieAuth) {
+                        Cookies.remove('access_token');
+                    }
                     setUser(null);
                 }
             }
@@ -74,24 +78,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = async (token: string) => {
         setIsLoading(true);
-        // 1. Set Cookie
-        Cookies.set('access_token', token, { expires: 7 });
+        // In cookie mode the backend already set the httpOnly auth cookie on the login
+        // response; never mirror the token into JS. In header mode, store it (hardened).
+        if (!isCookieAuth) {
+            setTokenCookie(token);
+        }
 
         try {
-            // 2. Fetch User Data
+            // Fetch user data (also primes the CSRF cookie in cookie mode).
             const response = await api.get('/users/me/');
             setUser(response.data);
             router.push('/');
             router.refresh();
         } catch (error) {
             console.error('Login failed during user fetch:', error);
-            alert('Login succeeded but failed to load profile.');
+            toast.error('Login succeeded but failed to load profile.');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const logout = () => {
+    const logout = async () => {
+        // Always hit the backend: it sets the httpOnly auth cookie on login in BOTH modes,
+        // and JS cannot delete an httpOnly cookie itself. Skipping this in header mode left
+        // `auth_token` behind, and the middleware (which accepts either cookie) kept treating
+        // the browser as signed in — trapping the user on '/' with no way back to /login.
+        // Awaited so the cookie deletion lands *before* we navigate; otherwise the middleware
+        // still sees a token and bounces /login straight back to /.
+        try {
+            await api.post('/logout/');
+        } catch {
+            // AllowAny endpoint that only clears a cookie — tear down the client state anyway.
+        }
+        // Cleared after the request above, which needs it to authenticate in header mode.
         Cookies.remove('access_token');
         setUser(null);
         router.push('/login');

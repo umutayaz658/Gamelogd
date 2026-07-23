@@ -54,3 +54,6 @@ docker-compose.override.yml
 coverage/
 *.lcov
 .nyc_output/
+
+# --- Claude Code local config (may contain machine-specific paths / tokens) ---
+.claude/

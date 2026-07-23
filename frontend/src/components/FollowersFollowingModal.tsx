@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import ConfirmModal from './ui/ConfirmModal';
+import { useToast } from '@/context/ToastContext';
 
 interface User {
     id: number;
@@ -33,6 +34,7 @@ export default function FollowersFollowingModal({
     onCountChange
 }: FollowersFollowingModalProps) {
     const { user: currentUser } = useAuth();
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<'followers' | 'following'>(initialTab);
     const [searchQuery, setSearchQuery] = useState('');
     const [users, setUsers] = useState<User[]>([]);
@@ -125,7 +127,7 @@ export default function FollowersFollowingModal({
                 }
                 return u;
             }));
-            alert("Failed to update follow status.");
+            toast.error("Failed to update follow status.");
         } finally {
             setActionLoadingId(null);
         }
@@ -148,7 +150,7 @@ export default function FollowersFollowingModal({
             console.error("Failed to remove follower:", error);
             // Revert on error
             setUsers(previousUsers);
-            alert("Failed to remove follower.");
+            toast.error("Failed to remove follower.");
         } finally {
             setActionLoadingId(null);
         }
@@ -169,7 +171,7 @@ export default function FollowersFollowingModal({
                     }
                 } catch (error) {
                     console.error("Block failed:", error);
-                    alert("Failed to block user.");
+                    toast.error("Failed to block user.");
                 } finally {
                     setActionLoadingId(null);
                     setOpenMenuUserId(null);

@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 # User and Interest are now in api.models
 # We import them or use settings.AUTH_USER_MODEL where appropriate
@@ -33,22 +34,33 @@ class Game(models.Model):
 class Review(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='reviews')
-    rating = models.DecimalField(max_digits=3, decimal_places=1)
+    rating = models.DecimalField(
+        max_digits=3, decimal_places=1,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+    )
     content = models.TextField(blank=True)
-    
+
     # Flags
     is_liked = models.BooleanField(default=False)
     is_completed = models.BooleanField(default=False)
     contains_spoilers = models.BooleanField(default=False)
-    
+
     # Replay tracking
     playthrough_number = models.PositiveIntegerField(default=1)
-    
+
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ('user', 'game', 'playthrough_number')
         ordering = ['-timestamp']
+        constraints = [
+            # Ratings are on a 0–10 scale; without this a client/import could store e.g. 99.9
+            # and skew every average-rating aggregation.
+            models.CheckConstraint(
+                condition=models.Q(rating__gte=0) & models.Q(rating__lte=10),
+                name='review_rating_between_0_and_10',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.game.title} ({self.rating})"
@@ -65,7 +77,9 @@ class Organisation(models.Model):
     website = models.URLField(blank=True, default='')
     twitter = models.URLField(blank=True, default='')
     youtube = models.URLField(blank=True, default='')
-    
+    # Arbitrary user-added links beyond the three standard ones above, e.g. [{"label": "Discord", "url": "..."}]
+    extra_links = models.JSONField(default=list, blank=True)
+
     # Verification
     is_verified = models.BooleanField(default=False)
     
@@ -74,6 +88,39 @@ class Organisation(models.Model):
 
     def __str__(self):
         return self.name
+
+class Role(models.Model):
+    """
+    Custom role: a named bundle of granular permission-key strings (see
+    api.permission_catalog.PERMISSION_CATALOG). When `project` is null, this
+    is an organisation-wide role (assignable on OrganisationMember and, via
+    legacy-role fallback, implicitly to the org owner/admins across every
+    project). When `project` is set, this role belongs to that single
+    project only and is assignable exclusively to that project's
+    ProjectMember rows — organisation roles and project roles are
+    intentionally separate catalogs, never interchangeable.
+    """
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='roles')
+    project = models.ForeignKey('Project', on_delete=models.CASCADE, null=True, blank=True, related_name='roles')
+    name = models.CharField(max_length=100)
+    description = models.CharField(max_length=255, blank=True, default='')
+    permissions = models.JSONField(default=list, blank=True)
+    is_system = models.BooleanField(default=False)
+    is_default_for = models.CharField(max_length=20, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'name'], condition=models.Q(project__isnull=True), name='unique_org_role_name'),
+            models.UniqueConstraint(fields=['project', 'name'], condition=models.Q(project__isnull=False), name='unique_project_role_name'),
+        ]
+        ordering = ['-is_system', 'name']
+
+    def __str__(self):
+        scope = self.project.title if self.project_id else self.organisation.name
+        return f"{self.name} ({scope})"
+
 
 class OrganisationMember(models.Model):
     ROLE_CHOICES = [
@@ -84,6 +131,7 @@ class OrganisationMember(models.Model):
     organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organisation_memberships')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
+    custom_role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='org_member_assignments')
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -104,6 +152,7 @@ class OrganisationInvitation(models.Model):
     organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='invitations')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organisation_invitations')
     role = models.CharField(max_length=20, choices=OrganisationMember.ROLE_CHOICES, default='member')
+    custom_role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='org_invitation_assignments')
     invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_organisation_invitations')
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -124,8 +173,17 @@ class Project(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     cover_image = models.ImageField(upload_to='projects/', blank=True, null=True)
+    logo = models.ImageField(upload_to='projects/logos/', blank=True, null=True)
     tech_stack = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_dev')
+
+    # Social Links — mirrors Organisation's social fields so a project's public profile can
+    # carry its own links independent of any parent organisation.
+    website = models.URLField(blank=True, default='')
+    twitter = models.URLField(blank=True, default='')
+    youtube = models.URLField(blank=True, default='')
+    extra_links = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -156,6 +214,7 @@ class ProjectMember(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='project_memberships')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='participant')
+    custom_role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='project_member_assignments')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -164,6 +223,48 @@ class ProjectMember(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.role} at {self.project.title}"
+
+
+class PlaytestFeedback(models.Model):
+    """
+    Public, membership-free feedback on a project, submitted directly by any logged-in app user.
+    Deliberately a real relational model rather than the generic WorkspaceState JSON blob
+    everything else in the Devs workspace uses, because this needs to be publicly readable and
+    writable by non-members — both of which the member-scoped WorkspaceState access rules can't
+    support.
+    """
+    TYPE_CHOICES = [
+        ('bug', 'Bug'), ('suggestion', 'Suggestion'), ('crash', 'Crash'),
+        ('ui_ux', 'UI/UX'), ('performance', 'Performance'), ('other', 'Other'),
+    ]
+    # Deliberately the exact same key set as frontend/src/components/devs/WorkspaceTypes.ts's
+    # TaskPriority ('low'/'medium'/'high'/'urgent') — when a feedback item is converted to a
+    # Kanban task, its priority carries over 1:1 with no translation table needed.
+    PRIORITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')]
+    STATUS_CHOICES = [('open', 'Open'), ('in_progress', 'In Progress'), ('resolved', 'Resolved')]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='playtest_feedback')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='playtest_feedback')
+
+    title = models.CharField(max_length=200, blank=True, default='')
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES)
+    build_version = models.CharField(max_length=50, blank=True, default='')
+    description = models.TextField()
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    is_pinned = models.BooleanField(default=False)
+    converted_task_id = models.CharField(max_length=64, blank=True, default='')
+
+    submitted_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_pinned', '-submitted_at']
+
+    def __str__(self):
+        return f"Feedback on {self.project.title}"
+
 
 class JobPosting(models.Model):
     JOB_TYPE_CHOICES = [
@@ -251,8 +352,34 @@ class Post(models.Model):
     category = models.CharField(max_length=20, choices=POST_CATEGORIES, default='general', db_index=True)
     trending_score = models.FloatField(default=0.0, db_index=True)
 
+    class Meta:
+        indexes = [
+            # Backs the Explore "popular" ordering (root posts, recent, by score). The individual
+            # db_index on trending_score/timestamp can't serve the combined sort in one scan.
+            models.Index(fields=['-trending_score', '-timestamp'], name='post_trending_recent_idx'),
+        ]
+
     def __str__(self):
         return f"Post by {self.user.username} at {self.timestamp}"
+
+    def save(self, *args, **kwargs):
+        # A Post is exactly one shape: a normal post, a reply (parent / review_parent /
+        # news_parent), a devlog (project_parent), or a repost (repost_parent /
+        # repost_parent_review). Enforce that at most one parent/target pointer is set so
+        # structurally inconsistent rows (e.g. a "reply that is also a repost") can't be created
+        # by any code path, import or buggy client — the exclusivity was previously only implied
+        # by elif chains in the signals/categorization.
+        from django.core.exceptions import ValidationError
+        parent_refs = [
+            self.parent_id, self.review_parent_id, self.news_parent_id,
+            self.project_parent_id, self.repost_parent_id, self.repost_parent_review_id,
+        ]
+        if sum(1 for ref in parent_refs if ref is not None) > 1:
+            raise ValidationError("A Post may reference at most one parent, target or repost source.")
+        # Organisation/project authorship only makes sense on a devlog attached to a project.
+        if self.author_identity != 'user' and self.project_parent_id is None:
+            raise ValidationError("Organisation/project authorship requires a project_parent.")
+        super().save(*args, **kwargs)
 
 class PostMedia(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='media')
@@ -272,10 +399,24 @@ class Like(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     review = models.ForeignKey(Review, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     news = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    playtest_feedback = models.ForeignKey(PlaytestFeedback, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news']]
+        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news'], ['user', 'playtest_feedback']]
+        constraints = [
+            # Exactly one target must be set. The nullable FKs + NULL-permeable unique_together
+            # otherwise permit an all-NULL "like" that inflates counts while pointing at nothing.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(post__isnull=False, review__isnull=True, news__isnull=True, playtest_feedback__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=False, news__isnull=True, playtest_feedback__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=False, playtest_feedback__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=True, playtest_feedback__isnull=False)
+                ),
+                name='like_exactly_one_target',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user} liked something"
@@ -410,6 +551,10 @@ class WorkspaceState(models.Model):
     )
     key = models.CharField(max_length=255)
     data = models.JSONField(default=dict)
+    # Monotonically incremented on every successful write. Clients send the version they loaded
+    # and the server rejects the write (409) if it has moved on — otherwise two members editing
+    # the same shared board simultaneously silently clobber each other (last-write-wins).
+    version = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

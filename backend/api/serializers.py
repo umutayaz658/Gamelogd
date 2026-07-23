@@ -1,12 +1,69 @@
 from rest_framework import serializers
-from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
+from django.db.models import Count, OuterRef, Subquery, IntegerField
+from django.db.models.functions import Coalesce
+from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
+
+def count_subquery(related_model, fk_name, **extra_filters):
+    """A correlated-subquery COUNT for annotating list querysets.
+
+    Lets feed/list views precompute engagement counts in one query instead of the serializer /
+    ranking loop issuing a per-object `.count()` (the N+1 that made the feed fire hundreds of
+    queries). A subquery is used rather than stacking `Count()` annotations because multiple
+    Count()s over different relations JOIN-multiply the rows (catastrophic for a viral post with
+    tens of thousands of likes and replies).
+    """
+    sub = (
+        related_model.objects
+        .filter(**{fk_name: OuterRef('pk')}, **extra_filters)
+        .order_by().values(fk_name).annotate(c=Count('*')).values('c')
+    )
+    return Coalesce(Subquery(sub, output_field=IntegerField()), 0)
+
 RESERVED_USERNAMES = [
-    'admin', 'administrator', 'root', 'settings', 'explore', 'messages', 
-    'notifications', 'bookmarks', 'login', 'register', 'api', 'media', 
+    'admin', 'administrator', 'root', 'settings', 'explore', 'messages',
+    'notifications', 'bookmarks', 'login', 'register', 'api', 'media',
     'static', 'home', 'news', 'devs', 'invest', 'u', 'user'
 ]
+
+
+def validate_public_url(value):
+    """Reject anything but an http(s) URL for user-supplied links (website/twitter/youtube).
+
+    The client sanitizes these on render, but values can be POSTed straight to the API, so this
+    is the authoritative guard against `javascript:`/`data:` XSS payloads being stored.
+    """
+    if value in (None, ''):
+        return value
+    if not isinstance(value, str):
+        raise serializers.ValidationError("Must be a URL string.")
+    trimmed = value.strip()
+    if not trimmed:
+        return trimmed
+    if not trimmed.lower().startswith(('http://', 'https://')):
+        raise serializers.ValidationError("Link must start with http:// or https://.")
+    return trimmed
+
+
+def validate_extra_links_value(value):
+    """Validate the extra_links JSON: a list of {label, url} with http(s) urls only."""
+    if value in (None, ''):
+        return []
+    if not isinstance(value, list):
+        raise serializers.ValidationError("extra_links must be a list.")
+    if len(value) > 20:
+        raise serializers.ValidationError("Too many links (max 20).")
+    cleaned = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise serializers.ValidationError("Each link must be an object with 'label' and 'url'.")
+        label = str(item.get('label', '')).strip()
+        url = validate_public_url(item.get('url', ''))
+        if not url:
+            continue
+        cleaned.append({'label': label[:100], 'url': url})
+    return cleaned
 
 def get_request_cache(request):
     if not request:
@@ -59,10 +116,14 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'steam_id', 'date_joined', 'settings', 'dnd_mode',
+            'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'steam_id', 'xbox_gamertag', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
-        read_only_fields = ['id', 'date_joined']
+        # email is read-only here: changing it must go through a verified flow, not a
+        # plain profile PATCH (otherwise a user could take over account-recovery identity
+        # without re-verification). steam_id is managed by the sync_steam/disconnect_steam
+        # actions, not by direct serializer writes.
+        read_only_fields = ['id', 'date_joined', 'email', 'steam_id']
 
     def to_representation(self, instance):
         """Override to safely handle mixed Cloudinary and local media paths and enforce privacy settings."""
@@ -86,30 +147,43 @@ class UserSerializer(serializers.ModelSerializer):
                     except Exception:
                         pass
 
-        # Privacy Enforcement: strip private details if the requesting user is not authorized
+        # Privacy enforcement, two tiers:
+        #  - Contact info (email, phone) and the raw settings blob belong to the account owner
+        #    ONLY, always. These were previously returned for every non-private user in every
+        #    nested/list response (feed authors, search results, follower lists), which allowed
+        #    bulk harvesting of the whole user base's emails and phone numbers.
+        #  - Semi-private profile details are visible to followers but hidden from strangers when
+        #    the profile is private.
         is_private = instance.settings.get('privateProfile', False)
-        is_owner = request and request.user.is_authenticated and request.user.id == instance.id
+        is_owner = bool(request and request.user.is_authenticated and request.user.id == instance.id)
         is_following = False
         cache = get_request_cache(request)
         if cache:
             is_following = instance.id in cache['following_ids']
 
-        if is_private and not is_owner and not is_following:
-            sensitive_fields = [
-                'email', 'phone_number', 'location', 'birth_date', 'gender', 
-                'steam_id', 'social_links', 'top_favorites', 'platforms', 
-                'interests', 'show_birth_date'
-            ]
-            for f in sensitive_fields:
-                if f in representation:
-                    if f in ['social_links', 'top_favorites', 'platforms', 'interests']:
-                        representation[f] = []
-                    elif f == 'settings':
-                        representation[f] = {'privateProfile': True}
-                    else:
-                        representation[f] = None
+        if not is_owner:
+            representation.pop('email', None)
+            representation.pop('phone_number', None)
+            # Expose only the display-privacy flags the UI legitimately needs about another user
+            # (whether the profile / Steam status is private) — never the full settings object
+            # (notification prefs, dnd, connected accounts, blocked terms, etc.).
             if 'settings' in representation:
-                representation['settings'] = {'privateProfile': True}
+                public_flags = ('privateProfile', 'steamStatusPrivate')
+                representation['settings'] = {
+                    k: instance.settings.get(k, False) for k in public_flags
+                }
+
+            # Respect the user's birthday-visibility toggle for everyone but the owner.
+            if not representation.get('show_birth_date'):
+                representation['birth_date'] = None
+
+            if is_private and not is_following:
+                for f in ['location', 'birth_date', 'gender', 'steam_id']:
+                    if f in representation:
+                        representation[f] = None
+                for f in ['social_links', 'top_favorites', 'platforms', 'interests']:
+                    if f in representation:
+                        representation[f] = []
 
         return representation
 
@@ -167,13 +241,6 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.id in cache['requested_me_ids']
         return False
 
-    def get_is_liked(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            # Check if request.user has blocked obj
-            from api.models import Block
-            return Block.objects.filter(blocker=request.user, blocked=obj).exists()
-
     def get_is_blocked(self, obj):
         request = self.context.get('request')
         cache = get_request_cache(request)
@@ -230,6 +297,9 @@ class NotificationSerializer(serializers.ModelSerializer):
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
+                    organisation = getattr(obj.target, 'organisation', None)
+                    if organisation:
+                        return f"/organisations/{organisation.slug}"
 
                 elif 'quoted' in obj.verb or 'reposted' in obj.verb:
                     if model_name == 'post':
@@ -239,10 +309,17 @@ class NotificationSerializer(serializers.ModelSerializer):
                     project = getattr(obj.target, 'project', None)
                     if project:
                         return f"/projects/{project.id}"
+                    organisation = getattr(obj.target, 'organisation', None)
+                    if organisation:
+                        return f"/organisations/{organisation.slug}"
 
                 elif 'followed' in obj.verb and model_name == 'project':
                     return f"/projects/{obj.target.id}"
-                
+
+                elif 'transferred ownership' in obj.verb:
+                    if model_name == 'organisation':
+                        return f"/organisations/{obj.target.slug}"
+
                 elif 'mentioned' in obj.verb:
                     if model_name == 'post':
                         return f"/{obj.target.user.username}/status/{obj.target.id}"
@@ -302,8 +379,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        print("DEBUG: Validated Data received:", validated_data)
-        
+        # (Do not log validated_data — it contains the cleartext password.)
         email = validated_data.get('email')
         username = validated_data.get('username')
         
@@ -396,9 +472,18 @@ class ReviewSerializer(serializers.ModelSerializer):
     game_id = serializers.PrimaryKeyRelatedField(queryset=Game.objects.all(), source='game', write_only=True)
     type = serializers.CharField(default='review', read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
-    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    bookmarks_count = serializers.SerializerMethodField()
     is_liked_by_user = serializers.SerializerMethodField()
-    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    likes_count = serializers.SerializerMethodField()
+
+    def get_likes_count(self, obj):
+        # Prefer the queryset annotation (feed/list views set it) to avoid a per-object COUNT.
+        ann = getattr(obj, 'likes_count_ann', None)
+        return ann if ann is not None else obj.likes.count()
+
+    def get_bookmarks_count(self, obj):
+        ann = getattr(obj, 'bookmarks_count_ann', None)
+        return ann if ann is not None else obj.bookmarks.count()
 
     class Meta:
         model = Review
@@ -465,16 +550,26 @@ class ReviewSerializer(serializers.ModelSerializer):
         return representation
 
 
+class PostMediaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PostMedia
+        fields = ['id', 'file', 'media_type', 'order']
+
+
 class SimplePostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     type = serializers.CharField(default='post', read_only=True)
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
     reply_to_username = serializers.SerializerMethodField()
     news_details = serializers.SerializerMethodField()
-    
+    # Without this, a quote/repost embed (which serializes its `repost_parent` through this
+    # serializer) only ever showed the legacy single `media_file` — the multi-image gallery
+    # a post actually has was silently dropped, showing just the first image.
+    media = PostMediaSerializer(many=True, read_only=True)
+
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
 
     def get_reply_to_username(self, obj):
         if obj.parent:
@@ -521,26 +616,21 @@ class SimplePostSerializer(serializers.ModelSerializer):
 
 # from core.models import Game, Review, Post, Project, JobPosting, PostMedia (Imported at top)
 
-class PostMediaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PostMedia
-        fields = ['id', 'file', 'media_type', 'order']
-
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     author_details = serializers.SerializerMethodField()
     reply_to_username = serializers.SerializerMethodField()
-    replies_count = serializers.IntegerField(source='replies.count', read_only=True)
-    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    replies_count = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
-    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    bookmarks_count = serializers.SerializerMethodField()
     parent_details = serializers.SerializerMethodField()
     review_details = serializers.SerializerMethodField()
     news_details = serializers.SerializerMethodField()
     project_details = serializers.SerializerMethodField()
     type = serializers.CharField(default='post', read_only=True)
-    reposts_count = serializers.IntegerField(source='reposts.count', read_only=True)
+    reposts_count = serializers.SerializerMethodField()
     is_reposted = serializers.SerializerMethodField()
     repost_details = serializers.SerializerMethodField()
     repost_review_details = serializers.SerializerMethodField()
@@ -557,7 +647,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             'id', 'user', 'author_identity', 'author_details', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
-            'timestamp', 'replies', 'likes', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
+            'timestamp', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
             'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
             'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted',
@@ -622,6 +712,26 @@ class PostSerializer(serializers.ModelSerializer):
         if cache:
             return obj.id in cache['liked_post_ids']
         return False
+
+    def get_replies_count(self, obj):
+        # Prefer the queryset annotation (feed/list views set it) to avoid a per-object COUNT.
+        ann = getattr(obj, 'replies_count_ann', None)
+        return ann if ann is not None else obj.replies.count()
+
+    def get_likes_count(self, obj):
+        ann = getattr(obj, 'likes_count_ann', None)
+        return ann if ann is not None else obj.likes.count()
+
+    def get_bookmarks_count(self, obj):
+        ann = getattr(obj, 'bookmarks_count_ann', None)
+        return ann if ann is not None else obj.bookmarks.count()
+
+    def get_reposts_count(self, obj):
+        # Count only direct reposts (content='') so this matches the repost toggle action
+        # (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are separate
+        # posts with their own content and are not part of this counter.
+        ann = getattr(obj, 'reposts_count_ann', None)
+        return ann if ann is not None else obj.reposts.filter(content='').count()
 
     def get_is_reposted(self, obj):
         request = self.context.get('request')
@@ -727,8 +837,6 @@ class PostSerializer(serializers.ModelSerializer):
             representation['is_private_restricted'] = True
             
             # Hide nested comments/parent details
-            representation['replies'] = []
-            representation['likes'] = []
             representation['replies_count'] = 0
             representation['likes_count'] = 0
             representation['is_liked'] = False
@@ -775,18 +883,43 @@ class ConversationSerializer(serializers.ModelSerializer):
             representation['avatar'] = request.build_absolute_uri(avatar)
         return representation
 
+    def _my_membership(self, obj):
+        # Reads the prefetched `members__user` cache (set by ConversationViewSet.get_queryset)
+        # instead of issuing a fresh query — this one lookup backs both is_pending_invite and
+        # my_membership_status, which previously ran the same query twice per conversation.
+        request = self.context.get('request')
+        if not (request and request.user.is_authenticated):
+            return None
+        for m in obj.members.all():
+            if m.user_id == request.user.id:
+                return m
+        return None
+
     def get_other_user(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            other_user = obj.participants.exclude(id=request.user.id).first()
+            # obj.participants is prefetched by the viewset; filter in Python to use that cache.
+            other_user = next((u for u in obj.participants.all() if u.id != request.user.id), None)
             if other_user:
                 return UserSerializer(other_user, context=self.context).data
         return None
 
     def get_last_message(self, obj):
+        # Prefer the annotated fields set by ConversationViewSet.get_queryset (a single
+        # correlated-subquery pass over all conversations instead of one query per row).
+        # Fall back to a direct query if the serializer is ever used outside that viewset.
+        if hasattr(obj, 'ann_last_created_at'):
+            if obj.ann_last_created_at is None:
+                return None
+            content = "This message was deleted" if obj.ann_last_is_deleted else obj.ann_last_content
+            return {
+                'content': content,
+                'created_at': obj.ann_last_created_at,
+                'sender_username': obj.ann_last_sender,
+            }
+
         last_msg = obj.messages.order_by('-created_at').first()
         if last_msg:
-            # If deleted, hide content from last message preview
             content = last_msg.content
             if last_msg.is_deleted:
                 content = "This message was deleted"
@@ -798,26 +931,21 @@ class ConversationSerializer(serializers.ModelSerializer):
         return None
 
     def get_unread_count(self, obj):
+        if hasattr(obj, 'ann_unread_count'):
+            return obj.ann_unread_count
+
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
         return 0
 
     def get_is_pending_invite(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            membership = obj.members.filter(user=request.user).first()
-            if membership:
-                return membership.status == 'pending'
-        return False
+        membership = self._my_membership(obj)
+        return membership.status == 'pending' if membership else False
 
     def get_my_membership_status(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            membership = obj.members.filter(user=request.user).first()
-            if membership:
-                return membership.status
-        return None
+        membership = self._my_membership(obj)
+        return membership.status if membership else None
 
 
 
@@ -861,14 +989,14 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Like
-        fields = ['id', 'user', 'post', 'review', 'news', 'timestamp']
+        fields = ['id', 'user', 'post', 'review', 'news', 'playtest_feedback', 'timestamp']
         read_only_fields = ['id', 'user', 'timestamp']
 
     def create(self, validated_data):
         # Ensure only one target is set
-        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news')]
+        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news'), validated_data.get('playtest_feedback')]
         if sum(x is not None for x in targets) != 1:
-            raise serializers.ValidationError("Like must target exactly one item (post, review, or news).")
+            raise serializers.ValidationError("Like must target exactly one item (post, review, news, or playtest_feedback).")
         return super().create(validated_data)
 
 class NewsSerializer(serializers.ModelSerializer):
@@ -969,16 +1097,61 @@ class BookmarkSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Bookmark must target exactly one item (post, review, or news).")
         return super().create(validated_data)
 
+class RoleSerializer(serializers.ModelSerializer):
+    organisation = serializers.PrimaryKeyRelatedField(queryset=Organisation.objects.all(), required=False)
+
+    class Meta:
+        model = Role
+        fields = ['id', 'organisation', 'project', 'name', 'description', 'permissions', 'is_system', 'is_default_for', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'is_system', 'is_default_for', 'created_at', 'updated_at']
+        # DRF auto-generates a UniqueTogetherValidator from Role.Meta.constraints, which forces
+        # every field in the constraint (including `organisation`) to be present in the raw
+        # request — before our own validate() below gets a chance to derive `organisation` from
+        # `project`. We replace that automatic check with an equivalent manual one instead.
+        validators = []
+
+    def validate(self, attrs):
+        project = attrs.get('project', self.instance.project if self.instance else None)
+        organisation = attrs.get('organisation', self.instance.organisation if self.instance else None)
+        if project is not None:
+            if project.organisation_id is None:
+                raise serializers.ValidationError({"project": "Personal (org-less) projects don't support custom roles."})
+            # A project-scoped role always belongs to that project's own organisation —
+            # derive it rather than trusting a possibly-mismatched client-supplied value.
+            attrs['organisation'] = organisation = project.organisation
+        elif organisation is None:
+            raise serializers.ValidationError({"organisation": "This field is required when no project is given."})
+
+        name = attrs.get('name', self.instance.name if self.instance else None)
+        clash = Role.objects.filter(organisation=organisation, project=project, name=name)
+        if self.instance:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise serializers.ValidationError({"name": "A role with this name already exists in this scope."})
+        return attrs
+
+
 class ProjectMemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='user', write_only=True
     )
+    custom_role_details = RoleSerializer(source='custom_role', read_only=True)
 
     class Meta:
         model = ProjectMember
-        fields = ['id', 'project', 'user', 'user_id', 'role', 'status', 'created_at']
+        fields = ['id', 'project', 'user', 'user_id', 'role', 'custom_role', 'custom_role_details', 'status', 'created_at']
         read_only_fields = ['id', 'status', 'created_at']
+
+    def validate_custom_role(self, value):
+        if value is None:
+            return value
+        project = self.instance.project if self.instance else self.initial_data.get('project')
+        if isinstance(project, (int, str)):
+            project = Project.objects.filter(id=project).first()
+        if project and value.project_id != project.id:
+            raise serializers.ValidationError("This role does not belong to this project.")
+        return value
 
 class ProjectSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
@@ -989,8 +1162,20 @@ class ProjectSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Project
-        fields = ['id', 'owner', 'organisation', 'organisation_details', 'title', 'description', 'cover_image', 'tech_stack', 'status', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
+        fields = ['id', 'owner', 'organisation', 'organisation_details', 'title', 'description', 'cover_image', 'logo', 'tech_stack', 'status', 'website', 'twitter', 'youtube', 'extra_links', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at', 'organisation_details']
+
+    def validate_website(self, value):
+        return validate_public_url(value)
+
+    def validate_twitter(self, value):
+        return validate_public_url(value)
+
+    def validate_youtube(self, value):
+        return validate_public_url(value)
+
+    def validate_extra_links(self, value):
+        return validate_extra_links_value(value)
 
     def get_followers_count(self, obj):
         return obj.followers.count()
@@ -1011,6 +1196,45 @@ class ProjectSerializer(serializers.ModelSerializer):
                 'is_verified': obj.organisation.is_verified
             }
         return None
+
+
+class PlaytestFeedbackSerializer(serializers.ModelSerializer):
+    author = UserSerializer(read_only=True)
+    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    is_liked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlaytestFeedback
+        fields = [
+            'id', 'project', 'author', 'title', 'type', 'priority', 'build_version',
+            'description', 'status', 'is_pinned', 'converted_task_id',
+            'likes_count', 'is_liked', 'submitted_at', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'author', 'status', 'is_pinned', 'converted_task_id',
+            'likes_count', 'is_liked', 'submitted_at', 'created_at',
+        ]
+
+    def update(self, instance, validated_data):
+        # `project` is set at creation and must not be reassigned afterwards, so an author
+        # can't move their feedback onto a different project via PATCH.
+        validated_data.pop('project', None)
+        return super().update(instance, validated_data)
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
+        return False
+
+    def validate_title(self, value):
+        return value.strip() if value else value
+
+    def validate_description(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("This field is required.")
+        return value
+
 
 class JobPostingSerializer(serializers.ModelSerializer):
     recruiter = UserSerializer(read_only=True)
@@ -1057,11 +1281,22 @@ class OrganisationMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='user', write_only=True
     )
-    
+    custom_role_details = RoleSerializer(source='custom_role', read_only=True)
+
     class Meta:
         model = OrganisationMember
-        fields = ['id', 'organisation', 'user', 'user_id', 'role', 'joined_at']
+        fields = ['id', 'organisation', 'user', 'user_id', 'role', 'custom_role', 'custom_role_details', 'joined_at']
         read_only_fields = ['id', 'joined_at']
+
+    def validate_custom_role(self, value):
+        if value is None:
+            return value
+        organisation = self.instance.organisation if self.instance else self.initial_data.get('organisation')
+        if isinstance(organisation, (int, str)):
+            organisation = Organisation.objects.filter(id=organisation).first()
+        if organisation and value.organisation_id != organisation.id:
+            raise serializers.ValidationError("This role does not belong to this organisation.")
+        return value
 
 
 class OrganisationSerializer(serializers.ModelSerializer):
@@ -1071,9 +1306,21 @@ class OrganisationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Organisation
-        fields = ['id', 'name', 'slug', 'description', 'logo', 'banner', 'website', 'twitter', 'youtube', 'is_verified', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'slug', 'description', 'logo', 'banner', 'website', 'twitter', 'youtube', 'extra_links', 'is_verified', 'members', 'followers_count', 'is_following', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
-        
+
+    def validate_website(self, value):
+        return validate_public_url(value)
+
+    def validate_twitter(self, value):
+        return validate_public_url(value)
+
+    def validate_youtube(self, value):
+        return validate_public_url(value)
+
+    def validate_extra_links(self, value):
+        return validate_extra_links_value(value)
+
     def validate_slug(self, value):
         slug = value.strip().lower()
         if not slug:
@@ -1116,10 +1363,11 @@ class OrganisationInvitationSerializer(serializers.ModelSerializer):
     )
     organisation_details = serializers.SerializerMethodField()
     invited_by_details = UserSerializer(source='invited_by', read_only=True)
-    
+    custom_role_details = RoleSerializer(source='custom_role', read_only=True)
+
     class Meta:
         model = OrganisationInvitation
-        fields = ['id', 'organisation', 'organisation_details', 'user', 'user_id', 'role', 'invited_by', 'invited_by_details', 'created_at', 'is_active']
+        fields = ['id', 'organisation', 'organisation_details', 'user', 'user_id', 'role', 'custom_role', 'custom_role_details', 'invited_by', 'invited_by_details', 'created_at', 'is_active']
         read_only_fields = ['id', 'invited_by', 'created_at', 'is_active']
         
     def get_organisation_details(self, obj):
@@ -1136,7 +1384,7 @@ from core.models import WorkspaceState
 class WorkspaceStateSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkspaceState
-        fields = ['key', 'data', 'updated_at']
+        fields = ['key', 'data', 'version', 'updated_at']
 
 class BlockedUserSerializer(serializers.ModelSerializer):
     blocker = UserSerializer(read_only=True)

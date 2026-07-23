@@ -6,7 +6,7 @@ import {
     X, Flag, User, Tag, Calendar, CheckSquare, Square, Plus,
     Trash2, MessageSquare, Clock, ChevronDown, UserPlus, Search, Check,
 } from 'lucide-react';
-import { Task, KanbanColumn, TaskSubtask, TaskComment, TaskPriority, TaskCategory, CATEGORY_EMOJI, PRIORITY_COLOR } from './WorkspaceTypes';
+import { Task, KanbanColumn, TaskSubtask, TaskComment, TaskPriority, PRIORITY_COLOR, DEFAULT_KANBAN_CATEGORIES } from './WorkspaceTypes';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn, getImageUrl } from '@/lib/utils';
@@ -27,52 +27,8 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
     low: 'Low', medium: 'Medium', high: 'High', urgent: 'Urgent',
 };
 
-const getCategoryStyles = (cat: string) => {
-    const styles: Record<string, { label: string; emoji: string; color: string }> = {
-        code: { label: 'Code', emoji: '💻', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-        art: { label: 'Art', emoji: '🎨', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
-        audio: { label: 'Audio', emoji: '🎵', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-        qa: { label: 'QA', emoji: '🧪', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
-        other: { label: 'Other', emoji: '📌', color: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30' },
-    };
-    if (styles[cat] !== undefined) return styles[cat];
-
-    let colorName = 'zinc';
-    let baseCat = cat;
-    if (cat.includes('|')) {
-        const parts = cat.split('|');
-        baseCat = parts[0];
-        colorName = parts[1] || 'zinc';
-    }
-
-    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u;
-    const match = baseCat.match(emojiRegex);
-    const emoji = match ? match[0] : '';
-
-    const labelRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u;
-    const label = baseCat.replace(labelRegex, '');
-
-    const colorMap: Record<string, string> = {
-        blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
-        violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
-        amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-        pink: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
-        emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-        cyan: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
-        zinc: 'text-zinc-400 bg-zinc-700/20 border-zinc-700/30',
-        red: 'text-red-400 bg-red-500/10 border-red-500/20',
-        orange: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-    };
-
-    return {
-        label: label.charAt(0).toUpperCase() + label.slice(1),
-        emoji: emoji || '📌',
-        color: colorMap[colorName.toLowerCase()] || colorMap.zinc,
-    };
-};
-
 export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onDelete }: TaskDetailsModalProps) {
-    const { data, logActivity, activeWorkspace, activeBoard } = useWorkspace();
+    const { data, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
     
     const [editingTitle, setEditingTitle] = useState(false);
@@ -125,19 +81,10 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
         }
 
         const orgMembers = activeWorkspace.org?.members ?? [];
-        if (orgMembers.length > 0) {
-            return orgMembers.map((m: any) => ({
-                username: m.user.username,
-                real_name: m.user.real_name || m.user.username,
-                avatar: m.user.avatar ?? undefined,
-            }));
-        }
-
-        const localTeam = data?.teamMembers ?? [];
-        return localTeam.map((m) => ({
-            username: m.username,
-            real_name: m.username,
-            avatar: m.avatar,
+        return orgMembers.map((m: any) => ({
+            username: m.user.username,
+            real_name: m.user.real_name || m.user.username,
+            avatar: m.user.avatar ?? undefined,
         }));
     };
 
@@ -195,12 +142,6 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
         };
         update({ comments: [...task.comments, c] });
         setNewComment('');
-    };
-
-    const isManagerOrAdmin = () => {
-        if (activeWorkspace.type === 'solo') return true;
-        const currentMember = activeWorkspace.org?.members?.find((m: any) => m.user.username === user?.username);
-        return currentMember?.role === 'owner' || currentMember?.role === 'admin';
     };
 
     const handleDeleteComment = (commentId: string) => {
@@ -460,7 +401,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                         const displayName = c.authorName || (isYou ? (user?.real_name || user?.username) : c.author);
                                         const avatarUrl = c.authorAvatar || (isYou ? user?.avatar : undefined);
                                         const canEdit = isYou;
-                                        const canDelete = isYou || isManagerOrAdmin();
+                                        const canDelete = isYou || hasPermission('kanban.comment.delete_any');
 
                                         return (
                                             <div key={c.id} className="flex gap-3 bg-zinc-900/25 border border-zinc-900/60 p-3 rounded-xl group/comment animate-in fade-in duration-100">
@@ -590,20 +531,19 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                             <div>
                                 <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">Category</p>
                                 <div className="grid grid-cols-2 gap-1.5">
-                                    {(data?.categories ?? ['code', 'art', 'audio', 'qa', 'other']).map((cat) => {
-                                        const { label, emoji, color } = getCategoryStyles(cat);
+                                    {(data?.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES).map((cat) => {
                                         return (
                                             <button
-                                                key={cat}
+                                                key={cat.id}
                                                 type="button"
-                                                onClick={() => update({ category: cat })}
+                                                onClick={() => update({ category: cat.id })}
                                                 className={cn(
                                                     'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer',
-                                                    task.category === cat ? color : 'text-zinc-500 border-zinc-805 bg-zinc-900/20 hover:border-zinc-700'
+                                                    task.category === cat.id ? `${cat.color} ${cat.bg}` : 'text-zinc-500 border-zinc-805 bg-zinc-900/20 hover:border-zinc-700'
                                                 )}
                                             >
-                                                {emoji && <span className="text-xs">{emoji}</span>}
-                                                <span>{label}</span>
+                                                {cat.emoji && <span className="text-xs">{cat.emoji}</span>}
+                                                <span>{cat.label}</span>
                                             </button>
                                         );
                                     })}
