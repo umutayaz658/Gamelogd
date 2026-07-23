@@ -87,7 +87,6 @@ export default function SingleReviewPage() {
                                 <div className="border-t border-zinc-800 pt-6">
                                     <PostComposer
                                         onPostCreated={(post) => {
-                                            console.log('Replied:', post);
                                             addFeedItem(post);
                                             setReplies(prev => [post, ...prev]);
                                         }}
