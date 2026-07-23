@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import api from '@/lib/api';
 import { useAuth } from './AuthContext';
+import Cookies from 'js-cookie';
 
 interface NotificationContextType {
     unreadMessages: number;
@@ -36,14 +37,93 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
 
     useEffect(() => {
-        if (user) {
-            fetchCounts();
-            const interval = setInterval(fetchCounts, 5000); // Poll every 5s
-            return () => clearInterval(interval);
-        } else {
+        if (!user) {
             setUnreadMessages(0);
             setUnreadNotifications(0);
+            return;
         }
+
+        fetchCounts();
+
+        let socket: WebSocket | null = null;
+        let reconnectTimeout: any = null;
+        let isClosedIntentionally = false;
+        let wsConnected = false;
+
+        const connectWS = () => {
+            const token = Cookies.get('access_token');
+            if (!token) return;
+
+            const apiUrlStr = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            let wsUrl = '';
+            
+            try {
+                if (apiUrlStr.startsWith('http')) {
+                    const urlObj = new URL(apiUrlStr);
+                    const wsProto = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${wsProto}//${urlObj.host}/ws/updates/?token=${token}`;
+                } else {
+                    // Fallback to current browser location or localhost:8000
+                    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${wsProto}//localhost:8000/ws/updates/?token=${token}`;
+                }
+            } catch (e) {
+                console.error('[WebSocket] Failed to resolve URL, falling back to localhost:8000', e);
+                wsUrl = `ws://localhost:8000/ws/updates/?token=${token}`;
+            }
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                wsConnected = true;
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'counts') {
+                        setUnreadMessages(data.messages);
+                        setUnreadNotifications(data.notifications);
+                    }
+                } catch (err) {
+                    console.error('[WebSocket] Error parsing message:', err);
+                }
+            };
+
+            socket.onclose = (event) => {
+                wsConnected = false;
+                if (!isClosedIntentionally) {
+                    reconnectTimeout = setTimeout(() => {
+                        connectWS();
+                    }, 5000);
+                }
+            };
+
+            socket.onerror = (err) => {
+                console.error('[WebSocket] Connection error:', err);
+                socket?.close();
+            };
+        };
+
+        connectWS();
+
+        // 30s polling fallback — only runs when WebSocket is NOT connected (e.g. blocked/failed)
+        const interval = setInterval(() => {
+            if (!wsConnected) {
+                fetchCounts();
+            }
+        }, 30000);
+
+        return () => {
+            isClosedIntentionally = true;
+            if (socket) {
+                socket.close();
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+            clearInterval(interval);
+        };
     }, [user]);
 
     const markMessagesRead = () => {

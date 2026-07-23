@@ -168,7 +168,6 @@ export default function LoginPage() {
                                     }
                                 }}
                                 onError={() => {
-                                    console.log('Login Failed');
                                     setError('Google login was cancelled or failed.');
                                 }}
                                 theme="filled_black"

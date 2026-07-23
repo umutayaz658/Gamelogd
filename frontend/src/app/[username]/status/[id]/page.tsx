@@ -37,7 +37,6 @@ export default function SinglePostPage() {
                     ]);
 
                     const fetchedPost = postRes.data;
-                    console.log("Full Reply Data:", fetchedPost); // Debug log as requested
 
                     setPost(fetchedPost);
                     setReplies(repliesRes.data.results || repliesRes.data);
@@ -66,7 +65,6 @@ export default function SinglePostPage() {
     const { addFeedItem } = useFeed();
 
     const handleReply = (newReply: Post) => {
-        console.log("New reply:", newReply);
         addFeedItem(newReply);
     };
 
@@ -128,7 +126,6 @@ export default function SinglePostPage() {
                                 <div className="border-t border-zinc-800 pt-6">
                                     <PostComposer
                                         onPostCreated={(newReply) => {
-                                            console.log("Adding new reply to list:", newReply);
                                             handleReply(newReply);
                                             // IMMEDIATE STATE UPDATE: Append new reply to the TOP of the list
                                             setReplies(prev => [newReply, ...prev]);
