@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -466,5 +466,26 @@ class Block(models.Model):
 
     def __str__(self):
         return f"{self.blocker} blocked {self.blocked}"
+
+
+@receiver(post_save, sender=Notification)
+def trigger_notification_websocket_update(sender, instance, created, **kwargs):
+    from api.consumers import send_user_update
+    send_user_update(instance.recipient_id)
+
+@receiver(post_delete, sender=Notification)
+def trigger_notification_websocket_delete(sender, instance, **kwargs):
+    from api.consumers import send_user_update
+    send_user_update(instance.recipient_id)
+
+@receiver(post_save, sender=Message)
+def trigger_message_websocket_update(sender, instance, created, **kwargs):
+    if created:
+        from api.consumers import send_user_update
+        # Notify all participants in the conversation except the sender
+        for participant in instance.conversation.participants.all():
+            if participant.id != instance.sender_id:
+                send_user_update(participant.id)
+
 
 

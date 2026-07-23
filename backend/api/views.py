@@ -290,6 +290,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         # Always save Steam ID first so it persists
         request.user.steam_id = steam_id
         request.user.save()
+        return Response({'status': 'steam_id saved', 'steam_id': steam_id}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def steam_auth_url(self, request):
@@ -346,13 +347,13 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                     verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.'
                 )
             except Exception as e:
-                print(f"Background Steam sync failed for user {user.id}: {e}")
+                logger.exception("Background Steam sync failed for user %s", user.id)
                 Notification.objects.create(
                     recipient=user,
                     actor=user,
                     verb='Steam library sync failed. Please check your privacy settings.'
                 )
-        threading.Thread(target=run_sync, daemon=True).start()
+        threading.Thread(target=run_sync, daemon=False).start()
         
         return HttpResponseRedirect(f"{frontend_url}/settings?sync=steam_success")
 
@@ -362,8 +363,8 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         from api.services.oauth import get_xbox_oauth_url
         
         state = signing.dumps({'user_id': request.user.id})
-        # Hardcode to localhost to avoid Azure 127.0.0.1 validation errors
-        callback_url = 'http://localhost:8000/api/users/xbox_auth_callback/'
+        # Build absolute callback URL so it works in both local and production environments
+        callback_url = request.build_absolute_uri('/api/users/xbox_auth_callback/')
         
         try:
             url = get_xbox_oauth_url(callback_url)
@@ -395,8 +396,8 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             return HttpResponseRedirect(f"{frontend_url}/settings?sync=error&reason=invalid_state")
             
-        # Hardcode to localhost to avoid Azure 127.0.0.1 validation errors
-        callback_url = 'http://localhost:8000/api/users/xbox_auth_callback/'
+        # Build absolute callback URL so it matches the one registered in Azure
+        callback_url = request.build_absolute_uri('/api/users/xbox_auth_callback/')
         result = process_xbox_oauth_flow(code, callback_url)
         
         if not result:
@@ -424,13 +425,13 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                     verb=f'Your Xbox Live library for {gamertag} has been synced successfully.'
                 )
             except Exception as e:
-                print(f"Background Xbox sync failed for user {user.id}: {e}")
+                logger.exception("Background Xbox sync failed for user %s", user.id)
                 Notification.objects.create(
                     recipient=user,
                     actor=user,
                     verb='Xbox library sync failed. Please check your Xbox Live privacy settings.'
                 )
-        threading.Thread(target=run_sync, daemon=True).start()
+        threading.Thread(target=run_sync, daemon=False).start()
         
         return HttpResponseRedirect(f"{frontend_url}/settings?sync=xbox_success")
 
@@ -957,6 +958,8 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
         self.get_queryset().update(is_read=True)
+        from api.consumers import send_user_update
+        send_user_update(request.user.id)
         return Response({'status': 'marked all read'})
 
 class RegisterView(generics.CreateAPIView):
@@ -2138,9 +2141,12 @@ class MessageViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             conversation_id = self.request.query_params.get('conversation_id')
             if conversation_id:
-                return Message.objects.filter(conversation_id=conversation_id, conversation__participants=user).order_by('created_at')
+                return Message.objects.filter(
+                    conversation_id=conversation_id,
+                    conversation__participants=user
+                ).select_related('sender', 'reply_to__sender').prefetch_related('reactions').order_by('created_at')
             return Message.objects.none()
-        return Message.objects.filter(conversation__participants=user)
+        return Message.objects.filter(conversation__participants=user).select_related('sender', 'reply_to__sender').prefetch_related('reactions')
 
     def list(self, request, *args, **kwargs):
         conversation_id = request.query_params.get('conversation_id')
@@ -4082,7 +4088,7 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
         
-        if ordering == 'popular' or not ordering:
+        if (ordering == 'popular' or not ordering) and not hashtag:
             cutoff = timezone.now() - timedelta(days=7)
             posts = posts.filter(timestamp__gte=cutoff)
             
@@ -4107,14 +4113,16 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         else: # popular
             posts = posts.order_by('-trending_score', '-timestamp')
             
-        # Pagination
+        # Pagination — fetch one extra item to check for next page without an extra COUNT query
         start = (page - 1) * page_size
         end = start + page_size
-        paginated = posts[start:end]
+        paginated = list(posts[start:end + 1])
+        has_next = len(paginated) > page_size
+        paginated = paginated[:page_size]
         
         serializer = PostSerializer(paginated, many=True, context={'request': request})
         return Response({
             'results': serializer.data,
-            'has_next': posts.count() > end,
+            'has_next': has_next,
             'page': page,
         })

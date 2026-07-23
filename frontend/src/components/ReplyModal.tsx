@@ -204,8 +204,6 @@ export default function ReplyModal() {
                 addFeedItem({ ...res.data, type: 'reply' });
             }
 
-            console.log('Post created:', res.data);
-
             // Reset
             setContent('');
             clearMedia();

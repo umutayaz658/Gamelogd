@@ -64,6 +64,14 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     const [showPollCreator, setShowPollCreator] = useState(false);
     const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
 
+    // Cleanup object URLs on unmount to prevent memory leaks
+    useEffect(() => {
+        return () => {
+            mediaItems.forEach(item => URL.revokeObjectURL(item.preview));
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Handlers
     const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;

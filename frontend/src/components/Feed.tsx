@@ -76,7 +76,9 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
             isMounted = false;
             window.removeEventListener('post-created', handleCreated);
         };
-    }, []);
+    // initialItems değişince (sekme değişimi gibi) feed'i yeniden yükle
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialItems.length]);
 
     const handlePostCreated = (newPost: Post) => {
         setItems([{ ...newPost, type: 'post' }, ...items]);
