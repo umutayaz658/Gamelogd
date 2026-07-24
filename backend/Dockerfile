@@ -12,7 +12,7 @@ COPY requirements.txt .
 # requirements.txt edit forces a full re-download from PyPI on every rebuild, which is slow
 # and (observed twice in this environment) large enough to destabilize Docker Desktop during
 # the final image-export step.
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip pip install -r requirements.txt
 
 # Bake the post-classification embedding model into the image at build time — without
 # this it downloads ~470MB from Hugging Face on the *first* post created after every
