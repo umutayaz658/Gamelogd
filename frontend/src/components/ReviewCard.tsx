@@ -179,7 +179,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 @{review.user.username.toLowerCase()}
                             </Link>
                             <span className="text-zinc-700 text-sm flex-shrink-0">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(review.timestamp).toLocaleString()}>
+                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(review.timestamp).toLocaleString()} suppressHydrationWarning>
                                 {getRelativeTime(review.timestamp, language)}
                             </span>
                         </div>

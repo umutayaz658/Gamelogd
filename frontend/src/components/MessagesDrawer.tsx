@@ -474,11 +474,17 @@ export default function MessagesDrawer() {
                                                     <span className="text-[9px] text-zinc-500 pl-1">@{msg.sender.username}</span>
                                                 )}
 
-                                                <div className={`flex items-end gap-1.5 ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
-                                                    
-                                                    {/* Hover Action Panel (Reply / React) */}
+                                                {/* flex-row-reverse for the non-own side keeps the bubble the closest item to
+                                                    the container's own edge (matching how justify-end already does this for
+                                                    is_me), with the reply/react panel on the inner side instead of pushing
+                                                    the bubble away from the edge. */}
+                                                <div className={`flex items-end gap-1.5 ${msg.is_me ? 'flex-row justify-end' : 'flex-row-reverse justify-start'}`}>
+
+                                                    {/* Hover Action Panel (Reply / React) — self-center so it's vertically
+                                                        centered against the bubble rather than pinned to the row's bottom
+                                                        (which would follow the reactions row when one is present). */}
                                                     {!msg.is_deleted && (
-                                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 z-10">
+                                                        <div className="self-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 z-10">
                                                             
                                                             {/* React Button */}
                                                             <div className="relative">

@@ -1006,7 +1006,7 @@ class NewsSerializer(serializers.ModelSerializer):
     is_bookmarked = serializers.SerializerMethodField()
     like_count = serializers.IntegerField(read_only=True)
     comment_count = serializers.IntegerField(read_only=True)
-    bookmarks_count = serializers.IntegerField(source='bookmarks.count', read_only=True)
+    bookmarks_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = News

@@ -47,6 +47,18 @@ export function getMediaUrl(path: string | null | undefined): string | null {
     return `${getApiBase()}${cleanPath}`;
 }
 
+/**
+ * next/image's optimizer runs server-side (inside the Next.js process) and fetches the
+ * original image itself before serving an optimized version — in local Docker dev that means
+ * the *frontend* container trying to reach `localhost:8000`, which resolves to itself, not the
+ * backend container, and always fails (shows as a broken image). Real deployments serve media
+ * from Cloudinary/a public domain, which the optimizer can reach fine, so this only ever
+ * matches in the local dev case.
+ */
+export function isUnreachableForImageOptimizer(url: string): boolean {
+    return /^https?:\/\/(localhost|127\.0\.0\.1):/.test(url);
+}
+
 export const getImageUrl = (path: string | null | undefined, name?: string) => {
     const resolved = getMediaUrl(path);
     if (resolved) return resolved;

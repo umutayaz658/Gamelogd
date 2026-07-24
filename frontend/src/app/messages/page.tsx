@@ -1400,7 +1400,11 @@ function MessagesContent() {
                                                 onTouchEnd={cancelLongPress}
                                                 onTouchMove={cancelLongPress}
                                             >
-                                                <div className={`flex items-center gap-2 max-w-[75%] ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                {/* flex-row/-reverse is intentionally the OPPOSITE of `msg.is_me`'s own alignment:
+                                                    the bubble must be the item closest to its own edge (right for is_me,
+                                                    left otherwise), with the reply/react panel on the inner side — not the
+                                                    other way around, which is what pushed the bubble away from the edge. */}
+                                                <div className={`flex items-center gap-2 max-w-[75%] ${msg.is_me ? 'flex-row' : 'flex-row-reverse'}`}>
 
                                                     {!msg.is_deleted && (
                                                         <div className={`hidden lg:flex items-center gap-0.5 lg:opacity-0 lg:group-hover:opacity-100 transition-all duration-150 z-10 ${msg.is_me ? 'flex-row-reverse' : 'flex-row'}`}>

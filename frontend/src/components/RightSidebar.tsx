@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { TrendingUp, ArrowUpRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import useSWR from 'swr';
+import { fetcher, unwrapList } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import RecommendedGames from '@/components/RecommendedGames';
+import NewsSkeleton from '@/components/skeletons/NewsSkeleton';
 import { useTranslation } from '@/lib/useTranslation';
 import { getRelativeTime } from '@/lib/utils';
 
@@ -18,8 +20,8 @@ export default function RightSidebar() {
     const router = useRouter();
     const { user } = useAuth();
     const { t, language } = useTranslation();
-    const [trendingNews, setTrendingNews] = useState<NewsItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: newsData, isLoading: loading } = useSWR<NewsItem[] | { results: NewsItem[] }>('/news/', fetcher);
+    const trendingNews = unwrapList<NewsItem>(newsData).slice(0, 4);
     const sidebarRef = useRef<HTMLDivElement>(null);
     const [stickyTop, setStickyTop] = useState<number>(80);
     const stickyTopRef = useRef<number>(80);
@@ -33,7 +35,7 @@ export default function RightSidebar() {
             if (!sidebarRef.current) return;
             const currentScrollY = window.scrollY;
             const dY = currentScrollY - lastScrollY;
-            
+
             const viewportHeight = window.innerHeight;
             const sidebarHeight = sidebarRef.current.offsetHeight;
             const availableSpace = viewportHeight - 80; // 80px top offset (navbar + gap)
@@ -47,10 +49,10 @@ export default function RightSidebar() {
                 // lowerLimit keeps the bottom of the sidebar at least 80px above the viewport bottom (to avoid overlapping messages drawer)
                 const lowerLimit = viewportHeight - sidebarHeight - 80;
                 const upperLimit = 80;
-                
+
                 let nextTop = stickyTopRef.current - dY;
                 nextTop = Math.max(lowerLimit, Math.min(upperLimit, nextTop));
-                
+
                 stickyTopRef.current = nextTop;
                 setStickyTop(nextTop);
             }
@@ -68,21 +70,6 @@ export default function RightSidebar() {
         };
     }, [loading]);
 
-    useEffect(() => {
-        const fetchNews = async () => {
-            try {
-                const res = await api.get('/news/');
-                // Take first 4 items
-                setTrendingNews(res.data.results ? res.data.results.slice(0, 4) : res.data.slice(0, 4));
-            } catch (err) {
-                console.error("Failed to fetch trending news", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchNews();
-    }, []);
-
     const timeAgo = (dateString: string) => {
         return getRelativeTime(dateString, language);
     };
@@ -90,15 +77,15 @@ export default function RightSidebar() {
     if (loading) {
         return (
             <div className="hidden lg:block sticky top-20">
-                <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 h-64 flex items-center justify-center">
-                    <span className="text-zinc-500 text-sm">{t('loadingTrends')}</span>
+                <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4">
+                    <NewsSkeleton />
                 </div>
             </div>
         );
     }
 
     return (
-        <div 
+        <div
             ref={sidebarRef}
             className="hidden lg:block w-full"
             style={{ position: 'sticky', top: `${stickyTop}px` }}

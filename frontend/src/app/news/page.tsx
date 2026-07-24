@@ -28,7 +28,7 @@ const CATEGORIES = [
 
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/lib/useTranslation';
-import api from '@/lib/api';
+import api, { unwrapList } from '@/lib/api';
 
 export default function NewsPage() {
     const router = useRouter();
@@ -98,8 +98,11 @@ export default function NewsPage() {
         const fetchNews = async () => {
             setLoading(true);
             try {
-                const res = await api.get('/news/');
-                setNews(res.data);
+                // This page paginates client-side over the full list (see `visibleNews`
+                // below), so request the backend's max page size rather than its 20-item
+                // default now that /news/ is paginated.
+                const res = await api.get('/news/?page_size=100');
+                setNews(unwrapList<NewsItem>(res.data));
             } catch (err) {
                 console.error("Failed to fetch news:", err);
             } finally {

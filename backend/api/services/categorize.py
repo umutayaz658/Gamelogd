@@ -106,6 +106,73 @@ def calculate_trending_score(post):
     return round(decayed_score, 4)
 
 
+# Registration "Taste Profile" interests (see frontend/src/app/register/page.tsx) are
+# broad genre/topic tags, not literal words people use in posts — matching a post's
+# content against just the bare tag name ("RPG", "Strategy", ...) misses almost
+# everything. This expands each tag into the related words/phrases people actually
+# write, used both by Explore's per-interest pill filter and by the For You
+# personalization's keyword-match scoring.
+INTEREST_KEYWORDS = {
+    'RPG': ['rpg', 'role-playing', 'role playing'],
+    'FPS': ['fps', 'first-person shooter', 'first person shooter'],
+    'MMORPG': ['mmorpg', 'mmo'],
+    'Indie': ['indie'],
+    'Strategy': ['strategy', 'strategic', 'tactics', 'tactical'],
+    'Simulation': ['simulation', 'simulator'],
+    'Esports': ['esports', 'e-sports', 'tournament', 'competitive'],
+    'News': ['news', 'announced', 'announcement', 'release', 'update', 'patch', 'trailer', 'reveal'],
+    'Invest': ['invest', 'investment', 'funding', 'pitch', 'startup'],
+    'Retro': ['retro', 'classic', 'old school', 'oldschool', 'nostalgia'],
+    'Horror': ['horror', 'scary', 'creepy'],
+    'Puzzle': ['puzzle'],
+    'Adventure': ['adventure'],
+    'Open World': ['open world', 'open-world', 'sandbox'],
+    'Sci-Fi': ['sci-fi', 'scifi', 'science fiction'],
+    'Fantasy': ['fantasy'],
+}
+
+
+def expand_interest_keywords(interest_names):
+    """Flatten a list of interest tag names into their lowercased keyword variants."""
+    keywords = set()
+    for name in interest_names:
+        keywords.update(kw.lower() for kw in INTEREST_KEYWORDS.get(name, [name]))
+    return keywords
+
+
+def score_post_for_user(post, user, followed_users_ids, user_interest_ids):
+    """
+    Per-user relevance score for a root Post — the Explore "For You" pill's scoring,
+    factored out so it stays identical to FeedViewSet.for_you's own scoring loop
+    (recency decay + engagement + follow affinity + interest-tag overlap) instead
+    of drifting into a second, slightly-different implementation.
+
+    `user_interest_ids` is the set of Interest PKs the user picked at registration;
+    matched against `post.interests` (auto-assigned via embedding classification at
+    post-creation time, see api.services.embeddings.classify_post) — expects
+    `post.interests` to already be prefetched by the caller's queryset.
+    """
+    now = timezone.now()
+    score = 10.0
+
+    age_in_days = (now - post.timestamp).total_seconds() / 86400.0
+    score *= 1.0 / (1.0 + age_in_days * 0.5)
+
+    likes = getattr(post, 'likes_count_ann', 0) or 0
+    replies = getattr(post, 'replies_count_ann', 0) or 0
+    score += likes * 0.5
+    score += replies * 0.8
+
+    if user.is_authenticated:
+        if post.user_id in followed_users_ids:
+            score += 5.0
+
+        matched_interests = len({i.id for i in post.interests.all()} & user_interest_ids)
+        score += min(matched_interests * 3.0, 6.0)
+
+    return score
+
+
 def update_all_trending_scores():
     """Update trending scores for all recent posts."""
     from core.models import Post
