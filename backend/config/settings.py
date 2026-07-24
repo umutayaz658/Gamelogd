@@ -132,6 +132,20 @@ else:
         },
     }
 
+# Same Redis instance/REDIS_URL as the channel layer above, kept separate via KEY_PREFIX
+# rather than a different logical DB index (managed Redis add-ons often restrict to DB 0).
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "gamelogd_cache",
+            "TIMEOUT": 300,
+        }
+    }
+else:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
