@@ -10,6 +10,11 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   backend:
     build: ./backend
     command: python manage.py runserver 0.0.0.0:8000
@@ -20,8 +25,10 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - redis
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/gamelogd
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - ./backend/.env
 
@@ -34,8 +41,11 @@ services:
       - /app/node_modules
     ports:
       - "3000:3000"
+    depends_on:
+      - backend
     environment:
       - WATCHPACK_POLLING=true
+      - API_INTERNAL_URL=http://backend:8000/api
 
 volumes:
   postgres_data:

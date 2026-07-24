@@ -351,6 +351,11 @@ class Post(models.Model):
     # Explore categorization
     category = models.CharField(max_length=20, choices=POST_CATEGORIES, default='general', db_index=True)
     trending_score = models.FloatField(default=0.0, db_index=True)
+    # Auto-assigned (language-agnostic embedding classification, see
+    # api.services.embeddings.classify_post) tags matching the same "Taste Profile"
+    # interests users pick at registration — backs Explore's per-interest pill filter
+    # and the For You feed's personalization, without re-scanning post text per request.
+    interests = models.ManyToManyField('api.Interest', blank=True, related_name='tagged_posts')
 
     class Meta:
         indexes = [

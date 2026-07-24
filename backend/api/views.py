@@ -1,4 +1,5 @@
 import logging
+import random
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, permissions, filters, generics
@@ -11,6 +12,7 @@ from rest_framework import status
 from core.models import Game, Review, Post, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
 from api.models import User, Notification, SupportTicket, Interest, PendingRegistration, PendingEmailChange
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer, OrganisationSerializer, OrganisationMemberSerializer, OrganisationInvitationSerializer
+from .pagination import StandardResultsSetPagination
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.core.mail import EmailMultiAlternatives
@@ -702,7 +704,20 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "This account is private."}, status=status.HTTP_403_FORBIDDEN)
         from api.models import LibraryEntry
         from core.models import Game
-        
+
+        target_genre = request.query_params.get('genre', 'all')
+
+        # GameSerializer has no per-user fields, so the whole serialized response can be
+        # cached directly (unlike News, see NewsViewSet.list) — this also fixes the
+        # unindexed icontains + full-table-scan cost of the query below on repeat requests.
+        from django.core.cache import cache
+        cache_key = f"recgames:v1:{user.id}:{target_genre}"
+        force_refresh = request.query_params.get('refresh') == '1'
+        if not force_refresh:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
         # 1. Calculate user's top genres (Game DNA) — playtime > 0 olan tüm oyunlar
         entries = LibraryEntry.objects.filter(
             user=user,
@@ -728,9 +743,6 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         reviewed_game_ids = set(Review.objects.filter(user=user).values_list('game_id', flat=True))
         all_played_ids = all_played_ids.union(reviewed_game_ids)
 
-        # New parameter for genre filtering
-        target_genre = request.query_params.get('genre', 'all')
-        
         translation_map = {
             'aksiyon': 'action',
             'macera': 'adventure',
@@ -745,14 +757,22 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             'erken erişim': 'early access'
         }
         
+        # Sampling helper: `order_by('?')` compiles to `ORDER BY RANDOM()` in Postgres, which
+        # forces a full-table sort with no index usable. Pulling just the matching IDs and
+        # sampling in Python avoids sorting/hydrating every matching row just to keep 20.
+        def sample_games(queryset, limit=20, id_pool_cap=500):
+            candidate_ids = list(queryset.values_list('id', flat=True)[:id_pool_cap])
+            sample_ids = random.sample(candidate_ids, min(limit, len(candidate_ids)))
+            return Game.objects.filter(id__in=sample_ids)
+
         # If no genres found, return random popular games
         if target_genre != 'all':
             english_genre = translation_map.get(target_genre.lower(), target_genre)
             genre_query = Q(genres__icontains=target_genre) | Q(genres__icontains=english_genre)
-            recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
+            recommended = sample_games(Game.objects.filter(genre_query).exclude(id__in=all_played_ids))
 
         elif not genre_counts:
-            recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
+            recommended = sample_games(Game.objects.exclude(id__in=all_played_ids))
         else:
             # Get top 3 genres
             top_genres = [g[0] for g in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]]
@@ -764,16 +784,17 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                 english_genre = translation_map.get(genre.lower(), genre)
                 genre_query |= Q(genres__icontains=genre) | Q(genres__icontains=english_genre)
 
-            recommended = Game.objects.filter(genre_query).exclude(id__in=all_played_ids).order_by('?')[:20]
+            recommended = sample_games(Game.objects.filter(genre_query).exclude(id__in=all_played_ids))
 
         # Fallback — a user who has already played/reviewed every unplayed game matching
         # their own top genres would otherwise see an empty shelf with no explanation.
         if not recommended.exists():
-            recommended = Game.objects.exclude(id__in=all_played_ids).order_by('?')[:20]
+            recommended = sample_games(Game.objects.exclude(id__in=all_played_ids))
 
         # 3. Serialize output using GameSerializer for consistent URL handling
         from api.serializers import GameSerializer
         serializer = GameSerializer(recommended, many=True, context={'request': request})
+        cache.set(cache_key, serializer.data, timeout=600)
         return Response(serializer.data)
 
     def _format_image_url(self, request, cover_image):
@@ -1368,6 +1389,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all().select_related('user', 'game')
     serializer_class = ReviewSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['user__username']
     ordering_fields = ['timestamp', 'rating']
@@ -1482,6 +1504,7 @@ class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all().select_related('user').order_by('-timestamp')
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend]
     filterset_fields = {
         'news_parent': ['exact', 'isnull'],
@@ -1640,13 +1663,26 @@ class PostViewSet(viewsets.ModelViewSet):
             post_kwargs['category'] = category
             
         post = serializer.save(user=self.request.user, **post_kwargs)
-        
-        # Calculate auto-category and trending score
-        from api.services.categorize import auto_categorize_post, calculate_trending_score
+
+        # Auto-category + interest tags (language-agnostic embedding classification —
+        # see api.services.embeddings) and trending score.
+        from api.services.categorize import calculate_trending_score
+        from api.services.embeddings import classify_post
+        from api.models import Interest
+        auto_category, interest_names = classify_post(post)
         if not category:
-            post.category = auto_categorize_post(post)
+            post.category = auto_category
         post.trending_score = calculate_trending_score(post)
         post.save()
+        if interest_names:
+            # get_or_create rather than filter — a tag may not have any Interest row
+            # yet if no user has ever picked it at registration.
+            from django.utils.text import slugify
+            matched = [
+                Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
+                for name in interest_names
+            ]
+            post.interests.set(matched)
         
         # Quote post notification
         if post.repost_parent and post.repost_parent.user != self.request.user:
@@ -2421,18 +2457,18 @@ class LibraryViewSet(viewsets.ModelViewSet):
             queryset = queryset.exclude(user_id__in=private_ids)
         return queryset
 
-from core.models import News
-from .serializers import NewsSerializer
-
-from django.db.models import Count
+from core.models import News, Like, Bookmark
+from .serializers import NewsSerializer, count_subquery
 
 class NewsViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = News.objects.all().select_related('source').annotate(
-        like_count=Count('likes', distinct=True),
-        comment_count=Count('comments', distinct=True)
+        like_count=count_subquery(Like, 'news'),
+        comment_count=count_subquery(Post, 'news_parent'),
+        bookmarks_count=count_subquery(Bookmark, 'news'),
     )
     serializer_class = NewsSerializer
     permission_classes = [permissions.AllowAny]
+    pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['category']
     ordering_fields = ['pub_date', 'like_count', 'comment_count']
@@ -2442,6 +2478,30 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
+
+    def list(self, request, *args, **kwargs):
+        # Cache only the ordered PK list, not the serialized response — NewsSerializer's
+        # is_liked/is_bookmarked are per-authenticated-user, so caching the full response
+        # would leak one user's like/bookmark flags to another. Re-serializing a handful of
+        # cached PKs per request keeps that correct while skipping the repeated filter/order
+        # query (and its per-row count_subquery cost) on every list load.
+        from django.core.cache import cache
+        category = request.query_params.get('category', 'all')
+        ordering = request.query_params.get('ordering', '-pub_date')
+        cache_key = f"news_ids:v1:{category}:{ordering}"
+        ids = cache.get(cache_key)
+        if ids is None:
+            ids = list(self.filter_queryset(self.get_queryset()).values_list('id', flat=True)[:300])
+            cache.set(cache_key, ids, timeout=180)
+
+        id_order = {pk: i for i, pk in enumerate(ids)}
+        queryset = sorted(self.get_queryset().filter(id__in=ids), key=lambda n: id_order.get(n.id, len(ids)))
+
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page if page is not None else queryset, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def fetch(self, request):
@@ -2878,9 +2938,16 @@ class FeedViewSet(viewsets.ViewSet):
         )
 
         # select_related('user') alone still leaves the author's M2M interests (UserSerializer's
-        # StringRelatedField) and each post's media set to be fetched with one query per item —
-        # prefetch both so the whole feed resolves those in 2 queries total, not 2 per item.
-        post_prefetch = ('user__interests', 'media')
+        # StringRelatedField), each post's media set, and repost/org-authored dereferences
+        # (get_repost_details/get_repost_review_details/get_author_details in serializers.py) to
+        # be fetched with one query per item — prefetch all of them so the whole feed resolves
+        # those in a handful of queries total, not several per item.
+        post_prefetch = (
+            'user__interests', 'media', 'interests',
+            'repost_parent__user', 'repost_parent__media',
+            'repost_parent_review__user', 'repost_parent_review__game',
+            'project_parent__organisation',
+        )
         review_prefetch = ('user__interests',)
 
         posts = Post.objects.filter(
@@ -2892,8 +2959,9 @@ class FeedViewSet(viewsets.ViewSet):
         if exclude_ids:
             posts = posts.exclude(user_id__in=exclude_ids)
         posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
+        posts = list(posts)
 
-        if posts.count() < 40:
+        if len(posts) < 40:
             posts = Post.objects.filter(
                 parent__isnull=True,
                 review_parent__isnull=True,
@@ -2901,35 +2969,39 @@ class FeedViewSet(viewsets.ViewSet):
             )
             if exclude_ids:
                 posts = posts.exclude(user_id__in=exclude_ids)
-            posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
+            posts = list(posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80])
 
         reviews = Review.objects.filter(timestamp__gte=time_limit)
         if exclude_ids:
             reviews = reviews.exclude(user_id__in=exclude_ids)
         reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
+        reviews = list(reviews)
 
-        if reviews.count() < 40:
+        if len(reviews) < 40:
             reviews = Review.objects.all()
             if exclude_ids:
                 reviews = reviews.exclude(user_id__in=exclude_ids)
-            reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
+            reviews = list(reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80])
 
         followed_users_ids = set()
         library_game_ids = set()
         library_playtimes = {}
         interest_keywords = set()
+        user_interest_ids = set()
 
         if user.is_authenticated:
+            from api.services.categorize import expand_interest_keywords
             followed_users_ids = set(user.following.values_list('following_id', flat=True))
             library_game_ids = set(user.library.values_list('game_id', flat=True))
             library_playtimes = {entry.game_id: entry.playtime_forever for entry in user.library.all()}
-            interest_keywords = set(user.interests.values_list('name', flat=True))
+            user_interest_ids = set(user.interests.values_list('id', flat=True))
+            # Reviews aren't Posts (no auto-assigned interest tags), so their scoring below
+            # still falls back to text-keyword matching against interest names.
+            interest_keywords = expand_interest_keywords(user.interests.values_list('name', flat=True))
             if user.is_developer:
                 interest_keywords.update(['dev', 'development', 'indie', 'coding', 'engine', 'unity', 'unreal'])
             if user.is_investor:
                 interest_keywords.update(['pitch', 'invest', 'funding', 'seed', 'startup', 'market'])
-            
-            interest_keywords = {k.lower() for k in interest_keywords}
 
         scored_items = []
         now = timezone.now()
@@ -2940,43 +3012,43 @@ class FeedViewSet(viewsets.ViewSet):
         for r in reviews:
             merged_items.append(('review', r))
 
+        from api.services.categorize import score_post_for_user
+
         for item_type, item in merged_items:
+            if item_type == 'post':
+                score = score_post_for_user(item, user, followed_users_ids, user_interest_ids)
+                scored_items.append((score, item_type, item))
+                continue
+
             score = 10.0
-            
+
             # Recency decay
             age_in_days = (now - item.timestamp).total_seconds() / 86400.0
             recency_multiplier = 1.0 / (1.0 + age_in_days * 0.5)
             score *= recency_multiplier
-            
+
             # Social / Engagement factor (read the annotations set above; no per-item queries)
             likes = getattr(item, 'likes_count_ann', 0) or 0
             replies = getattr(item, 'replies_count_ann', 0) or 0
 
             score += likes * 0.5
             score += replies * 0.8
-            
+
             # Personalization
             if user.is_authenticated:
                 if item.user_id in followed_users_ids:
                     score += 5.0
-                    
-                text_to_search = ""
-                if item_type == 'post':
-                    text_to_search = (item.content or "") + " " + (item.title or "")
-                elif item_type == 'review':
-                    text_to_search = (item.content or "") + " " + (item.game.title or "")
-                    
-                text_to_search_lower = text_to_search.lower()
+
+                text_to_search_lower = ((item.content or "") + " " + (item.game.title or "")).lower()
                 keyword_matches = sum(1 for kw in interest_keywords if kw in text_to_search_lower)
                 score += min(keyword_matches * 2.0, 6.0)
-                
-                if item_type == 'review':
-                    if item.game_id in library_game_ids:
-                        score += 4.0
-                        playtime = library_playtimes.get(item.game_id, 0)
-                        if playtime > 0:
-                            score += 2.0
-                            
+
+                if item.game_id in library_game_ids:
+                    score += 4.0
+                    playtime = library_playtimes.get(item.game_id, 0)
+                    if playtime > 0:
+                        score += 2.0
+
             scored_items.append((score, item_type, item))
 
         scored_items.sort(key=lambda x: x[0], reverse=True)
@@ -4064,20 +4136,22 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         from api.serializers import PostSerializer
         from django.utils import timezone
         from datetime import timedelta
-        
+
         category = request.query_params.get('category', 'all')
         hashtag = request.query_params.get('hashtag', '').strip()
         ordering = request.query_params.get('ordering', 'popular')
+        mode = request.query_params.get('mode', 'trending')
+        interest = request.query_params.get('interest', '').strip()
         page = int(request.query_params.get('page', 1))
         page_size = min(int(request.query_params.get('page_size', 20)), 50)
-        
+
         from api.serializers import count_subquery
         from core.models import Like, Bookmark
         posts = Post.objects.filter(
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
-        ).select_related('user').prefetch_related('user__interests', 'media').annotate(
+        ).select_related('user').prefetch_related('user__interests', 'media', 'interests').annotate(
             # Counts only, not the full related objects — prefetching the actual likes/replies/
             # reposts/bookmarks rows here fetched (and discarded) every row of engagement for
             # every post on the page, which is unbounded for a viral post. The serializer no
@@ -4087,14 +4161,26 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
-        
-        if (ordering == 'popular' or not ordering) and not hashtag:
+
+        if mode == 'for_you':
+            # Same 30-day (fallback: all-time) candidate window as FeedViewSet.for_you,
+            # scored in Python with the same shared helper so the two stay in sync.
+            time_limit = timezone.now() - timedelta(days=30)
+            recent_posts = posts.filter(timestamp__gte=time_limit)
+            posts = recent_posts if recent_posts.count() >= 40 else posts
+        elif (ordering == 'popular' or not ordering) and not hashtag:
             cutoff = timezone.now() - timedelta(days=7)
             posts = posts.filter(timestamp__gte=cutoff)
-            
+
         if category and category != 'all':
             posts = posts.filter(category=category)
-            
+
+        if interest:
+            # Matches the auto-assigned tags on Post.interests (embedding-classified at
+            # creation time, language-agnostic) rather than scanning content for the
+            # literal tag name.
+            posts = posts.filter(interests__name=interest).distinct()
+
         if hashtag:
             if hashtag.startswith('#'):
                 hashtag = hashtag[1:]
@@ -4105,21 +4191,42 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             # Escape the user input before it goes into a DB-side regex — otherwise a crafted
             # pattern (e.g. "(a+)+$") causes catastrophic backtracking / a CPU-exhaustion DoS.
             posts = posts.filter(content__iregex=rf'#{re.escape(hashtag)}{boundary}')
-            
-        if ordering == 'newest':
-            posts = posts.order_by('-timestamp')
-        elif ordering == 'oldest':
-            posts = posts.order_by('timestamp')
-        else: # popular
-            posts = posts.order_by('-trending_score', '-timestamp')
-            
-        # Pagination — fetch one extra item to check for next page without an extra COUNT query
-        start = (page - 1) * page_size
-        end = start + page_size
-        paginated = list(posts[start:end + 1])
-        has_next = len(paginated) > page_size
-        paginated = paginated[:page_size]
-        
+
+        if mode == 'for_you':
+            from api.services.categorize import score_post_for_user
+            user = request.user
+            followed_users_ids = set()
+            user_interest_ids = set()
+            if user.is_authenticated:
+                followed_users_ids = set(user.following.values_list('following_id', flat=True))
+                user_interest_ids = set(user.interests.values_list('id', flat=True))
+
+            # Bound the candidate pool before scoring in Python — same rationale as
+            # FeedViewSet.for_you's own [:80] cap, just wider since this view is paginated.
+            candidates = posts.order_by('-timestamp')[:200]
+            scored = [(score_post_for_user(p, user, followed_users_ids, user_interest_ids), p) for p in candidates]
+            scored.sort(key=lambda x: x[0], reverse=True)
+
+            start = (page - 1) * page_size
+            end = start + page_size
+            page_items = scored[start:end + 1]
+            has_next = len(page_items) > page_size
+            paginated = [p for _, p in page_items[:page_size]]
+        else:
+            if ordering == 'newest':
+                posts = posts.order_by('-timestamp')
+            elif ordering == 'oldest':
+                posts = posts.order_by('timestamp')
+            else:  # popular / trending
+                posts = posts.order_by('-trending_score', '-timestamp')
+
+            # Pagination — fetch one extra item to check for next page without an extra COUNT query
+            start = (page - 1) * page_size
+            end = start + page_size
+            paginated = list(posts[start:end + 1])
+            has_next = len(paginated) > page_size
+            paginated = paginated[:page_size]
+
         serializer = PostSerializer(paginated, many=True, context={'request': request})
         return Response({
             'results': serializer.data,
