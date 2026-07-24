@@ -8,7 +8,7 @@ import Feed from "@/components/Feed";
 import GameSearchModal from "@/components/GameSearchModal";
 import { getImageUrl } from "@/lib/utils";
 import { sanitizeUrl } from "@/lib/url";
-import api from "@/lib/api";
+import api, { unwrapList } from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X, Clock, Lock, UserX, Dna, ChevronDown, ArrowRight } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
 import { useFeed } from "@/context/FeedContext";
@@ -311,8 +311,8 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                     api.get(`/reviews/?username=${username}`)
                 ]);
 
-                const posts = postsRes.data.map((p: any) => ({ ...p, type: 'post' }));
-                const reviews = reviewsRes.data.map((r: any) => ({ ...r, type: 'review' }));
+                const posts = unwrapList(postsRes.data).map((p: any) => ({ ...p, type: 'post' }));
+                const reviews = unwrapList(reviewsRes.data).map((r: any) => ({ ...r, type: 'review' }));
 
                 const combined = [...posts, ...reviews].sort((a: any, b: any) =>
                     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()

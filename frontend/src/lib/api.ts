@@ -113,3 +113,16 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// A handful of list endpoints (posts/reviews/news) gained DRF pagination — this unwraps
+// either shape so callers don't care whether the backend returned a bare array or
+// {count, next, previous, results}.
+export function unwrapList<T>(data: T[] | { results: T[]; count?: number; next?: string | null; previous?: string | null } | null | undefined): T[] {
+    if (!data) return [];
+    return Array.isArray(data) ? data : data.results;
+}
+
+// Shared SWR fetcher — every useSWR() call in the app should pass this so requests keep
+// going through the shared axios instance (auth header/cookie handling, base URL, etc.)
+// instead of a bare fetch().
+export const fetcher = (url: string) => api.get(url).then((res) => res.data);

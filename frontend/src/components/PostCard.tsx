@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send } from 'lucide-react';
 import { Post } from '@/types';
-import { getImageUrl, getRelativeTime, formatCount } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, formatCount, isUnreachableForImageOptimizer } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
@@ -352,9 +353,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         href={authorLink}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <img
+                        <Image
                             src={getImageUrl(author.avatar, author.type === 'user' ? (author.slug as string) : undefined)}
                             alt={author.name}
+                            width={40}
+                            height={40}
+                            unoptimized={isUnreachableForImageOptimizer(getImageUrl(author.avatar, author.type === 'user' ? (author.slug as string) : undefined))}
                             className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
                         />
                     </Link>
@@ -403,7 +407,11 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </span>
                             )}
                             <span className="text-zinc-700 text-sm flex-shrink-0">•</span>
-                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(post.timestamp).toLocaleString()}>
+                            {/* suppressHydrationWarning: this tooltip's exact wording depends on the
+                                renderer's timezone, which can legitimately differ between the SSR
+                                pass (server/container timezone) and hydration (browser timezone) —
+                                the visible {getRelativeTime} text below is timezone-independent. */}
+                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(post.timestamp).toLocaleString()} suppressHydrationWarning>
                                 {getRelativeTime(post.timestamp, language)}
                             </span>
                             {post.news_details && !hideNewsQuote && (
@@ -516,9 +524,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3.5 flex flex-col gap-2.5 transition-all cursor-pointer hover:bg-zinc-950/50"
                             >
                                 <div className="flex items-center gap-2">
-                                    <img
+                                    <Image
                                         src={getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username)}
                                         alt={post.repost_details.user.username}
+                                        width={32}
+                                        height={32}
+                                        unoptimized={isUnreachableForImageOptimizer(getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username))}
                                         className="h-8 w-8 rounded-full object-cover bg-zinc-800"
                                     />
                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
@@ -558,9 +569,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="border border-zinc-800 hover:border-zinc-700 bg-zinc-950/30 rounded-xl p-3.5 flex flex-col gap-2.5 transition-all cursor-pointer hover:bg-zinc-950/50"
                             >
                                 <div className="flex items-center gap-2">
-                                    <img
+                                    <Image
                                         src={getImageUrl(post.repost_review_details.user.avatar, post.repost_review_details.user.username)}
                                         alt={post.repost_review_details.user.username}
+                                        width={32}
+                                        height={32}
+                                        unoptimized={isUnreachableForImageOptimizer(getImageUrl(post.repost_review_details.user.avatar, post.repost_review_details.user.username))}
                                         className="h-8 w-8 rounded-full object-cover bg-zinc-800"
                                     />
                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
@@ -572,7 +586,14 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </div>
                                 <div className="flex gap-3">
                                     {post.repost_review_details.game?.cover_image && (
-                                        <img src={getImageUrl(post.repost_review_details.game.cover_image)} className="w-16 h-24 object-cover rounded-md flex-shrink-0" />
+                                        <Image
+                                            src={getImageUrl(post.repost_review_details.game.cover_image)}
+                                            alt={post.repost_review_details.game?.title || ''}
+                                            width={64}
+                                            height={96}
+                                            unoptimized={isUnreachableForImageOptimizer(getImageUrl(post.repost_review_details.game.cover_image))}
+                                            className="w-16 h-24 object-cover rounded-md flex-shrink-0"
+                                        />
                                     )}
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold text-sm text-white mb-0.5">{post.repost_review_details.game?.title}</div>
@@ -618,18 +639,30 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         >
                             <div className="flex bg-zinc-950/50">
                                 {post.news_details.image_url && (
-                                    <div className="w-24 h-24 flex-shrink-0">
-                                        <img
+                                    <div className="relative w-24 h-24 flex-shrink-0">
+                                        {/* News images come from arbitrary RSS source domains that can't be
+                                            enumerated in next.config.ts's remotePatterns — unoptimized still
+                                            gets next/image's lazy-loading without needing a hostname allowlist. */}
+                                        <Image
                                             src={post.news_details.image_url}
                                             alt={post.news_details.title}
-                                            className="w-full h-full object-cover"
+                                            fill
+                                            unoptimized
+                                            className="object-cover"
                                         />
                                     </div>
                                 )}
                                 <div className="p-3 flex flex-col justify-center min-w-0">
                                     <div className="flex items-center gap-1.5 mb-1 text-xs text-zinc-500">
                                         {post.news_details.source_icon && (
-                                            <img src={post.news_details.source_icon} className="w-3 h-3 rounded-full" />
+                                            <Image
+                                                src={post.news_details.source_icon}
+                                                alt=""
+                                                width={12}
+                                                height={12}
+                                                unoptimized
+                                                className="w-3 h-3 rounded-full"
+                                            />
                                         )}
                                         <span>{post.news_details.source_name}</span>
                                     </div>
