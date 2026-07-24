@@ -358,7 +358,7 @@ export default function FeedbackPanel({
                                                     </Link>
                                                 )}
                                                 <span className="text-zinc-700 text-sm">•</span>
-                                                <span className="text-zinc-500 text-sm" title={new Date(fb.submitted_at).toLocaleString()}>
+                                                <span className="text-zinc-500 text-sm" title={new Date(fb.submitted_at).toLocaleString()} suppressHydrationWarning>
                                                     {new Date(fb.submitted_at).toLocaleDateString('en-GB')} • {getRelativeTime(fb.submitted_at, language)}
                                                 </span>
                                                 {fb.is_pinned && (

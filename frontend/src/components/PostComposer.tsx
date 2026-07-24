@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Image as ImageIcon, ImagePlay, FileImage, X, Smile, BarChart2, Plus, Trash2, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import GifPicker from '@/components/GifPicker';
-import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
+import type { EmojiClickData, Theme } from 'emoji-picker-react';
+
+// Only conditionally rendered when the picker is open (see showEmojiPicker below) — loading
+// it via next/dynamic keeps this ~large library out of every visitor's initial bundle.
+const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false });
 import { Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
@@ -38,7 +43,6 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     // Create Post State
     const [content, setContent] = useState('');
     const [isPosting, setIsPosting] = useState(false);
-    const [category, setCategory] = useState('general');
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -173,7 +177,6 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             // FormData
             const formData = new FormData();
             formData.append('content', content);
-            formData.append('category', category);
 
             if (parentId) {
                 if (parentType === 'review') {
@@ -214,7 +217,6 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
             setPollOptions(['', '']);
             setShowEmojiPicker(false);
             setShowGifPicker(false);
-            setCategory('general');
         } catch (error: any) {
             console.error('Failed to create post:', error);
             if (error.response?.data?.traceback) {
@@ -365,23 +367,6 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                             >
                                 <BarChart2 className="h-4 w-4" />
                             </button>
-                            <select
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                className="flex-shrink-0 max-w-[6.5rem] sm:max-w-none bg-zinc-950 border border-zinc-800 rounded-xl px-2 py-1 text-xs text-zinc-450 hover:text-white transition-colors focus:outline-none focus:border-emerald-500/50 cursor-pointer"
-                                title="Select Post Category"
-                            >
-                                <option value="general">📁 General</option>
-                                <option value="reviews">⭐ Reviews</option>
-                                <option value="gameplay">🎮 Gameplay</option>
-                                <option value="news">📰 News</option>
-                                <option value="discussion">💬 Discussion</option>
-                                <option value="memes">😂 Memes</option>
-                                <option value="esports">🏆 Esports</option>
-                                <option value="indie">🎨 Indie</option>
-                                <option value="devlogs">🛠️ Dev Logs</option>
-                                <option value="tips">📖 Tips & Guides</option>
-                            </select>
                         </div>
 
                         <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
@@ -418,7 +403,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                                 <div className="shadow-2xl rounded-xl overflow-hidden border border-zinc-700">
                                     <EmojiPicker
                                         onEmojiClick={onEmojiClick}
-                                        theme={Theme.DARK}
+                                        theme={"dark" as Theme}
                                         lazyLoadEmojis={true}
                                         width={300}
                                         height={400}

@@ -1,9 +1,15 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import api from '@/lib/api';
+import useSWR from 'swr';
+import api, { fetcher } from '@/lib/api';
 import { useAuth } from './AuthContext';
 import Cookies from 'js-cookie';
+
+interface Counts {
+    messages: number;
+    notifications: number;
+}
 
 interface NotificationContextType {
     unreadMessages: number;
@@ -21,34 +27,29 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
-    const [unreadMessages, setUnreadMessages] = useState(0);
-    const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [isChatFullscreen, setChatFullscreen] = useState(false);
 
+    // Single source of truth for badge counts — the websocket below pushes updates
+    // straight into this same SWR cache entry via mutate() instead of separate useState.
+    const { data, mutate } = useSWR<Counts>(
+        user ? '/users/counts/' : null,
+        fetcher,
+        { refreshInterval: 30000, revalidateOnFocus: false }
+    );
+
+    const unreadMessages = data?.messages ?? 0;
+    const unreadNotifications = data?.notifications ?? 0;
+
     const fetchCounts = async () => {
-        if (!user) return;
-        try {
-            const res = await api.get('/users/counts/');
-            setUnreadMessages(res.data.messages);
-            setUnreadNotifications(res.data.notifications);
-        } catch (error) {
-            console.error("Failed to fetch notification counts:", error);
-        }
+        await mutate();
     };
 
     useEffect(() => {
-        if (!user) {
-            setUnreadMessages(0);
-            setUnreadNotifications(0);
-            return;
-        }
-
-        fetchCounts();
+        if (!user) return;
 
         let socket: WebSocket | null = null;
         let reconnectTimeout: any = null;
         let isClosedIntentionally = false;
-        let wsConnected = false;
 
         const connectWS = () => {
             const token = Cookies.get('access_token');
@@ -56,7 +57,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
             const apiUrlStr = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             let wsUrl = '';
-            
+
             try {
                 if (apiUrlStr.startsWith('http')) {
                     const urlObj = new URL(apiUrlStr);
@@ -74,24 +75,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
             socket = new WebSocket(wsUrl);
 
-            socket.onopen = () => {
-                wsConnected = true;
-            };
-
             socket.onmessage = (event) => {
                 try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'counts') {
-                        setUnreadMessages(data.messages);
-                        setUnreadNotifications(data.notifications);
+                    const payload = JSON.parse(event.data);
+                    if (payload.type === 'counts') {
+                        mutate({ messages: payload.messages, notifications: payload.notifications }, { revalidate: false });
                     }
                 } catch (err) {
                     console.error('[WebSocket] Error parsing message:', err);
                 }
             };
 
-            socket.onclose = (event) => {
-                wsConnected = false;
+            socket.onclose = () => {
                 if (!isClosedIntentionally) {
                     reconnectTimeout = setTimeout(() => {
                         connectWS();
@@ -100,19 +95,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             };
 
             socket.onerror = (err) => {
-                console.error('[WebSocket] Connection error:', err);
+                // In dev, React StrictMode mounts this effect twice (mount -> cleanup ->
+                // mount): the first socket gets closed by cleanup while still CONNECTING,
+                // which browsers always surface as an error event with no useful detail
+                // ({}). That's expected teardown noise, not a real connection failure —
+                // only log when the close wasn't ours.
+                if (!isClosedIntentionally) {
+                    console.error('[WebSocket] Connection error:', err);
+                }
                 socket?.close();
             };
         };
 
         connectWS();
-
-        // 30s polling fallback — only runs when WebSocket is NOT connected (e.g. blocked/failed)
-        const interval = setInterval(() => {
-            if (!wsConnected) {
-                fetchCounts();
-            }
-        }, 30000);
 
         return () => {
             isClosedIntentionally = true;
@@ -122,17 +117,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
             }
-            clearInterval(interval);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
     const markMessagesRead = () => {
-        setUnreadMessages(0);
+        mutate({ messages: 0, notifications: unreadNotifications }, { revalidate: false });
         // Backend update happens when messages are fetched in MessagesPage
     };
 
     const markNotificationsRead = async () => {
-        setUnreadNotifications(0);
+        mutate({ messages: unreadMessages, notifications: 0 }, { revalidate: false });
         try {
             await api.post('/notifications/mark_all_read/');
         } catch (error) {

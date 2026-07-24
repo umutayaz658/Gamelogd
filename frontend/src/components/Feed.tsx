@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Calendar, ExternalLink } from 'lucide-react';
-import api from '@/lib/api';
+import Image from 'next/image';
+import { Calendar, ExternalLink } from 'lucide-react';
+import api, { unwrapList } from '@/lib/api';
 import { Post, Review, News, FeedItem } from '@/types';
 import PostCard from '@/components/PostCard';
 import ReviewCard from '@/components/ReviewCard';
 import PostComposer from '@/components/PostComposer';
+import FeedSkeleton from '@/components/skeletons/FeedSkeleton';
 import { useRouter } from 'next/navigation';
 
 interface FeedProps {
@@ -37,8 +39,8 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                 ]);
 
                 if (isMounted) {
-                    const posts = postsRes.data.map((p: Post) => ({ ...p, type: 'post' }));
-                    const reviews = reviewsRes.data.map((r: Review) => ({ ...r, type: 'review' }));
+                    const posts = unwrapList<Post>(postsRes.data).map((p: Post) => ({ ...p, type: 'post' }));
+                    const reviews = unwrapList<Review>(reviewsRes.data).map((r: Review) => ({ ...r, type: 'review' }));
 
                     // Merge and Sort by timestamp desc
                     const combined = [...posts, ...reviews].sort((a, b) =>
@@ -108,9 +110,7 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
 
             {/* Feed List */}
             {isLoading && items.length === 0 ? (
-                <div className="flex justify-center py-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-                </div>
+                <FeedSkeleton />
             ) : error ? (
                 <div className="text-center py-10 text-red-400 bg-red-500/10 rounded-xl border border-red-500/20">
                     {error}
@@ -134,10 +134,15 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                                 >
                                     {item.image_url && (
                                         <div className="relative w-full sm:w-48 h-32 sm:h-auto overflow-hidden flex-shrink-0">
-                                            <img
+                                            {/* News images/icons come from arbitrary RSS source domains that
+                                                can't be enumerated in next.config.ts's remotePatterns —
+                                                unoptimized still gets next/image's lazy-loading for free. */}
+                                            <Image
                                                 src={item.image_url}
                                                 alt={item.title}
-                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                fill
+                                                unoptimized
+                                                className="object-cover transition-transform duration-500 group-hover:scale-105"
                                             />
                                         </div>
                                     )}
@@ -145,9 +150,12 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                                         <div>
                                             <div className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
                                                 {item.source_icon && (
-                                                    <img
+                                                    <Image
                                                         src={item.source_icon}
                                                         alt={item.source_name}
+                                                        width={16}
+                                                        height={16}
+                                                        unoptimized
                                                         className="w-4 h-4 rounded-full"
                                                     />
                                                 )}

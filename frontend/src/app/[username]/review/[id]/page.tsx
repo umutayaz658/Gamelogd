@@ -8,7 +8,7 @@ import RightSidebar from "@/components/RightSidebar";
 import ReviewCard from "@/components/ReviewCard";
 import PostCard from "@/components/PostCard";
 import PostComposer from "@/components/PostComposer";
-import api from '@/lib/api';
+import api, { unwrapList } from '@/lib/api';
 import { Review } from '@/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -34,7 +34,7 @@ export default function SingleReviewPage() {
                         api.get(`/posts/?review_parent=${params.id}`)
                     ]);
                     setReview(reviewRes.data);
-                    setReplies(repliesRes.data);
+                    setReplies(unwrapList(repliesRes.data));
                 } catch (err) {
                     console.error('Failed to fetch data:', err);
                     setError('Failed to load review.');
