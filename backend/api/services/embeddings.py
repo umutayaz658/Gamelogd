@@ -34,6 +34,14 @@ INTEREST_DESCRIPTIONS = {
     'Open World': 'open world game, sandbox, free roam, large explorable map',
     'Sci-Fi': 'science fiction game, space setting, futuristic technology, aliens',
     'Fantasy': 'fantasy game, magic, medieval setting, dragons, mythical creatures',
+    'Sports': 'sports video game, football, soccer, basketball, tennis, golf, FIFA, NBA, scoring a goal, playing a match, team, tournament, league, cup, athletic competition',
+    'Racing': 'racing video game, cars, motorsport, driving, speed, tracks, circuits, Formula 1, drifting, rally, lap, finish line, overtaking opponents',
+    'Battle Royale': 'battle royale video game, Fortnite, PUBG, Warzone, last player or team standing, shrinking safe zone, the zone closing in, parachute drop, looting, elimination, victory royale',
+    'Fighting': 'fighting video game, Street Fighter, Tekken, Mortal Kombat, one-on-one combat, punches and kicks, combos, character moves, health bar, martial arts, versus battles',
+    'Platformer': 'platformer game, jumping between platforms, side-scrolling levels, precision platforming',
+    'Co-op': 'cooperative multiplayer game, playing together with friends, couch co-op, party games',
+    'VR': 'virtual reality game, VR headset, immersive first-person virtual experience',
+    'Visual Novel': 'visual novel, story-driven game with dialogue choices, branching narrative',
 }
 
 CATEGORY_DESCRIPTIONS = {
@@ -48,7 +56,17 @@ CATEGORY_DESCRIPTIONS = {
     'tips': 'a tip, a guide, a tutorial, a walkthrough, strategy advice',
 }
 
-INTEREST_MATCH_THRESHOLD = 0.32
+# Two separate thresholds, not one shared value: category descriptions and interest
+# descriptions produce different baseline cosine-similarity distributions against real
+# post text, so a value tuned for one over-fires on the other. Interest matching is
+# multi-label (every tag above the bar gets attached), which is far more sensitive to a
+# too-low threshold than category's single argmax pick — sampling real post text showed
+# 0.32 tagging a single-topic RPG review with 13 of 16 interests (RPG, FPS, Esports,
+# Horror, Puzzle, ...), because same-domain "game" descriptions all sit ~0.3-0.45 apart
+# even when unrelated. 0.55 was the highest value that still kept genuine single-topic
+# matches (e.g. a pure FPS post scored FPS at 0.563) while cutting that noise.
+INTEREST_MATCH_THRESHOLD = 0.55
+CATEGORY_MATCH_THRESHOLD = 0.32
 CATEGORY_FALLBACK = 'general'
 
 _model = None
@@ -80,6 +98,19 @@ def _get_category_matrix():
     return _category_matrix
 
 
+def _interests_from_embedding(text_emb):
+    sims = _get_interest_matrix() @ text_emb
+    names = list(INTEREST_DESCRIPTIONS.keys())
+    return [names[i] for i, sim in enumerate(sims) if sim >= INTEREST_MATCH_THRESHOLD]
+
+
+def _category_from_embedding(text_emb):
+    sims = _get_category_matrix() @ text_emb
+    names = list(CATEGORY_DESCRIPTIONS.keys())
+    best = int(np.argmax(sims))
+    return names[best] if sims[best] >= CATEGORY_MATCH_THRESHOLD else CATEGORY_FALLBACK
+
+
 def classify_interests(text):
     """Multi-label: returns every interest tag name the text is semantically close to."""
     text = (text or '').strip()
@@ -87,9 +118,7 @@ def classify_interests(text):
         return []
     model = _get_model()
     text_emb = model.encode(text, normalize_embeddings=True)
-    sims = _get_interest_matrix() @ text_emb
-    names = list(INTEREST_DESCRIPTIONS.keys())
-    return [names[i] for i, sim in enumerate(sims) if sim >= INTEREST_MATCH_THRESHOLD]
+    return _interests_from_embedding(text_emb)
 
 
 def classify_category(text):
@@ -99,10 +128,20 @@ def classify_category(text):
         return CATEGORY_FALLBACK
     model = _get_model()
     text_emb = model.encode(text, normalize_embeddings=True)
-    sims = _get_category_matrix() @ text_emb
-    names = list(CATEGORY_DESCRIPTIONS.keys())
-    best = int(np.argmax(sims))
-    return names[best] if sims[best] >= INTEREST_MATCH_THRESHOLD else CATEGORY_FALLBACK
+    return _category_from_embedding(text_emb)
+
+
+def classify_review(review):
+    """
+    Interest tags for a Review — same embedding model as classify_post, but reviews
+    have no category field to assign, so this only returns tags. Falls back to an
+    empty list if the model can't be loaded; FeedViewSet.for_you already falls back
+    to keyword matching against review text when a review has no interests set.
+    """
+    try:
+        return classify_interests(review.content)
+    except Exception:
+        return []
 
 
 def classify_post(post):
@@ -124,12 +163,23 @@ def classify_post(post):
     else:
         category = None
 
-    text = post.content or ''
+    text = (post.content or '').strip()
 
     try:
-        if category is None:
-            category = classify_category(text)
-        interests = classify_interests(text)
+        if not text:
+            interests = []
+            if category is None:
+                category = CATEGORY_FALLBACK
+        else:
+            # One encode() call for the post text, reused for both the category and
+            # interest-tag comparisons — these used to each call model.encode(text)
+            # independently, doubling inference time for no benefit (same input, same
+            # embedding). Inference itself is CPU-bound and slow on Railway's allocated
+            # CPU (~5-6s per call), so this halves per-post latency.
+            text_emb = _get_model().encode(text, normalize_embeddings=True)
+            if category is None:
+                category = _category_from_embedding(text_emb)
+            interests = _interests_from_embedding(text_emb)
         return category, interests
     except Exception:
         from api.services.categorize import auto_categorize_post
