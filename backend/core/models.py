@@ -50,6 +50,13 @@ class Review(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
+    # Auto-assigned (language-agnostic embedding classification, see
+    # api.services.embeddings.classify_review) tags matching the same "Taste Profile"
+    # interests users pick at registration — lets the For You feed score reviews with
+    # the same interest-overlap signal Posts get, instead of falling back to keyword
+    # matching against review text (see FeedViewSet.for_you).
+    interests = models.ManyToManyField('api.Interest', blank=True, related_name='tagged_reviews')
+
     class Meta:
         unique_together = ('user', 'game', 'playthrough_number')
         ordering = ['-timestamp']

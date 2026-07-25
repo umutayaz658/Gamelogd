@@ -1487,17 +1487,37 @@ class ReviewViewSet(viewsets.ModelViewSet):
         if update_fields:
             entry.save(update_fields=update_fields)
 
+    def _tag_review_interests(self, review):
+        """Auto-assign interest tags (language-agnostic embedding classification, see
+        api.services.embeddings.classify_review) — same pipeline Posts get, so reviews
+        can be scored by interest overlap in FeedViewSet.for_you instead of only
+        keyword matching."""
+        from api.services.embeddings import classify_review
+        from api.models import Interest
+        interest_names = classify_review(review)
+        if interest_names:
+            from django.utils.text import slugify
+            matched = [
+                Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
+                for name in interest_names
+            ]
+            review.interests.set(matched)
+        else:
+            review.interests.clear()
+
     def perform_create(self, serializer):
         review = serializer.save(user=self.request.user)
         playtime_hours = self.request.data.get('playtime_hours')
         platform = self.request.data.get('platform')
         self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
+        self._tag_review_interests(review)
 
     def perform_update(self, serializer):
         review = serializer.save()
         playtime_hours = self.request.data.get('playtime_hours')
         platform = self.request.data.get('platform')
         self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
+        self._tag_review_interests(review)
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -2948,7 +2968,7 @@ class FeedViewSet(viewsets.ViewSet):
             'repost_parent_review__user', 'repost_parent_review__game',
             'project_parent__organisation',
         )
-        review_prefetch = ('user__interests',)
+        review_prefetch = ('user__interests', 'interests')
 
         posts = Post.objects.filter(
             parent__isnull=True,
@@ -2995,8 +3015,10 @@ class FeedViewSet(viewsets.ViewSet):
             library_game_ids = set(user.library.values_list('game_id', flat=True))
             library_playtimes = {entry.game_id: entry.playtime_forever for entry in user.library.all()}
             user_interest_ids = set(user.interests.values_list('id', flat=True))
-            # Reviews aren't Posts (no auto-assigned interest tags), so their scoring below
-            # still falls back to text-keyword matching against interest names.
+            # Reviews now get the same auto-assigned interest tags Posts do (see
+            # ReviewViewSet._tag_review_interests / api.services.embeddings.classify_review).
+            # Keyword matching stays as a fallback only for reviews created before that
+            # existed, which have no tags yet.
             interest_keywords = expand_interest_keywords(user.interests.values_list('name', flat=True))
             if user.is_developer:
                 interest_keywords.update(['dev', 'development', 'indie', 'coding', 'engine', 'unity', 'unreal'])
@@ -3039,9 +3061,15 @@ class FeedViewSet(viewsets.ViewSet):
                 if item.user_id in followed_users_ids:
                     score += 5.0
 
-                text_to_search_lower = ((item.content or "") + " " + (item.game.title or "")).lower()
-                keyword_matches = sum(1 for kw in interest_keywords if kw in text_to_search_lower)
-                score += min(keyword_matches * 2.0, 6.0)
+                review_interest_ids = {i.id for i in item.interests.all()}
+                if review_interest_ids:
+                    matched_interests = len(review_interest_ids & user_interest_ids)
+                    score += min(matched_interests * 3.0, 6.0)
+                else:
+                    # Untagged (pre-migration) review — fall back to keyword matching.
+                    text_to_search_lower = ((item.content or "") + " " + (item.game.title or "")).lower()
+                    keyword_matches = sum(1 for kw in interest_keywords if kw in text_to_search_lower)
+                    score += min(keyword_matches * 2.0, 6.0)
 
                 if item.game_id in library_game_ids:
                     score += 4.0

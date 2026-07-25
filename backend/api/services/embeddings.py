@@ -48,7 +48,17 @@ CATEGORY_DESCRIPTIONS = {
     'tips': 'a tip, a guide, a tutorial, a walkthrough, strategy advice',
 }
 
-INTEREST_MATCH_THRESHOLD = 0.32
+# Two separate thresholds, not one shared value: category descriptions and interest
+# descriptions produce different baseline cosine-similarity distributions against real
+# post text, so a value tuned for one over-fires on the other. Interest matching is
+# multi-label (every tag above the bar gets attached), which is far more sensitive to a
+# too-low threshold than category's single argmax pick — sampling real post text showed
+# 0.32 tagging a single-topic RPG review with 13 of 16 interests (RPG, FPS, Esports,
+# Horror, Puzzle, ...), because same-domain "game" descriptions all sit ~0.3-0.45 apart
+# even when unrelated. 0.55 was the highest value that still kept genuine single-topic
+# matches (e.g. a pure FPS post scored FPS at 0.563) while cutting that noise.
+INTEREST_MATCH_THRESHOLD = 0.55
+CATEGORY_MATCH_THRESHOLD = 0.32
 CATEGORY_FALLBACK = 'general'
 
 _model = None
@@ -90,7 +100,7 @@ def _category_from_embedding(text_emb):
     sims = _get_category_matrix() @ text_emb
     names = list(CATEGORY_DESCRIPTIONS.keys())
     best = int(np.argmax(sims))
-    return names[best] if sims[best] >= INTEREST_MATCH_THRESHOLD else CATEGORY_FALLBACK
+    return names[best] if sims[best] >= CATEGORY_MATCH_THRESHOLD else CATEGORY_FALLBACK
 
 
 def classify_interests(text):
@@ -111,6 +121,19 @@ def classify_category(text):
     model = _get_model()
     text_emb = model.encode(text, normalize_embeddings=True)
     return _category_from_embedding(text_emb)
+
+
+def classify_review(review):
+    """
+    Interest tags for a Review — same embedding model as classify_post, but reviews
+    have no category field to assign, so this only returns tags. Falls back to an
+    empty list if the model can't be loaded; FeedViewSet.for_you already falls back
+    to keyword matching against review text when a review has no interests set.
+    """
+    try:
+        return classify_interests(review.content)
+    except Exception:
+        return []
 
 
 def classify_post(post):
