@@ -12,7 +12,12 @@ POST_CATEGORY_KEYWORDS in categorize.py) if the model can't be loaded
 (e.g. no network on first run to fetch model weights), so post creation
 never breaks because of this.
 """
+import logging
+import threading
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Canonical, English-language descriptions of each concept. The model is
 # multilingual, so a Turkish/Spanish/etc. post is compared directly against
@@ -73,6 +78,17 @@ _model = None
 _interest_matrix = None
 _category_matrix = None
 
+# classify_post_async runs classification on a background thread per post, so concurrent
+# posts mean concurrent threads reaching this module at the same time. Verified by testing
+# two simultaneous posts directly against a running server: without this lock, one post's
+# result came back tagged with another post's interests (the shared SentenceTransformer
+# instance is not safe for concurrent .encode() calls) — silently wrong data, not just a
+# race on the lazy singleton init. Every encode() call funnels through _encode() below,
+# which holds this lock for its whole duration, so concurrent posts queue instead of
+# corrupting each other. Inference is already ~5-6s CPU-bound work, so serializing it adds
+# queuing delay under concurrent load but doesn't change single-post latency.
+_lock = threading.Lock()
+
 
 def _get_model():
     global _model
@@ -98,6 +114,16 @@ def _get_category_matrix():
     return _category_matrix
 
 
+def _encode(text):
+    """Every embedding computation (single-text or the description matrices) goes through
+    here, serialized by _lock — see the comment above it for why."""
+    with _lock:
+        model = _get_model()
+        _get_interest_matrix()
+        _get_category_matrix()
+        return model.encode(text, normalize_embeddings=True)
+
+
 def _interests_from_embedding(text_emb):
     sims = _get_interest_matrix() @ text_emb
     names = list(INTEREST_DESCRIPTIONS.keys())
@@ -116,8 +142,7 @@ def classify_interests(text):
     text = (text or '').strip()
     if not text:
         return []
-    model = _get_model()
-    text_emb = model.encode(text, normalize_embeddings=True)
+    text_emb = _encode(text)
     return _interests_from_embedding(text_emb)
 
 
@@ -126,8 +151,7 @@ def classify_category(text):
     text = (text or '').strip()
     if not text:
         return CATEGORY_FALLBACK
-    model = _get_model()
-    text_emb = model.encode(text, normalize_embeddings=True)
+    text_emb = _encode(text)
     return _category_from_embedding(text_emb)
 
 
@@ -142,6 +166,45 @@ def classify_review(review):
         return classify_interests(review.content)
     except Exception:
         return []
+
+
+def classify_review_async(review_id):
+    """
+    Same rationale as classify_post_async: classify_review()'s model inference is
+    5-10s+ on constrained CPU, so it runs on a background thread instead of blocking the
+    review-creation/update response. Call via transaction.on_commit(...) so the thread
+    never queries the Review before the row is actually committed and visible.
+    """
+    def _run():
+        from django.db import connection
+        from django.utils.text import slugify
+        from core.models import Review
+        from api.models import Interest
+        try:
+            review = Review.objects.get(pk=review_id)
+            interest_names = classify_review(review)
+            if interest_names:
+                # get_or_create rather than filter — a tag may not have any Interest row
+                # yet if no user has ever picked it at registration.
+                matched = [
+                    Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
+                    for name in interest_names
+                ]
+                review.interests.set(matched)
+            else:
+                # An edited review can legitimately end up with fewer/no matching tags —
+                # clear stale ones from a previous classification rather than leaving them.
+                review.interests.clear()
+        except Review.DoesNotExist:
+            pass
+        except Exception:
+            logger.exception("Background classification failed for review %s", review_id)
+        finally:
+            # Never closed by Django's normal request_finished cleanup (that only fires
+            # for the request thread) — without this, every review leaks one connection.
+            connection.close()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def classify_post(post):
@@ -176,7 +239,7 @@ def classify_post(post):
             # independently, doubling inference time for no benefit (same input, same
             # embedding). Inference itself is CPU-bound and slow on Railway's allocated
             # CPU (~5-6s per call), so this halves per-post latency.
-            text_emb = _get_model().encode(text, normalize_embeddings=True)
+            text_emb = _encode(text)
             if category is None:
                 category = _category_from_embedding(text_emb)
             interests = _interests_from_embedding(text_emb)
@@ -184,3 +247,51 @@ def classify_post(post):
     except Exception:
         from api.services.categorize import auto_categorize_post
         return (category or auto_categorize_post(post)), []
+
+
+def classify_post_async(post_id, overwrite_category):
+    """
+    Runs classify_post() in a background thread instead of the request/response path —
+    model inference takes 5-10s+ on Railway's allocated CPU (see the "Batches" timing in
+    prod logs), which would otherwise make every single post creation wait that long.
+    The post is already saved (with its default/client-given category and no interest
+    tags) by the time this is called; this backfills category (only if the client didn't
+    explicitly set one) and interest tags a few seconds later.
+
+    Callers must invoke this via transaction.on_commit(...) so the background thread never
+    queries the Post before the row that created it is actually committed and visible —
+    it does its own fresh DB fetch/connection rather than reusing the request's.
+    """
+    def _run():
+        from django.db import connection
+        from django.utils.text import slugify
+        from core.models import Post
+        from api.models import Interest
+        try:
+            post = Post.objects.get(pk=post_id)
+            category, interest_names = classify_post(post)
+            update_fields = []
+            if overwrite_category:
+                post.category = category
+                update_fields.append('category')
+            if update_fields:
+                post.save(update_fields=update_fields)
+            if interest_names:
+                # get_or_create rather than filter — a tag may not have any Interest row
+                # yet if no user has ever picked it at registration.
+                matched = [
+                    Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
+                    for name in interest_names
+                ]
+                post.interests.set(matched)
+        except Post.DoesNotExist:
+            pass
+        except Exception:
+            logger.exception("Background classification failed for post %s", post_id)
+        finally:
+            # This thread's DB connection is never closed by Django's normal
+            # request_finished cleanup (that only fires for the request thread) — without
+            # this, every post creation leaks one open connection.
+            connection.close()
+
+    threading.Thread(target=_run, daemon=True).start()

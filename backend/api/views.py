@@ -1487,37 +1487,29 @@ class ReviewViewSet(viewsets.ModelViewSet):
         if update_fields:
             entry.save(update_fields=update_fields)
 
-    def _tag_review_interests(self, review):
+    def _schedule_review_tagging(self, review):
         """Auto-assign interest tags (language-agnostic embedding classification, see
         api.services.embeddings.classify_review) — same pipeline Posts get, so reviews
-        can be scored by interest overlap in FeedViewSet.for_you instead of only
-        keyword matching."""
-        from api.services.embeddings import classify_review
-        from api.models import Interest
-        interest_names = classify_review(review)
-        if interest_names:
-            from django.utils.text import slugify
-            matched = [
-                Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
-                for name in interest_names
-            ]
-            review.interests.set(matched)
-        else:
-            review.interests.clear()
+        can be scored by interest overlap in FeedViewSet.for_you instead of only keyword
+        matching. Runs in the background (model inference is 5-10s+ on constrained CPU) —
+        on_commit so the thread never races the still-uncommitted row."""
+        from django.db import transaction
+        from api.services.embeddings import classify_review_async
+        transaction.on_commit(lambda: classify_review_async(review.id))
 
     def perform_create(self, serializer):
         review = serializer.save(user=self.request.user)
         playtime_hours = self.request.data.get('playtime_hours')
         platform = self.request.data.get('platform')
         self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
-        self._tag_review_interests(review)
+        self._schedule_review_tagging(review)
 
     def perform_update(self, serializer):
         review = serializer.save()
         playtime_hours = self.request.data.get('playtime_hours')
         platform = self.request.data.get('platform')
         self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
-        self._tag_review_interests(review)
+        self._schedule_review_tagging(review)
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -1601,6 +1593,7 @@ class PostViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
+        from rest_framework.exceptions import APIException
         try:
             serializer = self.get_serializer(data=request.data)
             if not serializer.is_valid():
@@ -1609,6 +1602,13 @@ class PostViewSet(viewsets.ModelViewSet):
             self.perform_create(serializer)
             headers = self.get_success_headers(serializer.data)
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except APIException:
+            # perform_create raises these deliberately (PermissionDenied for blocked/
+            # unauthorized posters, ValidationError for bad author_identity, etc.) — let
+            # DRF's normal exception handling turn them into their real 403/400/etc.
+            # instead of the broad except below flattening every one of them into a
+            # generic 500 (also caught malformed-body ParseErrors from request.data above).
+            raise
         except Exception:
             # Full traceback goes to structured logging (picked up by any log aggregator) —
             # never returned to clients.
@@ -1684,26 +1684,18 @@ class PostViewSet(viewsets.ModelViewSet):
             
         post = serializer.save(user=self.request.user, **post_kwargs)
 
-        # Auto-category + interest tags (language-agnostic embedding classification —
-        # see api.services.embeddings) and trending score.
         from api.services.categorize import calculate_trending_score
-        from api.services.embeddings import classify_post
-        from api.models import Interest
-        auto_category, interest_names = classify_post(post)
-        if not category:
-            post.category = auto_category
         post.trending_score = calculate_trending_score(post)
-        post.save()
-        if interest_names:
-            # get_or_create rather than filter — a tag may not have any Interest row
-            # yet if no user has ever picked it at registration.
-            from django.utils.text import slugify
-            matched = [
-                Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
-                for name in interest_names
-            ]
-            post.interests.set(matched)
-        
+        post.save(update_fields=['trending_score'])
+
+        # Auto-category + interest tags (language-agnostic embedding classification, see
+        # api.services.embeddings) run in the background, not here — model inference takes
+        # 5-10s+ on Railway's allocated CPU and would otherwise block the post-creation
+        # response that long. on_commit so the thread never races the still-uncommitted row.
+        from django.db import transaction
+        from api.services.embeddings import classify_post_async
+        transaction.on_commit(lambda: classify_post_async(post.id, overwrite_category=not category))
+
         # Quote post notification
         if post.repost_parent and post.repost_parent.user != self.request.user:
             from api.models import Notification
