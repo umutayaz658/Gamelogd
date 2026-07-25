@@ -1684,26 +1684,18 @@ class PostViewSet(viewsets.ModelViewSet):
             
         post = serializer.save(user=self.request.user, **post_kwargs)
 
-        # Auto-category + interest tags (language-agnostic embedding classification —
-        # see api.services.embeddings) and trending score.
         from api.services.categorize import calculate_trending_score
-        from api.services.embeddings import classify_post
-        from api.models import Interest
-        auto_category, interest_names = classify_post(post)
-        if not category:
-            post.category = auto_category
         post.trending_score = calculate_trending_score(post)
-        post.save()
-        if interest_names:
-            # get_or_create rather than filter — a tag may not have any Interest row
-            # yet if no user has ever picked it at registration.
-            from django.utils.text import slugify
-            matched = [
-                Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
-                for name in interest_names
-            ]
-            post.interests.set(matched)
-        
+        post.save(update_fields=['trending_score'])
+
+        # Auto-category + interest tags (language-agnostic embedding classification, see
+        # api.services.embeddings) run in the background, not here — model inference takes
+        # 5-10s+ on Railway's allocated CPU and would otherwise block the post-creation
+        # response that long. on_commit so the thread never races the still-uncommitted row.
+        from django.db import transaction
+        from api.services.embeddings import classify_post_async
+        transaction.on_commit(lambda: classify_post_async(post.id, overwrite_category=not category))
+
         # Quote post notification
         if post.repost_parent and post.repost_parent.user != self.request.user:
             from api.models import Notification
