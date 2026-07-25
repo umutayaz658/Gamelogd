@@ -36,7 +36,7 @@ interface PostComposerProps {
 }
 
 export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
-    const { user } = useAuth();
+    const { user, isLoading: isAuthLoading } = useAuth();
     const { t } = useTranslation();
     const toast = useToast();
 
@@ -233,11 +233,15 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     return (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4">
             <div className="flex gap-4">
-                <img
-                    src={getImageUrl(user?.avatar, user?.username)}
-                    alt="User"
-                    className="h-10 w-10 rounded-full bg-zinc-800 object-cover"
-                />
+                {isAuthLoading ? (
+                    <div className="h-10 w-10 rounded-full bg-zinc-800 animate-pulse shrink-0" />
+                ) : (
+                    <img
+                        src={getImageUrl(user?.avatar, user?.username)}
+                        alt="User"
+                        className="h-10 w-10 rounded-full bg-zinc-800 object-cover shrink-0"
+                    />
+                )}
                 <div className="flex-1 min-w-0 relative">
                     {replyingTo && (
                         <div className="mb-2">

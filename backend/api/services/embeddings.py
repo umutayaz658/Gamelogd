@@ -80,6 +80,19 @@ def _get_category_matrix():
     return _category_matrix
 
 
+def _interests_from_embedding(text_emb):
+    sims = _get_interest_matrix() @ text_emb
+    names = list(INTEREST_DESCRIPTIONS.keys())
+    return [names[i] for i, sim in enumerate(sims) if sim >= INTEREST_MATCH_THRESHOLD]
+
+
+def _category_from_embedding(text_emb):
+    sims = _get_category_matrix() @ text_emb
+    names = list(CATEGORY_DESCRIPTIONS.keys())
+    best = int(np.argmax(sims))
+    return names[best] if sims[best] >= INTEREST_MATCH_THRESHOLD else CATEGORY_FALLBACK
+
+
 def classify_interests(text):
     """Multi-label: returns every interest tag name the text is semantically close to."""
     text = (text or '').strip()
@@ -87,9 +100,7 @@ def classify_interests(text):
         return []
     model = _get_model()
     text_emb = model.encode(text, normalize_embeddings=True)
-    sims = _get_interest_matrix() @ text_emb
-    names = list(INTEREST_DESCRIPTIONS.keys())
-    return [names[i] for i, sim in enumerate(sims) if sim >= INTEREST_MATCH_THRESHOLD]
+    return _interests_from_embedding(text_emb)
 
 
 def classify_category(text):
@@ -99,10 +110,7 @@ def classify_category(text):
         return CATEGORY_FALLBACK
     model = _get_model()
     text_emb = model.encode(text, normalize_embeddings=True)
-    sims = _get_category_matrix() @ text_emb
-    names = list(CATEGORY_DESCRIPTIONS.keys())
-    best = int(np.argmax(sims))
-    return names[best] if sims[best] >= INTEREST_MATCH_THRESHOLD else CATEGORY_FALLBACK
+    return _category_from_embedding(text_emb)
 
 
 def classify_post(post):
@@ -124,12 +132,23 @@ def classify_post(post):
     else:
         category = None
 
-    text = post.content or ''
+    text = (post.content or '').strip()
 
     try:
-        if category is None:
-            category = classify_category(text)
-        interests = classify_interests(text)
+        if not text:
+            interests = []
+            if category is None:
+                category = CATEGORY_FALLBACK
+        else:
+            # One encode() call for the post text, reused for both the category and
+            # interest-tag comparisons — these used to each call model.encode(text)
+            # independently, doubling inference time for no benefit (same input, same
+            # embedding). Inference itself is CPU-bound and slow on Railway's allocated
+            # CPU (~5-6s per call), so this halves per-post latency.
+            text_emb = _get_model().encode(text, normalize_embeddings=True)
+            if category is None:
+                category = _category_from_embedding(text_emb)
+            interests = _interests_from_embedding(text_emb)
         return category, interests
     except Exception:
         from api.services.categorize import auto_categorize_post
