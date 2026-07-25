@@ -125,7 +125,9 @@ export default function RegisterPage() {
     const interestsList = [
         "RPG", "FPS", "MMORPG", "Indie", "Strategy", "Simulation",
         "Esports", "News", "Invest", "Retro", "Horror", "Puzzle",
-        "Adventure", "Open World", "Sci-Fi", "Fantasy"
+        "Adventure", "Open World", "Sci-Fi", "Fantasy",
+        "Sports", "Racing", "Battle Royale", "Fighting", "Platformer",
+        "Co-op", "VR", "Visual Novel"
     ];
 
     const handleNext = (e: React.FormEvent) => {

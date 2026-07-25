@@ -34,6 +34,14 @@ INTEREST_DESCRIPTIONS = {
     'Open World': 'open world game, sandbox, free roam, large explorable map',
     'Sci-Fi': 'science fiction game, space setting, futuristic technology, aliens',
     'Fantasy': 'fantasy game, magic, medieval setting, dragons, mythical creatures',
+    'Sports': 'sports video game, football, soccer, basketball, tennis, golf, FIFA, NBA, scoring a goal, playing a match, team, tournament, league, cup, athletic competition',
+    'Racing': 'racing video game, cars, motorsport, driving, speed, tracks, circuits, Formula 1, drifting, rally, lap, finish line, overtaking opponents',
+    'Battle Royale': 'battle royale video game, Fortnite, PUBG, Warzone, last player or team standing, shrinking safe zone, the zone closing in, parachute drop, looting, elimination, victory royale',
+    'Fighting': 'fighting video game, Street Fighter, Tekken, Mortal Kombat, one-on-one combat, punches and kicks, combos, character moves, health bar, martial arts, versus battles',
+    'Platformer': 'platformer game, jumping between platforms, side-scrolling levels, precision platforming',
+    'Co-op': 'cooperative multiplayer game, playing together with friends, couch co-op, party games',
+    'VR': 'virtual reality game, VR headset, immersive first-person virtual experience',
+    'Visual Novel': 'visual novel, story-driven game with dialogue choices, branching narrative',
 }
 
 CATEGORY_DESCRIPTIONS = {
