@@ -168,6 +168,45 @@ def classify_review(review):
         return []
 
 
+def classify_review_async(review_id):
+    """
+    Same rationale as classify_post_async: classify_review()'s model inference is
+    5-10s+ on constrained CPU, so it runs on a background thread instead of blocking the
+    review-creation/update response. Call via transaction.on_commit(...) so the thread
+    never queries the Review before the row is actually committed and visible.
+    """
+    def _run():
+        from django.db import connection
+        from django.utils.text import slugify
+        from core.models import Review
+        from api.models import Interest
+        try:
+            review = Review.objects.get(pk=review_id)
+            interest_names = classify_review(review)
+            if interest_names:
+                # get_or_create rather than filter — a tag may not have any Interest row
+                # yet if no user has ever picked it at registration.
+                matched = [
+                    Interest.objects.get_or_create(name=name, defaults={'slug': slugify(name)})[0]
+                    for name in interest_names
+                ]
+                review.interests.set(matched)
+            else:
+                # An edited review can legitimately end up with fewer/no matching tags —
+                # clear stale ones from a previous classification rather than leaving them.
+                review.interests.clear()
+        except Review.DoesNotExist:
+            pass
+        except Exception:
+            logger.exception("Background classification failed for review %s", review_id)
+        finally:
+            # Never closed by Django's normal request_finished cleanup (that only fires
+            # for the request thread) — without this, every review leaks one connection.
+            connection.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def classify_post(post):
     """
     Full classification for a Post: (category, [interest tag names]).

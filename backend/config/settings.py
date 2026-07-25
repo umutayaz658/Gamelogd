@@ -169,6 +169,15 @@ DATABASES = {
 # Override with DATABASE_URL if provided (e.g. on Railway)
 if os.environ.get('DATABASE_URL'):
     DATABASES['default'] = dj_database_url.config(default=os.environ.get('DATABASE_URL'), conn_max_age=600, ssl_require=False)
+    # CONN_MAX_AGE=600 above assumes each thread reuses its own connection across many
+    # requests, which holds under WSGI's thread-per-worker model but not under ASGI/Daphne
+    # — a burst of concurrent requests can each land on a fresh thread, opening a
+    # connection that then just sits idle for up to 10 minutes before Django reclaims it.
+    # This has Postgres itself close any session idling longer than 3 minutes, independent
+    # of the app, so a traffic burst can't hold far more open connections than expected
+    # (needs Postgres 14+; confirmed both prod (18) and local dev (15) satisfy that).
+    DATABASES['default'].setdefault('OPTIONS', {})
+    DATABASES['default']['OPTIONS']['options'] = '-c idle_session_timeout=180000'
 
 
 # Password validation
