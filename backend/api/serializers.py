@@ -1,11 +1,11 @@
 from rest_framework import serializers
-from django.db.models import Count, OuterRef, Subquery, IntegerField
+from django.db.models import Count, OuterRef, Subquery, IntegerField, Q
 from django.db.models.functions import Coalesce
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 
-def count_subquery(related_model, fk_name, **extra_filters):
+def count_subquery(related_model, fk_name, q_filter=None, **extra_filters):
     """A correlated-subquery COUNT for annotating list querysets.
 
     Lets feed/list views precompute engagement counts in one query instead of the serializer /
@@ -14,12 +14,27 @@ def count_subquery(related_model, fk_name, **extra_filters):
     Count()s over different relations JOIN-multiply the rows (catastrophic for a viral post with
     tens of thousands of likes and replies).
     """
-    sub = (
-        related_model.objects
-        .filter(**{fk_name: OuterRef('pk')}, **extra_filters)
-        .order_by().values(fk_name).annotate(c=Count('*')).values('c')
-    )
+    qs = related_model.objects.filter(**{fk_name: OuterRef('pk')}, **extra_filters)
+    if q_filter is not None:
+        qs = qs.filter(q_filter)
+    sub = qs.order_by().values(fk_name).annotate(c=Count('*')).values('c')
     return Coalesce(Subquery(sub, output_field=IntegerField()), 0)
+
+
+# A "direct" repost (the plain Repost toggle, PostViewSet.repost) has no content of its own —
+# as opposed to a quote-repost, which is a separate post with its own caption/media/gif/poll.
+# Filtering on `content==''` alone isn't enough to tell them apart: the quote composer lets you
+# submit a quote with attached media/gif/poll but no caption text, which also has content=='' —
+# that quote-repost was being miscounted as a direct repost (inflating reposts_count and wrongly
+# flipping is_reposted/the repost button to "active" for someone who only quoted, never reposted).
+DIRECT_REPOST_Q = (
+    Q(content='')
+    & (Q(image__isnull=True) | Q(image=''))
+    & (Q(media_file__isnull=True) | Q(media_file=''))
+    & (Q(gif_url__isnull=True) | Q(gif_url=''))
+    & (Q(poll_options__isnull=True) | Q(poll_options=[]))
+    & Q(media__isnull=True)
+)
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages',
@@ -94,7 +109,7 @@ def get_request_cache(request):
             
             cache['liked_post_ids'] = set(Like.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
             cache['bookmarked_post_ids'] = set(Bookmark.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
-            cache['reposted_post_ids'] = set(Post.objects.filter(user=request.user, repost_parent__isnull=False).values_list('repost_parent_id', flat=True))
+            cache['reposted_post_ids'] = set(Post.objects.filter(DIRECT_REPOST_Q, user=request.user, repost_parent__isnull=False).values_list('repost_parent_id', flat=True))
             cache['liked_review_ids'] = set(Like.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
             cache['bookmarked_review_ids'] = set(Bookmark.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
             cache['liked_news_ids'] = set(Like.objects.filter(user=request.user, news__isnull=False).values_list('news_id', flat=True))
@@ -475,6 +490,8 @@ class ReviewSerializer(serializers.ModelSerializer):
     bookmarks_count = serializers.SerializerMethodField()
     is_liked_by_user = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
+    replies_count = serializers.SerializerMethodField()
+    reposts_count = serializers.SerializerMethodField()
 
     def get_likes_count(self, obj):
         # Prefer the queryset annotation (feed/list views set it) to avoid a per-object COUNT.
@@ -485,12 +502,23 @@ class ReviewSerializer(serializers.ModelSerializer):
         ann = getattr(obj, 'bookmarks_count_ann', None)
         return ann if ann is not None else obj.bookmarks.count()
 
+    def get_replies_count(self, obj):
+        ann = getattr(obj, 'replies_count_ann', None)
+        return ann if ann is not None else obj.replies.count()
+
+    def get_reposts_count(self, obj):
+        # Unlike Post, a Review has no plain "direct repost" action — every repost of a
+        # review is a quote-repost (ReplyModal always sets repost_parent_review with the
+        # user's own content/media), so the total count is the right number here.
+        ann = getattr(obj, 'reposts_count_ann', None)
+        return ann if ann is not None else obj.reposts.count()
+
     class Meta:
         model = Review
         fields = [
-            'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 
+            'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked',
             'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
-            'is_liked_by_user', 'likes_count', 'playthrough_number'
+            'is_liked_by_user', 'likes_count', 'playthrough_number', 'replies_count', 'reposts_count'
         ]
         read_only_fields = ['id', 'user', 'timestamp']
 
@@ -727,11 +755,11 @@ class PostSerializer(serializers.ModelSerializer):
         return ann if ann is not None else obj.bookmarks.count()
 
     def get_reposts_count(self, obj):
-        # Count only direct reposts (content='') so this matches the repost toggle action
-        # (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are separate
-        # posts with their own content and are not part of this counter.
+        # Count only direct reposts (see DIRECT_REPOST_Q) so this matches the repost toggle
+        # action (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are
+        # separate posts with their own content/media and are not part of this counter.
         ann = getattr(obj, 'reposts_count_ann', None)
-        return ann if ann is not None else obj.reposts.filter(content='').count()
+        return ann if ann is not None else obj.reposts.filter(DIRECT_REPOST_Q).count()
 
     def get_is_reposted(self, obj):
         request = self.context.get('request')

@@ -36,6 +36,8 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const [likesCount, setLikesCount] = useState(review.likes_count || 0);
     const [isBookmarked, setIsBookmarked] = useState(review.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(review.bookmarks_count || 0);
+    const [repliesCount, setRepliesCount] = useState(review.replies_count || 0);
+    const [repostsCount, setRepostsCount] = useState(review.reposts_count || 0);
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -62,7 +64,33 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         setLikesCount(review.likes_count || 0);
         setIsBookmarked(review.is_bookmarked || false);
         setBookmarksCount(review.bookmarks_count || 0);
+        setRepliesCount(review.replies_count || 0);
+        setRepostsCount(review.reposts_count || 0);
     }, [review]);
+
+    // See PostCard's identical listener — ReplyModal broadcasts this since it has no direct
+    // reference back to every ReviewCard instance showing this same review.
+    useEffect(() => {
+        const handleReplyCreated = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.parentType === 'review' && detail?.parentId === review.id) {
+                setRepliesCount(prev => prev + 1);
+            }
+        };
+        window.addEventListener('reply-created', handleReplyCreated);
+        return () => window.removeEventListener('reply-created', handleReplyCreated);
+    }, [review.id]);
+
+    useEffect(() => {
+        const handlePostCreated = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.repost_parent_review === review.id) {
+                setRepostsCount(prev => prev + 1);
+            }
+        };
+        window.addEventListener('post-created', handlePostCreated);
+        return () => window.removeEventListener('post-created', handlePostCreated);
+    }, [review.id]);
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -343,7 +371,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
                                     <MessageCircle className="h-4 w-4" />
                                 </div>
-                                <span className="text-sm">{formatCount(0)}</span>
+                                <span className="text-sm">{formatCount(repliesCount)}</span>
                             </button>
 
                             <div className="relative">
@@ -358,7 +386,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
                                         <Repeat2 className="h-4 w-4" />
                                     </div>
-                                    <span className="text-sm">{formatCount(0)}</span>
+                                    <span className="text-sm">{formatCount(repostsCount)}</span>
                                 </button>
                             </div>
 

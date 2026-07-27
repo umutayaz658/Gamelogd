@@ -14,8 +14,8 @@ import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import CustomCountrySelect from '@/components/CustomCountrySelect';
 import {
-    User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Twitch, Globe,
-    FileText, HelpCircle, ChevronRight, ChevronLeft, ExternalLink, MessageCircle, Bug, Zap, Play,
+    User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Globe,
+    FileText, HelpCircle, ChevronRight, ChevronLeft, ExternalLink, MessageCircle, Bug,
     Loader2, X, Search, Check, AlertTriangle, Info, Send, UserX, ChevronDown, Mail
 } from 'lucide-react';
 
@@ -1961,12 +1961,7 @@ function SettingsContent() {
                                     <div className="space-y-4">
                                         {[
                                             { id: 'steam', name: 'Steam', icon: Gamepad2, connected: steamConnected, color: 'text-blue-400', description: t('steamDesc') },
-                                            { id: 'psn', name: 'PlayStation Network', icon: Gamepad2, connected: settings.connected_accounts.psn?.connected, color: 'text-blue-600', description: t('psnDesc') },
                                             { id: 'xbox', name: 'Xbox Live', icon: Gamepad2, connected: !!user?.xbox_gamertag, color: 'text-green-500', description: t('xboxDesc') },
-                                            { id: 'twitch', name: 'Twitch', icon: Twitch, connected: settings.connected_accounts.twitch?.connected, color: 'text-purple-500', description: t('twitchDesc') },
-                                            { id: 'epic', name: 'Epic Games', icon: Zap, connected: settings.connected_accounts.epic?.connected, color: 'text-white', description: t('epicDesc') },
-                                            { id: 'gog', name: 'GOG.com', icon: Monitor, connected: settings.connected_accounts.gog?.connected, color: 'text-purple-400', description: t('gogDesc') },
-                                            { id: 'ea', name: 'EA App', icon: Play, connected: settings.connected_accounts.ea?.connected, color: 'text-red-500', description: t('eaDesc') },
                                         ].map((platform) => {
                                             const isSteam = platform.id === 'steam';
                                             const connUsername = isSteam ? user?.steam_id : (platform.id === 'xbox' ? user?.xbox_gamertag : (settings.connected_accounts[platform.id as keyof typeof settings.connected_accounts] as any)?.username);

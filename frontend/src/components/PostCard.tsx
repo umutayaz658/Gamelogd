@@ -151,6 +151,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const [likesCount, setLikesCount] = useState(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
     const [isBookmarked, setIsBookmarked] = useState(post.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(post.bookmarks_count || 0);
+    const [repliesCount, setRepliesCount] = useState(post.replies_count || 0);
 
     const [isReposted, setIsReposted] = useState(post.is_reposted || false);
     const [repostsCount, setRepostsCount] = useState(post.reposts_count || 0);
@@ -201,9 +202,25 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setLikesCount(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
         setIsBookmarked(post.is_bookmarked || false);
         setBookmarksCount(post.bookmarks_count || 0);
+        setRepliesCount(post.replies_count || 0);
         setIsReposted(post.is_reposted || false);
         setRepostsCount(post.reposts_count || 0);
     }, [post]);
+
+    // ReplyModal has no direct reference back to every PostCard instance showing this same
+    // post (feed list, detail page, profile), so it broadcasts a 'reply-created' event instead
+    // of the count only updating after a full refetch — matches the existing 'post-created'
+    // event used for quote-reposts (see ReplyModal.tsx).
+    useEffect(() => {
+        const handleReplyCreated = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.parentType === 'post' && detail?.parentId === post.id) {
+                setRepliesCount(prev => prev + 1);
+            }
+        };
+        window.addEventListener('reply-created', handleReplyCreated);
+        return () => window.removeEventListener('reply-created', handleReplyCreated);
+    }, [post.id]);
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -687,7 +704,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
                                     <MessageCircle className="h-4 w-4" />
                                 </div>
-                                <span className="text-sm">{formatCount(post.comments || 0)}</span>
+                                <span className="text-sm">{formatCount(repliesCount)}</span>
                             </button>
 
                             <div className="relative" ref={repostMenuRef}>

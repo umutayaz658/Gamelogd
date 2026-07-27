@@ -211,6 +211,13 @@ export default function ReplyModal() {
                 window.dispatchEvent(new CustomEvent('post-created', { detail: res.data }));
             } else {
                 addFeedItem({ ...res.data, type: 'reply' });
+                // Lets every mounted PostCard/ReviewCard for this same parent (feed, detail
+                // page, profile) bump its comment count immediately instead of only updating
+                // after a refetch — see the matching listeners in PostCard.tsx/ReviewCard.tsx.
+                const isReviewItem = (activeItem as any).rating !== undefined;
+                window.dispatchEvent(new CustomEvent('reply-created', {
+                    detail: { parentId: activeItem.id, parentType: isReviewItem ? 'review' : 'post' }
+                }));
             }
 
             // Reset

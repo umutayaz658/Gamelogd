@@ -1711,23 +1711,26 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def repost(self, request, pk=None):
+        from api.serializers import DIRECT_REPOST_Q
         original_post = self.get_object()
         user = request.user
-        
-        # Check if already reposted directly by this user (content is empty)
-        existing = Post.objects.filter(user=user, repost_parent=original_post, content='').first()
-        
+
+        # Check if already reposted directly by this user (no content/media of its own — see
+        # DIRECT_REPOST_Q; a plain content='' check would also match a quote-repost that has
+        # media/gif/poll but no caption text, wrongly "undoing" someone's quote here instead).
+        existing = Post.objects.filter(DIRECT_REPOST_Q, user=user, repost_parent=original_post).first()
+
         if existing:
             existing.delete()
-            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.filter(content='').count()}, status=status.HTTP_200_OK)
-            
+            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_200_OK)
+
         # Create direct repost
         repost_post = Post.objects.create(
             user=user,
             repost_parent=original_post,
             content=''
         )
-        
+
         # Trigger notification
         if original_post.user != user:
             from api.models import Notification
@@ -1740,8 +1743,8 @@ class PostViewSet(viewsets.ModelViewSet):
                 target_type=content_type,
                 target_id=repost_post.id
             )
-            
-        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(content='').count()}, status=status.HTTP_201_CREATED)
+
+        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_201_CREATED)
 
 from api.models import Conversation, Message, ConversationMember
 from .serializers import ConversationSerializer, MessageSerializer
@@ -2936,16 +2939,17 @@ class FeedViewSet(viewsets.ViewSet):
         # Precompute engagement counts in the query (single subquery each) so the scoring loop
         # and the serializer don't fire a per-item .count() — the N+1 that made this endpoint
         # issue hundreds of queries per request.
-        from .serializers import count_subquery
+        from .serializers import count_subquery, DIRECT_REPOST_Q
         post_anns = dict(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
         review_anns = dict(
             likes_count_ann=count_subquery(Like, 'review'),
             replies_count_ann=count_subquery(Post, 'review_parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent_review'),
             bookmarks_count_ann=count_subquery(Bookmark, 'review'),
         )
 
@@ -3103,7 +3107,7 @@ class FeedViewSet(viewsets.ViewSet):
         
         # Annotate engagement counts so the serializers below read them instead of firing a
         # per-item .count() (see for_you / count_subquery).
-        from .serializers import count_subquery
+        from .serializers import count_subquery, DIRECT_REPOST_Q
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
             parent__isnull=True,
@@ -3112,13 +3116,14 @@ class FeedViewSet(viewsets.ViewSet):
         ).select_related('user').prefetch_related('user__interests', 'media').annotate(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         ).order_by('-timestamp')[:50]
 
         reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').prefetch_related('user__interests').annotate(
             likes_count_ann=count_subquery(Like, 'review'),
             replies_count_ann=count_subquery(Post, 'review_parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent_review'),
             bookmarks_count_ann=count_subquery(Bookmark, 'review'),
         ).order_by('-timestamp')[:50]
         
@@ -4165,7 +4170,7 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         page = int(request.query_params.get('page', 1))
         page_size = min(int(request.query_params.get('page_size', 20)), 50)
 
-        from api.serializers import count_subquery
+        from api.serializers import count_subquery, DIRECT_REPOST_Q
         from core.models import Like, Bookmark
         posts = Post.objects.filter(
             parent__isnull=True,
@@ -4178,7 +4183,7 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             # longer renders those relations, only their counts.
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
 

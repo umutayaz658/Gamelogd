@@ -68,6 +68,8 @@ export interface Review {
     playthrough_number?: number;
     timestamp: string;
     type?: 'review';
+    replies_count?: number;
+    reposts_count?: number;
 }
 
 export interface Project {
