@@ -12,7 +12,7 @@ from rest_framework import status
 from core.models import Game, Review, Post, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
 from api.models import User, Notification, SupportTicket, Interest, PendingRegistration, PendingEmailChange
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer, OrganisationSerializer, OrganisationMemberSerializer, OrganisationInvitationSerializer
-from .pagination import StandardResultsSetPagination
+from .pagination import LargeResultsSetPagination, StandardResultsSetPagination
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.core.mail import EmailMultiAlternatives
@@ -535,7 +535,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'error': 'This is already your current email address'}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(email__iexact=new_email).exclude(pk=user.pk).exists():
-            return Response({'error': 'A user with that email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            # Anti-enumeration: indistinguishable from the success path. No code is sent, so
+            # the change can never be confirmed against this address (and confirm re-checks
+            # uniqueness anyway).
+            return Response({'status': 'verification_required', 'new_email': new_email}, status=status.HTTP_200_OK)
 
         code = PendingEmailChange.generate_code()
         PendingEmailChange.objects.update_or_create(
@@ -1017,16 +1020,35 @@ class RegisterView(generics.CreateAPIView):
                 
             email = safe_data.get('email')
             username = safe_data.get('username')
-            
+
+            # Anti-enumeration: an already-registered email gets the exact same response as a
+            # fresh one, but no pending row and no code — the same silent no-op contract
+            # ResendVerificationView uses. (The serializer deliberately no longer rejects it.)
+            if email and User.objects.filter(email__iexact=email, is_active=True).exists():
+                return Response({
+                    'status': 'verification_required',
+                    'email': email
+                }, status=status.HTTP_201_CREATED)
+
             # Verify the data is truly JSON-serializable before saving
             json.dumps(safe_data)
-            
-            # Clean up any existing pending registration for this email/username
+
+            # Clean up this email's own previous pending registration (resubmitting with the
+            # same inbox is the legitimate "changed my mind / new code" path).
             if email:
                 PendingRegistration.objects.filter(email=email).delete()
             if username:
-                PendingRegistration.objects.filter(username=username).delete()
-                
+                # Only reap EXPIRED pendings holding this username. Deleting a live one would
+                # let anyone invalidate a stranger's in-flight registration (and its emailed
+                # code) just by submitting their username; a live holder is reported as taken
+                # instead — it self-releases within minutes if never verified.
+                PendingRegistration.objects.filter(username=username, expires_at__lt=timezone.now()).delete()
+                if PendingRegistration.objects.filter(username=username).exists():
+                    return Response(
+                        {'username': ['A user with that username already exists.']},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             # Generate code
             code = PendingRegistration.generate_code()
             
@@ -1210,7 +1232,10 @@ class LogoutView(generics.GenericAPIView):
         response = Response({'detail': 'Logged out.'}, status=status.HTTP_200_OK)
         return clear_auth_cookie(response)
 
-class GameViewSet(viewsets.ModelViewSet):
+class GameViewSet(viewsets.ReadOnlyModelViewSet):
+    # The game catalogue is populated server-side (IGDB sync / management commands), never
+    # through the API: a writable viewset here would let any signed-in user edit shared
+    # catalogue rows or DELETE a game, cascading into every user's reviews and library entries.
     queryset = Game.objects.all()
     serializer_class = GameSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -1646,8 +1671,8 @@ class PostViewSet(viewsets.ModelViewSet):
                     
             elif author_identity == 'project':
                 # Must be project owner/admin or org owner/admin to post as project
-                is_proj_admin = (project_parent.owner == user or 
-                                 project_parent.members.filter(user=user, role='admin').exists() or 
+                is_proj_admin = (project_parent.owner == user or
+                                 project_parent.members.filter(user=user, role='admin', status='active').exists() or
                                  (project_parent.organisation and 
                                   project_parent.organisation.members.filter(user=user, role__in=['owner', 'admin']).exists()))
                 if not is_proj_admin:
@@ -1711,23 +1736,26 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def repost(self, request, pk=None):
+        from api.serializers import DIRECT_REPOST_Q
         original_post = self.get_object()
         user = request.user
-        
-        # Check if already reposted directly by this user (content is empty)
-        existing = Post.objects.filter(user=user, repost_parent=original_post, content='').first()
-        
+
+        # Check if already reposted directly by this user (no content/media of its own — see
+        # DIRECT_REPOST_Q; a plain content='' check would also match a quote-repost that has
+        # media/gif/poll but no caption text, wrongly "undoing" someone's quote here instead).
+        existing = Post.objects.filter(DIRECT_REPOST_Q, user=user, repost_parent=original_post).first()
+
         if existing:
             existing.delete()
-            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.filter(content='').count()}, status=status.HTTP_200_OK)
-            
+            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_200_OK)
+
         # Create direct repost
         repost_post = Post.objects.create(
             user=user,
             repost_parent=original_post,
             content=''
         )
-        
+
         # Trigger notification
         if original_post.user != user:
             from api.models import Notification
@@ -1740,8 +1768,8 @@ class PostViewSet(viewsets.ModelViewSet):
                 target_type=content_type,
                 target_id=repost_post.id
             )
-            
-        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(content='').count()}, status=status.HTTP_201_CREATED)
+
+        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_201_CREATED)
 
 from api.models import Conversation, Message, ConversationMember
 from .serializers import ConversationSerializer, MessageSerializer
@@ -1857,7 +1885,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         name = request.data.get('name', 'Group Chat')
         avatar = request.FILES.get('avatar', None)
-        
+        if avatar:
+            from .uploads import validate_media_file
+            validate_media_file(avatar)
+
         if not usernames:
             return Response({"error": "At least one other participant username is required"}, status=400)
             
@@ -2170,7 +2201,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
             
         name = request.data.get('name')
         avatar = request.FILES.get('avatar')
-        
+        if avatar:
+            from .uploads import validate_media_file
+            validate_media_file(avatar)
+
         if name:
             conversation.name = name
         if avatar:
@@ -2548,12 +2582,25 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
     def create(self, request, *args, **kwargs):
         # Check for existence to toggle or prevent duplicates
         user = request.user
-        post_id = request.data.get('post')
-        review_id = request.data.get('review')
-        news_id = request.data.get('news')
-        playtest_feedback_id = request.data.get('playtest_feedback')
 
-        # Check block restrictions before liking content
+        def _coerce_id(field):
+            raw = request.data.get(field)
+            if raw is None or raw == '':
+                return None
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({field: ['A valid integer is required.']})
+
+        post_id = _coerce_id('post')
+        review_id = _coerce_id('review')
+        news_id = _coerce_id('news')
+        playtest_feedback_id = _coerce_id('playtest_feedback')
+        community_translation_id = _coerce_id('community_translation')
+
+        # Check block restrictions before liking content — covers every likeable target with
+        # a user-facing author, not just posts/reviews.
         target_author = None
         if post_id:
             from core.models import Post
@@ -2565,6 +2612,16 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
             review = Review.objects.filter(id=review_id).first()
             if review:
                 target_author = review.user
+        elif playtest_feedback_id:
+            from core.models import PlaytestFeedback
+            feedback = PlaytestFeedback.objects.filter(id=playtest_feedback_id).first()
+            if feedback:
+                target_author = feedback.author
+        elif community_translation_id:
+            from core.models import CommunityTranslation
+            contribution = CommunityTranslation.objects.filter(id=community_translation_id).first()
+            if contribution:
+                target_author = contribution.author
 
         if target_author:
             from api.models import Block
@@ -2572,7 +2629,7 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
                Block.objects.filter(blocker=target_author, blocked=user).exists():
                 return Response({"error": "Cannot like content from this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
 
-        existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id, playtest_feedback_id=playtest_feedback_id).first()
+        existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id, playtest_feedback_id=playtest_feedback_id, community_translation_id=community_translation_id).first()
         
         if existing:
             existing.delete()
@@ -2641,7 +2698,8 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         # The serializer validates user via `user_id` mapped to `user`
         target_user = serializer.validated_data['user']
         user = self.request.user
-        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+        # status='active': an invited-but-unaccepted admin must not be able to manage members.
+        if project.owner != user and not project.members.filter(user=user, role='admin', status='active').exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only project admins can add members.")
 
@@ -2675,7 +2733,7 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         project = serializer.instance.project
         user = self.request.user
-        if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+        if project.owner != user and not project.members.filter(user=user, role='admin', status='active').exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only project admins can update members.")
         if serializer.instance.user_id == project.owner_id:
@@ -2738,7 +2796,7 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
             raise ValidationError("The project owner can't be removed from their own project.")
 
         if invitee != user:
-            if project.owner != user and not project.members.filter(user=user, role='admin').exists():
+            if project.owner != user and not project.members.filter(user=user, role='admin', status='active').exists():
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("Only project admins can remove members.")
 
@@ -2753,7 +2811,15 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    queryset = Project.objects.all().select_related('owner').order_by('-created_at')
+    # The serializer nests members (each with user + interests + custom role) and follower
+    # counts — without these prefetches a 20-project list page issues hundreds of queries.
+    _BASE_QUERYSET = (
+        Project.objects.all()
+        .select_related('owner', 'organisation')
+        .prefetch_related('members__user__interests', 'members__custom_role', 'followers')
+        .order_by('-created_at')
+    )
+    queryset = _BASE_QUERYSET
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, ProjectAccessPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -2763,7 +2829,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        queryset = Project.objects.all().select_related('owner').order_by('-created_at')
+        queryset = self._BASE_QUERYSET
         # Tech stack filtering (comma-separated)
         tech_stack = self.request.query_params.get('tech_stack_filter', None)
         if tech_stack:
@@ -2845,6 +2911,363 @@ class ProjectViewSet(viewsets.ModelViewSet):
         if deleted_count == 0:
             return Response({"error": "You are not following this project."}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"message": f"Unfollowed {project.title}"}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='translation-keys', permission_classes=[permissions.AllowAny])
+    def translation_keys(self, request, pk=None):
+        """
+        Public, read-only projection of this project's Devs-managed translation key catalogue
+        (key/namespace/base text/plural metadata) — the "what needs translating" list the
+        community translation tab on the public project page is built on, and the taxonomy
+        CommunityTranslation rows reference by `key`. Deliberately projects out ONLY these
+        fields from the WorkspaceState blob: the blob also holds this board's Kanban tasks, GDD
+        docs, and asset registry, none of which may ever be exposed through this public endpoint.
+
+        `languages`/`source_language` are this PROJECT's configured locales (see
+        api.locale_registry.resolve_project_locales) — every consumer of this endpoint (both the
+        Devs Localisation Manager and the public panel) reads its language list from here, so
+        there is exactly one place a project's language list is defined, never a
+        separately-hardcoded frontend mirror.
+
+        Which strings are already translated/approved is computed client-side from
+        /community-translations/ (the single shared source for both surfaces), not duplicated
+        here.
+
+        Also projects the team's glossary (locked terminology translations) — same visibility
+        rule as everything else here: this is "what needs translating" metadata, not sensitive,
+        so both the Devs Localisation Manager and the public panel read the one glossary list
+        from here rather than Devs having a private copy.
+        """
+        from api.locale_registry import resolve_project_locales, resolve_source_locale, to_public_dict
+
+        project = self.get_object()
+        state = _project_workspace_state_readonly(project)
+        blob = state.data or {} if state else {}
+        entries = blob.get('translationKeys') or []
+
+        keys = [
+            {
+                'key': entry.get('key'),
+                'namespace': entry.get('namespace', ''),
+                'base_text': entry.get('baseText', ''),
+                'is_plural': bool(entry.get('isPlural')),
+                'base_plural': entry.get('basePlural') or None,
+            }
+            for entry in entries
+        ]
+
+        glossary = [
+            {
+                'id': term.get('id'),
+                'term': term.get('term', ''),
+                'translations': term.get('translations') or {},
+            }
+            for term in (blob.get('glossary') or [])
+        ]
+
+        return Response({
+            'project': project.id,
+            'source_language': to_public_dict(resolve_source_locale(blob)),
+            'languages': [to_public_dict(loc) for loc in resolve_project_locales(blob)],
+            'has_key_catalog': bool(entries),
+            'keys': keys,
+            'glossary': glossary,
+        })
+
+    @action(detail=True, methods=['get'], url_path='localisation/contributors', permission_classes=[permissions.AllowAny])
+    def localisation_contributors(self, request, pk=None):
+        """
+        Public leaderboard of who has contributed to this project's localisation, ranked by
+        characters of APPROVED translation text (a plural row counts every category's text, not
+        just one representative string — matching how much a translator actually typed). Built
+        from CommunityTranslation directly (not the WorkspaceState blob) since it's the single
+        shared source of suggestion data for both the Devs Localisation Manager and this public
+        page (see CommunityTranslation's docstring) — there is no separate "Devs contributors"
+        view, by design.
+
+        `role_badge` distinguishes a project team member/owner ('team'), someone from the same
+        organisation who isn't directly on this project ('org'), and an unaffiliated public
+        contributor ('community') — computed in two small batched queries, not per-row.
+
+        `?language=<code>` filters to contributors with >0 characters in that language and sorts
+        by that language's count; otherwise sorts by total characters. `by_language` in the
+        response always carries the FULL per-language breakdown regardless of the filter, so the
+        frontend's contributor detail popup never needs a second request. `?q=` matches username
+        or display name, case-insensitively — deliberately NOT called `search`, since that name
+        is already claimed by this ViewSet's own `filters.SearchFilter` (`search_fields = ['title',
+        'description', 'tech_stack']` on Project itself), which would otherwise filter `get_object()`
+        down to projects matching that text and 404 on an unrelated project (the same class of
+        DRF-reserved-param collision as the earlier `format`/`status` renames on this endpoint
+        family — see translation_keys/localisation_export nearby).
+        """
+        from django.core.cache import cache
+
+        from core.models import CommunityTranslation, ProjectMember
+
+        project = self.get_object()
+        language = (request.query_params.get('language') or '').strip()
+        search = (request.query_params.get('q') or '').strip().lower()
+
+        # The per-character aggregation walks every approved row (plural char counting can't be
+        # pushed into SQL portably), and this is a public endpoint hit on every page-flip and
+        # debounced search keystroke — so the filter-independent full list is cached briefly
+        # per project and the cheap search/language filtering happens per request below.
+        cache_key = f'localisation_contributors_v1_{project.id}'
+        contributors_all = cache.get(cache_key)
+        if contributors_all is None:
+            rows = (
+                CommunityTranslation.objects
+                .filter(project=project, status='approved', author__isnull=False)
+                .select_related('author')
+                .only('author_id', 'language', 'text', 'plural_forms',
+                      'author__username', 'author__real_name', 'author__avatar')
+            )
+
+            stats = {}
+            for row in rows:
+                chars = sum(len(v) for v in row.plural_forms.values()) if row.plural_forms else len(row.text or '')
+                bucket = stats.setdefault(row.author_id, {'user': row.author, 'by_language': {}})
+                bucket['by_language'][row.language] = bucket['by_language'].get(row.language, 0) + chars
+
+            team_ids = {project.owner_id} | set(
+                ProjectMember.objects.filter(project=project, status='active').values_list('user_id', flat=True)
+            )
+            org_ids = set()
+            if project.organisation_id:
+                org_ids = set(
+                    OrganisationMember.objects.filter(organisation_id=project.organisation_id).values_list('user_id', flat=True)
+                )
+
+            contributors_all = []
+            for author_id, bucket in stats.items():
+                user = bucket['user']
+                if author_id in team_ids:
+                    role_badge = 'team'
+                elif author_id in org_ids:
+                    role_badge = 'org'
+                else:
+                    role_badge = 'community'
+                contributors_all.append({
+                    'user': {
+                        'id': user.id, 'username': user.username, 'real_name': user.real_name,
+                        'avatar': user.avatar.url if user.avatar else None,
+                    },
+                    'role_badge': role_badge,
+                    'total_characters': sum(bucket['by_language'].values()),
+                    'by_language': bucket['by_language'],
+                })
+            cache.set(cache_key, contributors_all, 60)
+
+        contributors = [
+            c for c in contributors_all
+            if not search
+            or search in c['user']['username'].lower()
+            or search in (c['user']['real_name'] or '').lower()
+        ]
+
+        if language:
+            contributors = [c for c in contributors if c['by_language'].get(language, 0) > 0]
+            contributors.sort(key=lambda c: c['by_language'].get(language, 0), reverse=True)
+        else:
+            contributors.sort(key=lambda c: c['total_characters'], reverse=True)
+
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(contributors, request)
+        return paginator.get_paginated_response(page)
+
+    @action(detail=True, methods=['get'], url_path='localisation/export', permission_classes=[permissions.AllowAny])
+    def localisation_export(self, request, pk=None):
+        """
+        Exports this project's localisation data in one of the registered interchange formats
+        (see api.services.localisation_formats). `status=approved` (default) is public — it is
+        just a reformatting of data already public via /translation-keys/ and
+        /community-translations/, so gating it would be security theatre while breaking the
+        "grab the current PO to translate offline" workflow for non-members. `status=
+        approved_pending` additionally includes moderation-queue (pending) suggestions, so it
+        requires auth + the 'localisation.view' permission.
+        """
+        from django.http import HttpResponse
+
+        from api.locale_registry import resolve_project_locales
+        from api.services.localisation_formats import export_bundle
+        from api.services.localisation_formats.canonical import build_bundle
+
+        project = self.get_object()
+        # NOT named 'format' — that query parameter name is reserved by DRF itself
+        # (settings.REST_FRAMEWORK's default URL_FORMAT_OVERRIDE) for renderer content
+        # negotiation; supplying an unrecognised value there causes DRF's own content
+        # negotiation to reject the request before this view method ever runs.
+        fmt = request.query_params.get('fmt')
+        language = request.query_params.get('language', 'all')
+        # NOT named 'status' — that collides with ProjectViewSet's own DjangoFilterBackend
+        # filterset_fields=['status', 'organisation'] (Project.status, an unrelated field with
+        # its own choices), which would reject 'approved_pending' as an invalid Project.status
+        # value with a 400 before this action's own code ever ran.
+        status_filter = request.query_params.get('scope', 'approved')
+
+        if status_filter not in ('approved', 'approved_pending'):
+            return Response({'error': 'Invalid status filter.'}, status=status.HTTP_400_BAD_REQUEST)
+        if status_filter == 'approved_pending':
+            if not request.user.is_authenticated or not user_has_permission(
+                request.user, 'localisation.view', organisation=project.organisation, project=project,
+            ):
+                return Response({'error': 'You do not have permission to export pending suggestions.'}, status=status.HTTP_403_FORBIDDEN)
+            statuses = ('approved', 'pending')
+        else:
+            statuses = ('approved',)
+
+        state = _project_workspace_state_readonly(project)
+        blob = state.data or {} if state else {}
+        locales = resolve_project_locales(blob)
+        if language != 'all' and language not in {l.code for l in locales}:
+            return Response({'error': f'Project is not configured for language "{language}".'}, status=status.HTTP_400_BAD_REQUEST)
+
+        bundle = build_bundle(project, locales, statuses=statuses)
+        try:
+            content, filename, content_type = export_bundle(fmt, bundle, language=language)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        response = HttpResponse(content, content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=['post'], url_path='localisation/import', permission_classes=[permissions.IsAuthenticated])
+    def localisation_import(self, request, pk=None):
+        """
+        Imports an uploaded file (one of the registered formats) into this project. `mode=
+        preview` (default) writes nothing and just returns the ImportResult so the UI can show
+        counts/warnings before committing — a single import can approve hundreds of strings at
+        once, so a blind one-click commit would be dangerous. `import_keys=true` requires
+        'localisation.key.create'; `import_translations=true` requires
+        'community_translation.approve', because a bulk-imported translation is written already
+        approved (this is a moderation action, not a suggestion) — the deliberate reversal of the
+        original decision to have manual CSV/JSON import discard translation values entirely.
+        """
+        from api.locale_registry import resolve_project_locales, resolve_source_locale
+        from api.services.localisation_formats import parse_file
+
+        project = self.get_object()
+        fmt = request.data.get('fmt')  # not 'format' — see the export action's comment on this
+        language = request.data.get('language')
+        mode = request.data.get('mode', 'preview')
+        import_keys = str(request.data.get('import_keys', 'false')).lower() == 'true'
+        import_translations = str(request.data.get('import_translations', 'false')).lower() == 'true'
+        # Same coercion as WorkspaceStateViewSet.create: multipart fields arrive as strings and
+        # a malformed value must degrade to "no concurrency check", not a 500 in apply_import.
+        base_version = request.data.get('base_version')
+        try:
+            base_version = int(base_version) if base_version is not None else None
+        except (TypeError, ValueError):
+            base_version = None
+        uploaded = request.FILES.get('file')
+
+        if mode not in ('preview', 'commit'):
+            return Response({'error': 'Invalid mode.'}, status=status.HTTP_400_BAD_REQUEST)
+        if uploaded is None:
+            return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+        if uploaded.size > 5 * 1024 * 1024:
+            return Response({'error': 'File is too large (max 5MB).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # With both flags off there is nothing to import — and rejecting it here also means
+        # every request that reaches the parsers has passed at least one permission check
+        # below (preview included), so unprivileged users can't feed files to the parsers.
+        if not import_keys and not import_translations:
+            return Response({'error': 'Nothing to import: enable import_keys and/or import_translations.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if import_keys and not user_has_permission(request.user, 'localisation.key.create', organisation=project.organisation, project=project):
+            return Response({'error': 'You do not have permission to add translation keys.'}, status=status.HTTP_403_FORBIDDEN)
+        if import_translations and not user_has_permission(request.user, 'community_translation.approve', organisation=project.organisation, project=project):
+            return Response({'error': 'You do not have permission to import approved translations.'}, status=status.HTTP_403_FORBIDDEN)
+
+        state = _project_workspace_state_readonly(project)
+        blob = state.data or {} if state else {}
+        locales = resolve_project_locales(blob)
+        source_locale = resolve_source_locale(blob)
+        if import_translations and language not in {l.code for l in locales}:
+            return Response({'error': f'Project is not configured for language "{language}".'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            parsed = parse_file(fmt, uploaded.read(), project_locales=locales, source_locale=source_locale)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if mode == 'preview':
+            from api.services.localisation_formats.canonical import ImportResult
+
+            existing_keys = {e.get('key') for e in (blob.get('translationKeys') or [])}
+            result = ImportResult(mode='preview', format=fmt, language=language or '')
+            if import_keys:
+                for entry in parsed.entries:
+                    if entry.key not in existing_keys:
+                        result.keys_added += 1
+                    elif entry.base_text:
+                        result.keys_updated += 1
+            if import_translations:
+                for entry in parsed.entries:
+                    if language in entry.translations:
+                        result.translations_created += 1
+            result.warnings = list(parsed.warnings)
+            result.sample = [{'key': e.key, 'base_text': e.base_text} for e in parsed.entries[:10]]
+            return Response(result.to_dict())
+
+        from api.services.localisation_formats.canonical import apply_import
+        result, conflict = apply_import(
+            project, parsed, language=language, user=request.user,
+            import_keys=import_keys, import_translations=import_translations, base_version=base_version,
+        )
+        result.format = fmt
+        result.language = language or ''
+        if conflict:
+            return Response({'error': 'This project was updated by someone else. Reload before importing.'}, status=status.HTTP_409_CONFLICT)
+        return Response(result.to_dict())
+
+    @action(detail=True, methods=['post'], url_path='localisation/rename-key', permission_classes=[permissions.IsAuthenticated])
+    def localisation_rename_key(self, request, pk=None):
+        """
+        Carries a key's CommunityTranslation rows over to a new key name. The rows reference
+        the key by plain string (no FK — the catalogue lives in the WorkspaceState blob), so a
+        rename done only in the blob would orphan every existing suggestion/vote/approval.
+        """
+        from django.db import IntegrityError
+
+        from core.models import CommunityTranslation
+
+        project = self.get_object()
+        old_key = (request.data.get('old_key') or '').strip()
+        new_key = (request.data.get('new_key') or '').strip()
+        if not old_key or not new_key:
+            return Response({'error': 'old_key and new_key are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user_has_permission(request.user, 'localisation.key.create', organisation=project.organisation, project=project):
+            return Response({'error': 'You do not have permission to rename translation keys.'}, status=status.HTTP_403_FORBIDDEN)
+
+        namespace = new_key.split('.')[0] if '.' in new_key else 'other'
+        try:
+            with transaction.atomic():
+                updated = CommunityTranslation.objects.filter(project=project, key=old_key).update(key=new_key, namespace=namespace)
+        except IntegrityError:
+            # The same author already has a non-rejected row under new_key for some language —
+            # merging those histories automatically would silently discard one of the two.
+            return Response(
+                {'error': 'The target key already has translations that would collide; delete or resolve them first.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response({'updated': updated})
+
+    @action(detail=True, methods=['post'], url_path='localisation/delete-key-translations', permission_classes=[permissions.IsAuthenticated])
+    def localisation_delete_key_translations(self, request, pk=None):
+        """Deletes a removed key's CommunityTranslation rows — see localisation_rename_key for
+        why blob-only key operations would otherwise leak rows forever."""
+        from core.models import CommunityTranslation
+
+        project = self.get_object()
+        key = (request.data.get('key') or '').strip()
+        if not key:
+            return Response({'error': 'key is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user_has_permission(request.user, 'localisation.key.delete', organisation=project.organisation, project=project):
+            return Response({'error': 'You do not have permission to delete translation keys.'}, status=status.HTTP_403_FORBIDDEN)
+
+        deleted, _ = CommunityTranslation.objects.filter(project=project, key=key).delete()
+        return Response({'deleted': deleted})
 
 class JobPostingViewSet(viewsets.ModelViewSet):
     queryset = JobPosting.objects.filter(is_active=True).select_related('recruiter').order_by('-created_at')
@@ -2936,16 +3359,17 @@ class FeedViewSet(viewsets.ViewSet):
         # Precompute engagement counts in the query (single subquery each) so the scoring loop
         # and the serializer don't fire a per-item .count() — the N+1 that made this endpoint
         # issue hundreds of queries per request.
-        from .serializers import count_subquery
+        from .serializers import count_subquery, DIRECT_REPOST_Q
         post_anns = dict(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
         review_anns = dict(
             likes_count_ann=count_subquery(Like, 'review'),
             replies_count_ann=count_subquery(Post, 'review_parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent_review'),
             bookmarks_count_ann=count_subquery(Bookmark, 'review'),
         )
 
@@ -3103,7 +3527,7 @@ class FeedViewSet(viewsets.ViewSet):
         
         # Annotate engagement counts so the serializers below read them instead of firing a
         # per-item .count() (see for_you / count_subquery).
-        from .serializers import count_subquery
+        from .serializers import count_subquery, DIRECT_REPOST_Q
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
             parent__isnull=True,
@@ -3112,13 +3536,14 @@ class FeedViewSet(viewsets.ViewSet):
         ).select_related('user').prefetch_related('user__interests', 'media').annotate(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         ).order_by('-timestamp')[:50]
 
         reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').prefetch_related('user__interests').annotate(
             likes_count_ann=count_subquery(Like, 'review'),
             replies_count_ann=count_subquery(Post, 'review_parent'),
+            reposts_count_ann=count_subquery(Post, 'repost_parent_review'),
             bookmarks_count_ann=count_subquery(Bookmark, 'review'),
         ).order_by('-timestamp')[:50]
         
@@ -3338,7 +3763,12 @@ class OrganisationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def projects(self, request, slug=None):
         organisation = self.get_object()
-        projects = organisation.projects.all().order_by('-created_at')
+        projects = (
+            organisation.projects.all()
+            .select_related('owner', 'organisation')
+            .prefetch_related('members__user__interests', 'members__custom_role', 'followers')
+            .order_by('-created_at')
+        )
         from .serializers import ProjectSerializer
         serializer = ProjectSerializer(projects, many=True, context={'request': request})
         return Response(serializer.data)
@@ -3650,6 +4080,28 @@ def permission_catalog_view(request):
 
 
 @api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def localisation_locales_view(request):
+    """The full curated locale registry (see api.locale_registry) — consumed only by the Devs
+    language-settings multi-select. Every other localisation surface (both the public panel and
+    the Devs manager's own dropdowns) reads a PROJECT's already-resolved language list off
+    /projects/{id}/translation-keys/ instead, so this is the one and only place the full
+    supported-locale list is served from."""
+    from .locale_registry import LOCALES, DEFAULT_SOURCE_LOCALE_CODE, to_public_dict
+    return Response({
+        'source_default': to_public_dict(LOCALES[DEFAULT_SOURCE_LOCALE_CODE]),
+        'locales': [to_public_dict(loc) for loc in LOCALES.values()],
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def localisation_formats_view(request):
+    from api.services.localisation_formats import list_formats
+    return Response({'formats': list_formats()})
+
+
+@api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def my_permissions_view(request):
     organisation = None
@@ -3703,20 +4155,26 @@ def _parse_org_workspace_key(key):
 
 def _check_org_board_access(org, project_id, user):
     """
-    Coarse membership gate for an org-scoped WorkspaceState key. Org owners/admins
-    may access every board in their org (mirrors ProjectViewSet's manageable-filter
-    precedent). Plain members may access the org-root board, but a project-specific
-    board additionally requires actual membership on that project — closing a prior
-    gap where any org member could write to a project's board without being on it.
+    Coarse membership gate for an org-scoped WorkspaceState key. The invariant checked first:
+    a project-scoped key is only valid when that project actually belongs to this organisation
+    — an org admin must not be waved through for someone else's project id, and a nonexistent
+    project id must not mint arbitrary rows. Org owners/admins may then access every board in
+    their org (mirrors ProjectViewSet's manageable-filter precedent); plain members may access
+    the org-root board, but a project board additionally requires actual membership on that
+    project.
     """
+    if project_id is not None:
+        from core.models import Project
+        project = Project.objects.filter(id=project_id, organisation=org).first()
+        if project is None:
+            return False
+    else:
+        project = None
+
     if org.members.filter(user=user, role__in=['owner', 'admin']).exists():
         return True
     if not org.members.filter(user=user).exists():
         return False
-    if project_id is None:
-        return True
-    from core.models import Project
-    project = Project.objects.filter(id=project_id).first()
     if project is None:
         return True
     return project.owner_id == user.id or project.members.filter(user=user, status='active').exists()
@@ -3740,20 +4198,60 @@ def _check_solo_project_access(project, user):
     return project.owner_id == user.id or project.members.filter(user=user, status='active').exists()
 
 
-def _project_workspace_state(project):
+def _project_board_key_and_identity(project):
     """
-    Get-or-creates the WorkspaceState row backing a project's Kanban board (and everything else
-    in its Devs workspace), using the exact same key format the frontend's storageKey() builds —
-    see _parse_org_workspace_key above for the org-linked half of this format.
+    The WorkspaceState key + the ORM identity kwargs (shaped for _versioned_workspace_upsert's
+    organisation/user/user_id params) for a project's Devs board. Single source of truth for the
+    key format shared by _project_workspace_state, _project_workspace_state_readonly, and the
+    frontend's storageKey() — see _parse_org_workspace_key above for the org-linked half.
     """
     if project.organisation_id:
         key = f"workspace__org_{project.organisation_id}_board_project_{project.id}"
-        obj, _ = WorkspaceState.objects.get_or_create(key=key, organisation_id=project.organisation_id, user=None, defaults={'data': {}})
+        return key, {'organisation': project.organisation, 'user': None}
+    # Shared, owner-canonical row (no per-user suffix) so all project members see the same
+    # board — see _parse_solo_project_key.
+    key = f"workspace__solo_board_project_{project.id}"
+    return key, {'user_id': project.owner_id, 'organisation': None}
+
+
+def _project_workspace_state(project):
+    """Get-or-creates the WorkspaceState row backing a project's Kanban board (and everything
+    else in its Devs workspace). Use _project_workspace_state_readonly instead on a read path
+    that must not mutate (e.g. a public GET)."""
+    key, identity = _project_board_key_and_identity(project)
+    if 'user_id' in identity:
+        obj, _ = WorkspaceState.objects.get_or_create(key=key, user_id=identity['user_id'], organisation=None, defaults={'data': {}})
     else:
-        # Shared, owner-canonical row (no per-user suffix) so all project members see the
-        # same board — see _parse_solo_project_key.
-        key = f"workspace__solo_board_project_{project.id}"
-        obj, _ = WorkspaceState.objects.get_or_create(key=key, user_id=project.owner_id, organisation=None, defaults={'data': {}})
+        obj, _ = WorkspaceState.objects.get_or_create(key=key, organisation=identity['organisation'], user=None, defaults={'data': {}})
+    return obj
+
+
+def _project_workspace_state_readonly(project):
+    """Same key resolution as _project_workspace_state, but never creates a row — a public GET
+    (e.g. the translation-keys catalog action) must not mutate. Returns the WorkspaceState row,
+    or None if it doesn't exist yet."""
+    key, identity = _project_board_key_and_identity(project)
+    if 'user_id' in identity:
+        return WorkspaceState.objects.filter(key=key, user_id=identity['user_id'], organisation=None).first()
+    return WorkspaceState.objects.filter(key=key, organisation=identity['organisation'], user=None).first()
+
+
+def _locked_project_workspace_state(project):
+    """
+    select_for_update variant of _project_workspace_state — must be called inside
+    transaction.atomic(). Serialises server-side read-modify-write cycles on the board blob
+    (feedback convert/revert) against _versioned_workspace_upsert's row lock, so a concurrent
+    client save can neither interleave with the mutation nor silently overwrite it: the version
+    bump the caller performs makes any client still holding the old version get a 409.
+    """
+    key, identity = _project_board_key_and_identity(project)
+    if 'user_id' in identity:
+        filters = {'key': key, 'user_id': identity['user_id'], 'organisation': None}
+    else:
+        filters = {'key': key, 'organisation': identity['organisation'], 'user': None}
+    obj = WorkspaceState.objects.select_for_update().filter(**filters).first()
+    if obj is None:
+        obj = WorkspaceState.objects.create(key=key, data={}, version=1, **identity)
     return obj
 
 
@@ -3856,6 +4354,9 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
         tool = request.data.get('tool')
         if not key:
             return Response({"error": "key is required"}, status=status.HTTP_400_BAD_REQUEST)
+        # A null/scalar payload would silently wipe the whole board blob on upsert.
+        if not isinstance(data, dict):
+            return Response({"error": "data must be a JSON object"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Optimistic-concurrency token (the version the client last loaded). Optional so older
         # clients that omit it fall back to last-write-wins; malformed values are ignored.
@@ -3886,13 +4387,17 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
                 if not _check_org_board_access(org, project_id, user):
                     return Response({"error": "You do not have access to this organization's workspace."}, status=status.HTTP_403_FORBIDDEN)
 
-                if tool:
-                    from .permission_catalog import TOOL_WRITE_PERMISSIONS
-                    from .permissions_service import user_has_any_permission
-                    write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
-                    project = Project.objects.filter(id=project_id).first() if project_id else None
-                    if write_perms and not user_has_any_permission(user, write_perms, organisation=org, project=project):
-                        return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
+                # 'tool' is mandatory on shared boards: without it the per-tool permission
+                # check below would be skipped, letting any member with mere board access
+                # overwrite the whole blob.
+                if not tool:
+                    return Response({"error": "tool is required"}, status=status.HTTP_400_BAD_REQUEST)
+                from .permission_catalog import TOOL_WRITE_PERMISSIONS
+                from .permissions_service import user_has_any_permission
+                write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
+                project = Project.objects.filter(id=project_id).first() if project_id else None
+                if write_perms and not user_has_any_permission(user, write_perms, organisation=org, project=project):
+                    return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
 
                 obj, conflict = _versioned_workspace_upsert(
                     key=key, data=data, base_version=base_version, organisation=org, user=None,
@@ -3910,12 +4415,14 @@ class WorkspaceStateViewSet(viewsets.ModelViewSet):
                 if not _check_solo_project_access(project, user):
                     return Response({"error": "You do not have access to this project's workspace."}, status=status.HTTP_403_FORBIDDEN)
 
-                if tool:
-                    from .permission_catalog import TOOL_WRITE_PERMISSIONS
-                    from .permissions_service import user_has_any_permission
-                    write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
-                    if write_perms and not user_has_any_permission(user, write_perms, organisation=None, project=project):
-                        return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
+                # Mandatory for the same reason as the org branch above.
+                if not tool:
+                    return Response({"error": "tool is required"}, status=status.HTTP_400_BAD_REQUEST)
+                from .permission_catalog import TOOL_WRITE_PERMISSIONS
+                from .permissions_service import user_has_any_permission
+                write_perms = TOOL_WRITE_PERMISSIONS.get(tool)
+                if write_perms and not user_has_any_permission(user, write_perms, organisation=None, project=project):
+                    return Response({"error": f"You do not have permission to modify {tool}."}, status=status.HTTP_403_FORBIDDEN)
 
                 # Write to the canonical owner row so all members share one board.
                 obj, conflict = _versioned_workspace_upsert(
@@ -4013,7 +4520,11 @@ class PlaytestFeedbackViewSet(viewsets.ModelViewSet):
                 by_project.setdefault(fb.project_id, []).append(fb)
         for project_id, items in by_project.items():
             project = items[0].project
-            workspace_state = _project_workspace_state(project)
+            # Read-only variant: this runs on public GETs (list/retrieve), which must not
+            # get_or_create WorkspaceState rows. No row yet ⇒ nothing to reconcile against.
+            workspace_state = _project_workspace_state_readonly(project)
+            if workspace_state is None:
+                continue
             existing_task_ids = {t.get('id') for t in (workspace_state.data or {}).get('tasks', [])}
             for fb in items:
                 if fb.converted_task_id not in existing_task_ids:
@@ -4084,43 +4595,49 @@ class PlaytestFeedbackViewSet(viewsets.ModelViewSet):
             return Response({"error": "This feedback has already been converted to a task."}, status=status.HTTP_400_BAD_REQUEST)
 
         project = feedback.project
-        workspace_state = _project_workspace_state(project)
-        data = workspace_state.data or {}
-        if not data.get('columns'):
-            data['columns'] = _DEFAULT_KANBAN_COLUMNS
-        columns = data['columns']
-        target_column = columns[0]
-        target_column_id = target_column['id']
+        # Locked read-modify-write + version bump: without it, a concurrent board save either
+        # interleaves with this mutation, or (because the version wouldn't change) later
+        # passes the optimistic-concurrency check while based on the pre-conversion blob and
+        # silently erases the task we just inserted.
+        with transaction.atomic():
+            workspace_state = _locked_project_workspace_state(project)
+            data = workspace_state.data or {}
+            if not data.get('columns'):
+                data['columns'] = _DEFAULT_KANBAN_COLUMNS
+            columns = data['columns']
+            target_column = columns[0]
+            target_column_id = target_column['id']
 
-        tasks = data.setdefault('tasks', [])
-        wip_limit = target_column.get('wipLimit')
-        if wip_limit is not None:
-            current_count = sum(1 for t in tasks if t.get('columnId') == target_column_id)
-            if current_count >= wip_limit:
-                column_label = target_column.get('label', target_column_id)
-                return Response(
-                    {"error": f"Cannot convert: the \"{column_label}\" column is full ({current_count}/{wip_limit}). Raise its WIP limit or move a task out first."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            tasks = data.setdefault('tasks', [])
+            wip_limit = target_column.get('wipLimit')
+            if wip_limit is not None:
+                current_count = sum(1 for t in tasks if t.get('columnId') == target_column_id)
+                if current_count >= wip_limit:
+                    column_label = target_column.get('label', target_column_id)
+                    return Response(
+                        {"error": f"Cannot convert: the \"{column_label}\" column is full ({current_count}/{wip_limit}). Raise its WIP limit or move a task out first."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-        task_id = f"task-{int(time_module.time() * 1000)}"
-        new_task = {
-            'id': task_id,
-            'title': f"[Feedback] {(feedback.title or feedback.description)[:60]}",
-            'description': feedback.description,
-            'priority': feedback.priority,
-            'category': 'qa',
-            'columnId': target_column_id,
-            'subtasks': [],
-            'comments': [],
-            'createdAt': timezone.now().isoformat(),
-        }
-        tasks.append(new_task)
-        workspace_state.data = data
-        workspace_state.save(update_fields=['data'])
+            task_id = f"task-{int(time_module.time() * 1000)}"
+            new_task = {
+                'id': task_id,
+                'title': f"[Feedback] {(feedback.title or feedback.description)[:60]}",
+                'description': feedback.description,
+                'priority': feedback.priority,
+                'category': 'qa',
+                'columnId': target_column_id,
+                'subtasks': [],
+                'comments': [],
+                'createdAt': timezone.now().isoformat(),
+            }
+            tasks.append(new_task)
+            workspace_state.data = data
+            workspace_state.version = workspace_state.version + 1
+            workspace_state.save(update_fields=['data', 'version'])
 
-        feedback.converted_task_id = task_id
-        feedback.save(update_fields=['converted_task_id'])
+            feedback.converted_task_id = task_id
+            feedback.save(update_fields=['converted_task_id'])
         return Response(PlaytestFeedbackSerializer(feedback, context={'request': request}).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='revert-task', permission_classes=[permissions.IsAuthenticated])
@@ -4133,18 +4650,164 @@ class PlaytestFeedbackViewSet(viewsets.ModelViewSet):
             return Response({"error": "This feedback isn't in Kanban."}, status=status.HTTP_400_BAD_REQUEST)
 
         project = feedback.project
-        workspace_state = _project_workspace_state(project)
-        data = workspace_state.data or {}
-        tasks = data.get('tasks', [])
-        remaining_tasks = [t for t in tasks if t.get('id') != feedback.converted_task_id]
-        if len(remaining_tasks) != len(tasks):
-            data['tasks'] = remaining_tasks
-            workspace_state.data = data
-            workspace_state.save(update_fields=['data'])
+        # Same locking + version-bump rationale as convert_to_task above.
+        with transaction.atomic():
+            workspace_state = _locked_project_workspace_state(project)
+            data = workspace_state.data or {}
+            tasks = data.get('tasks', [])
+            remaining_tasks = [t for t in tasks if t.get('id') != feedback.converted_task_id]
+            if len(remaining_tasks) != len(tasks):
+                data['tasks'] = remaining_tasks
+                workspace_state.data = data
+                workspace_state.version = workspace_state.version + 1
+                workspace_state.save(update_fields=['data', 'version'])
 
-        feedback.converted_task_id = ''
-        feedback.save(update_fields=['converted_task_id'])
+            feedback.converted_task_id = ''
+            feedback.save(update_fields=['converted_task_id'])
         return Response(PlaytestFeedbackSerializer(feedback, context={'request': request}).data, status=status.HTTP_200_OK)
+
+
+from core.models import CommunityTranslation
+from .serializers import CommunityTranslationSerializer
+
+
+def _approve_community_translation(contribution, user):
+    """
+    Approves a CommunityTranslation row, unapproving any sibling for the same
+    (project, key, language) first so the partial unique index (uniq_approved_ct_per_key_lang)
+    stays satisfiable. Self-contained (own transaction + row locks) so it can be called
+    identically from the `approve` action and from the bulk-import path, which is exactly why
+    this was extracted out of the action body — two independent call sites writing
+    status='approved' against a partial unique index without sharing this exact sequence would
+    be a latent IntegrityError.
+    """
+    with transaction.atomic():
+        contribution = CommunityTranslation.objects.select_for_update().select_related('project').get(pk=contribution.pk)
+        CommunityTranslation.objects.select_for_update().filter(
+            project=contribution.project, key=contribution.key, language=contribution.language,
+            status='approved',
+        ).exclude(pk=contribution.pk).update(status='pending', approved_by=None, approved_at=None)
+
+        contribution.status = 'approved'
+        contribution.approved_by = user
+        contribution.approved_at = timezone.now()
+        contribution.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
+    return contribution
+
+
+class CommunityTranslationViewSet(viewsets.ModelViewSet):
+    """
+    Public, membership-free translation suggestions on a project's localisation strings — see
+    core.models.CommunityTranslation's docstring. Anyone can read; any logged-in user can submit
+    a suggestion for any project (no project/org membership required); only the author can edit
+    their own suggestion. Approving, rejecting, or deleting *other* people's suggestions is
+    gated by granular 'community_translation.*' permissions (see api.permission_catalog), same
+    shape as PlaytestFeedbackViewSet's feedback.* checks.
+    """
+    queryset = CommunityTranslation.objects.select_related('author', 'approved_by', 'project').prefetch_related('likes')
+    serializer_class = CommunityTranslationSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    # Public list endpoint: without pagination one project could return every row (500 keys ×
+    # N languages × M contributors) in a single anonymous response. The frontend hook follows
+    # pages to rebuild the full set it needs client-side.
+    pagination_class = LargeResultsSetPagination
+
+    def get_queryset(self):
+        from django.db.models import Count, Case, When, IntegerField
+
+        qs = super().get_queryset()
+        project_id = self.request.query_params.get('project')
+        if not project_id:
+            # Only the (unbounded-otherwise) list endpoint requires ?project= as a hard scope.
+            # Detail actions (retrieve/update/partial_update — destroy and the approve/reject/
+            # unapprove actions all bypass get_queryset() entirely and look the row up directly)
+            # already have `pk` in the URL and historically never sent ?project= alongside a
+            # PATCH — requiring it here would 404 every "edit my own suggestion" request.
+            if self.action == 'list':
+                return qs.none()
+            return qs
+        qs = qs.filter(project_id=project_id)
+
+        language = self.request.query_params.get('language')
+        if language:
+            qs = qs.filter(language=language)
+
+        key = self.request.query_params.get('key')
+        if key:
+            qs = qs.filter(key=key)
+
+        status_filter = self.request.query_params.get('status')
+        include_rejected = self.request.query_params.get('include_rejected') == 'true'
+        if status_filter in ('pending', 'approved', 'rejected'):
+            qs = qs.filter(status=status_filter)
+        elif not include_rejected:
+            qs = qs.exclude(status='rejected')
+
+        return qs.annotate(
+            vote_count=Count('likes', distinct=True),
+            is_official=Case(When(status='approved', then=1), default=0, output_field=IntegerField()),
+        ).order_by('-is_official', '-vote_count', 'created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        # Deliberately bypasses self.get_object()'s automatic IsOwnerOrReadOnly check (which
+        # would otherwise 403 a moderator deleting someone *else's* suggestion) — the real rule
+        # here is "author OR community_translation.delete", checked explicitly below.
+        from rest_framework.exceptions import PermissionDenied
+        contribution = get_object_or_404(CommunityTranslation, pk=kwargs.get('pk'))
+        project = contribution.project
+        is_author = contribution.author_id == request.user.id
+        can_delete = user_has_permission(request.user, 'community_translation.delete', organisation=project.organisation, project=project)
+        if not (is_author or can_delete):
+            raise PermissionDenied("You do not have permission to delete this translation suggestion.")
+        contribution.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _require_permission(self, request, contribution, perm_key):
+        from rest_framework.exceptions import PermissionDenied
+        project = contribution.project
+        if not user_has_permission(request.user, perm_key, organisation=project.organisation, project=project):
+            raise PermissionDenied("You do not have permission to do that.")
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def approve(self, request, pk=None):
+        contribution = get_object_or_404(CommunityTranslation.objects.select_related('project'), pk=pk)
+        self._require_permission(request, contribution, 'community_translation.approve')
+        contribution = _approve_community_translation(contribution, request.user)
+        return Response(CommunityTranslationSerializer(contribution, context={'request': request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def reject(self, request, pk=None):
+        with transaction.atomic():
+            contribution = get_object_or_404(
+                CommunityTranslation.objects.select_for_update().select_related('project'), pk=pk,
+            )
+            self._require_permission(request, contribution, 'community_translation.reject')
+
+            contribution.status = 'rejected'
+            contribution.approved_by = None
+            contribution.approved_at = None
+            contribution.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
+
+        return Response(CommunityTranslationSerializer(contribution, context={'request': request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unapprove(self, request, pk=None):
+        with transaction.atomic():
+            contribution = get_object_or_404(
+                CommunityTranslation.objects.select_for_update().select_related('project'), pk=pk,
+            )
+            self._require_permission(request, contribution, 'community_translation.approve')
+
+            if contribution.status == 'approved':
+                contribution.status = 'pending'
+                contribution.approved_by = None
+                contribution.approved_at = None
+                contribution.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
+
+        return Response(CommunityTranslationSerializer(contribution, context={'request': request}).data, status=status.HTTP_200_OK)
 
 
 class ExplorePostsViewSet(viewsets.ViewSet):
@@ -4162,10 +4825,18 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         ordering = request.query_params.get('ordering', 'popular')
         mode = request.query_params.get('mode', 'trending')
         interest = request.query_params.get('interest', '').strip()
-        page = int(request.query_params.get('page', 1))
-        page_size = min(int(request.query_params.get('page_size', 20)), 50)
+        # Public endpoint: malformed/negative values must degrade to defaults, not 500
+        # (negative slice indices raise on Django querysets).
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = min(max(1, int(request.query_params.get('page_size', 20))), 50)
+        except (TypeError, ValueError):
+            page_size = 20
 
-        from api.serializers import count_subquery
+        from api.serializers import count_subquery, DIRECT_REPOST_Q
         from core.models import Like, Bookmark
         posts = Post.objects.filter(
             parent__isnull=True,
@@ -4178,7 +4849,7 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             # longer renders those relations, only their counts.
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', content=''),
+            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
 

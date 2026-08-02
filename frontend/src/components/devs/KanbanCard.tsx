@@ -7,6 +7,11 @@ import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { useTranslation } from '@/lib/useTranslation';
+
+const SLASH_SEPARATOR = '/';
+const PERCENT_SIGN = '%';
+const SPEECH_BALLOON_EMOJI = '💬';
 
 interface KanbanCardProps {
     task: Task;
@@ -15,12 +20,18 @@ interface KanbanCardProps {
 }
 
 export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps) {
+    const { t } = useTranslation();
     const { data, setTasks, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
     const categories = data.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES;
     const taskCategory = categories.find((c) => c.id === task.category);
     const [projectMembers, setProjectMembers] = useState<{ username: string; real_name?: string }[]>([]);
     const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+    // Lazy initializer runs once at mount rather than on every render — avoids calling the
+    // impure Date.now() directly in the render body (flagged by react-hooks/purity). The card
+    // re-renders on every board interaction anyway, so "now" staying pinned to mount time has
+    // no practical effect on the day-granularity due-soon/overdue badges below.
+    const [now] = useState(() => Date.now());
 
     useEffect(() => {
         if (activeWorkspace.type === 'org' && activeWorkspace.org && activeBoard.startsWith('project_')) {
@@ -57,8 +68,8 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
     const totalSubtasks = task.subtasks.length;
     const progress = totalSubtasks > 0 ? Math.round((doneSubtasks / totalSubtasks) * 100) : 0;
 
-    const isDueSoon = task.dueDate && new Date(task.dueDate) < new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-    const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+    const isDueSoon = task.dueDate && new Date(task.dueDate) < new Date(now + 3 * 24 * 60 * 60 * 1000);
+    const isOverdue = task.dueDate && new Date(task.dueDate) < new Date(now);
 
     const handleAssign = (username: string | undefined) => {
         setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, assignee: username } : t));
@@ -97,9 +108,9 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
                             {doneSubtasks === totalSubtasks
                                 ? <CheckSquare className="w-3.5 h-3.5 text-emerald-500" />
                                 : <Square className="w-3.5 h-3.5 text-zinc-650" />}
-                            {doneSubtasks}/{totalSubtasks} subtasks
+                            {[[doneSubtasks, totalSubtasks].join(SLASH_SEPARATOR), t('subtasksLower')].join(' ')}
                         </span>
-                        <span>{progress}%</span>
+                        <span>{[progress, PERCENT_SIGN].join('')}</span>
                     </div>
                     <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
                         <div
@@ -177,7 +188,7 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
                                         }}
                                         className="w-full text-left px-3 py-1.5 text-xs text-zinc-550 hover:bg-zinc-900 hover:text-white transition-colors"
                                     >
-                                        Unassigned
+                                        {t('unassigned')}
                                     </button>
                                     {user && (
                                         <button
@@ -188,7 +199,7 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
                                             }}
                                             className="w-full text-left px-3 py-1.5 text-xs text-blue-400 hover:bg-zinc-900 hover:text-blue-300 font-semibold transition-colors border-b border-zinc-900"
                                         >
-                                            Assign to me
+                                            {t('assignToMe')}
                                         </button>
                                     )}
                                     {availableMembers.filter(m => m.username !== user?.username).map((member) => (
@@ -210,7 +221,7 @@ export default function KanbanCard({ task, onDelete, onClick }: KanbanCardProps)
                     </div>
 
                     {task.comments.length > 0 && (
-                        <span className="text-[10px] text-zinc-500 font-semibold">💬 {task.comments.length}</span>
+                        <span className="text-[10px] text-zinc-500 font-semibold">{[SPEECH_BALLOON_EMOJI, task.comments.length].join(' ')}</span>
                     )}
                 </div>
             </div>

@@ -6,12 +6,15 @@ import Link from 'next/link';
 import { Mail, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 function VerifyEmailForm() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const { login } = useAuth();
+    const { t } = useTranslation();
     const email = searchParams.get('email') || '';
+    const emailWithPeriod = `${email}.`;
 
     const [code, setCode] = useState<string[]>(Array(6).fill(''));
     const [resendCooldown, setResendCooldown] = useState(60); // 60 seconds cooldown
@@ -150,9 +153,9 @@ function VerifyEmailForm() {
                 <div className="mx-auto w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-4 text-emerald-500">
                     <Mail className="h-6 w-6" />
                 </div>
-                <h1 className="text-2xl font-bold text-white mb-2">Email Verification</h1>
+                <h1 className="text-2xl font-bold text-white mb-2">{t('emailVerification')}</h1>
                 <p className="text-zinc-400 text-sm">
-                    To activate your account, enter the 6-digit code we sent to <span className="text-zinc-200 font-medium">{email}</span>.
+                    {t('verifyEmailSentTo')} <span className="text-zinc-200 font-medium">{emailWithPeriod}</span>
                 </p>
             </div>
 
@@ -214,7 +217,7 @@ function VerifyEmailForm() {
                     {isSubmitting ? (
                         <>
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Verifying...
+                            {t('verifying')}
                         </>
                     ) : (
                         'Verify Account'
@@ -226,7 +229,7 @@ function VerifyEmailForm() {
             <div className="mt-8 text-center text-sm">
                 <Link href="/login" className="text-zinc-500 hover:text-zinc-300 transition-colors inline-flex items-center gap-2 font-medium">
                     <ArrowLeft className="h-4 w-4" />
-                    Back to login
+                    {t('backToLogin')}
                 </Link>
             </div>
         </div>
@@ -234,12 +237,13 @@ function VerifyEmailForm() {
 }
 
 export default function VerifyEmailPage() {
+    const { t } = useTranslation();
     return (
         <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 selection:bg-emerald-500/30">
             <Suspense fallback={
                 <div className="flex flex-col items-center gap-4 text-zinc-400">
                     <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-                    Loading...
+                    {t('loading')}
                 </div>
             }>
                 <VerifyEmailForm />

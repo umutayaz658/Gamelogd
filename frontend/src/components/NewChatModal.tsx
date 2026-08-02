@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Search, Loader2, ArrowLeft, Camera, Check } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle, wrapInParens } from '@/lib/utils';
 import { useToast } from '@/context/ToastContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface User {
     id: number;
@@ -21,6 +22,7 @@ interface NewChatModalProps {
 
 export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChatModalProps) {
     const toast = useToast();
+    const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState('');
     const [results, setResults] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -200,7 +202,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                             alt=""
                                             className="h-5 w-5 rounded-full object-cover bg-zinc-800"
                                         />
-                                        <span>@{user.username}</span>
+                                        <span>{formatHandle(user.username)}</span>
                                         <button
                                             onClick={() => toggleUserSelection(user)}
                                             className="text-emerald-500 hover:text-emerald-300 transition-colors ml-0.5"
@@ -238,7 +240,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="font-bold text-white truncate">{user.real_name || user.username}</div>
-                                                    <div className="text-xs text-zinc-500 truncate">@{user.username}</div>
+                                                    <div className="text-xs text-zinc-500 truncate">{formatHandle(user.username)}</div>
                                                 </div>
                                                 <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-zinc-700 bg-transparent'}`}>
                                                     {isSelected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
@@ -249,11 +251,11 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                 </div>
                             ) : searchQuery ? (
                                 <div className="text-center py-8 text-zinc-500">
-                                    No users found.
+                                    {t('noUsersFound')}
                                 </div>
                             ) : (
                                 <div className="text-center py-8 text-zinc-650 text-sm">
-                                    Type to search for users to chat with.
+                                    {t('typeToSearchUsers')}
                                 </div>
                             )}
                         </div>
@@ -269,7 +271,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                     {isStartingChat ? (
                                         <Loader2 className="h-5 w-5 animate-spin" />
                                     ) : (
-                                        selectedUsers.length === 1 ? 'Start Chat' : `Next (${selectedUsers.length} selected)`
+                                        selectedUsers.length === 1 ? t('startChat') : `${t('next')} ${wrapInParens(`${selectedUsers.length} ${t('selected')}`)}`
                                     )}
                                 </button>
                             </div>
@@ -300,7 +302,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                     ) : (
                                         <>
                                             <Camera className="h-6 w-6 mb-1" />
-                                            <span className="text-[10px] font-semibold uppercase tracking-wider">Photo</span>
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider">{t('photo')}</span>
                                         </>
                                     )}
                                 </div>
@@ -311,12 +313,12 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                     accept="image/*"
                                     onChange={handleAvatarChange}
                                 />
-                                <span className="text-xs text-zinc-500">Add a group photo (optional)</span>
+                                <span className="text-xs text-zinc-500">{t('addGroupPhotoOptional')}</span>
                             </div>
 
                             {/* Group Name Input */}
                             <div className="flex flex-col gap-2">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Group Name</label>
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">{t('groupName')}</label>
                                 <input
                                     type="text"
                                     placeholder="Enter group name..."
@@ -330,7 +332,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
 
                             {/* Group Members List for verification */}
                             <div className="flex flex-col gap-2">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Members ({selectedUsers.length})</label>
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">{t('membersLabel')} {wrapInParens(selectedUsers.length)}</label>
                                 <div className="space-y-2 border border-zinc-800 bg-zinc-900/10 rounded-xl p-3 max-h-36 overflow-y-auto">
                                     {selectedUsers.map(user => (
                                         <div key={user.id} className="flex items-center gap-3">
@@ -340,7 +342,7 @@ export default function NewChatModal({ isOpen, onClose, onChatStarted }: NewChat
                                                 className="h-6 w-6 rounded-full object-cover bg-zinc-850"
                                             />
                                             <span className="text-xs font-semibold text-zinc-300">
-                                                {user.real_name || user.username} (@{user.username})
+                                                {[user.real_name || user.username, wrapInParens(formatHandle(user.username))].join(' ')}
                                             </span>
                                         </div>
                                     ))}

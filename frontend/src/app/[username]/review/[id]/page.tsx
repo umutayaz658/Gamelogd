@@ -14,8 +14,10 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getImageUrl } from '@/lib/utils';
 import { useFeed } from '@/context/FeedContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function SingleReviewPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const { addFeedItem } = useFeed();
     const router = useRouter();
@@ -66,7 +68,7 @@ export default function SingleReviewPage() {
                             >
                                 <ArrowLeft className="h-5 w-5 text-zinc-400" />
                             </button>
-                            <h1 className="text-xl font-bold">Review</h1>
+                            <h1 className="text-xl font-bold">{t('review')}</h1>
                         </div>
 
                         {loading ? (
@@ -103,7 +105,7 @@ export default function SingleReviewPage() {
                                             ))
                                         ) : (
                                             <div className="text-center py-8 text-zinc-500 border border-dashed border-zinc-900 rounded-xl">
-                                                No replies yet. Be the first to share your thoughts!
+                                                {t('noRepliesYetShareThoughts')}
                                             </div>
                                         )}
                                     </div>
@@ -111,7 +113,7 @@ export default function SingleReviewPage() {
                             </div>
                         ) : (
                             <div className="text-center py-10 text-zinc-500">
-                                Review not found.
+                                {t('reviewNotFound')}
                             </div>
                         )}
                     </div>

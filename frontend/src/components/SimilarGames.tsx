@@ -3,8 +3,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import api from '@/lib/api';
 import { getMediaUrl } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function SimilarGames({ currentId, genres }: { currentId: string, genres?: string[] }) {
+    const { t } = useTranslation();
     const [games, setGames] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -53,7 +55,7 @@ export default function SimilarGames({ currentId, genres }: { currentId: string,
         <div className="mt-16 border-t border-zinc-800/50 pt-12">
             <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
                 <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" /></svg>
-                Similar Games
+                {t('similarGames')}
             </h2>
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -70,7 +72,7 @@ export default function SimilarGames({ currentId, genres }: { currentId: string,
                                 <Image src={coverUrl} alt={game.title} fill className="object-cover transition-transform duration-700 group-hover:scale-110 group-hover:saturate-150" unoptimized />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center bg-zinc-800">
-                                    <span className="text-zinc-600 font-medium">No Cover</span>
+                                    <span className="text-zinc-600 font-medium">{t('noCover')}</span>
                                 </div>
                             )}
                             

@@ -141,11 +141,6 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                     >
                         {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('save')}
                     </button>
-                    <style>{`
-                        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-                        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #3f3f46; border-radius: 20px; }
-                    `}</style>
                 </div>
 
                 {/* Content - Scrollable */}

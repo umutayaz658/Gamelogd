@@ -6,10 +6,12 @@ import api from '@/lib/api';
 import type { PermissionHierarchy, Role } from '@/types';
 import ConfirmDeleteModal from '@/components/devs/ConfirmDeleteModal';
 import { useToast } from '@/context/ToastContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 const CATEGORY_LABEL: Record<string, string> = {
     kanban: 'Kanban', gdd: 'GDD Hub', assets: 'Asset Registry',
-    localisation: 'Localisation', team: 'Team & Roles', feedback: 'Feedback', settings: 'Settings',
+    localisation: 'Localisation', team: 'Team & Roles', feedback: 'Feedback',
+    community_translation: 'Community Translations', settings: 'Settings',
 };
 
 export type RoleScope =
@@ -33,6 +35,7 @@ function tierIsSelected(keys: string[], selected: Set<string>) {
 
 export default function RolesManagerModal({ roleScope, roles, hierarchy, canManage, viewerIsOwner, onClose, onChanged }: RolesManagerModalProps) {
     const toast = useToast();
+    const { t } = useTranslation();
     const [editingRole, setEditingRole] = useState<Role | null | 'new'>(null);
     const [name, setName] = useState('');
     const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
@@ -114,7 +117,7 @@ export default function RolesManagerModal({ roleScope, roles, hierarchy, canMana
                                 {role.is_system && <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-white">{role.name}</p>
-                                    <p className="text-[11px] text-zinc-600">{role.permissions.length} permissions</p>
+                                    <p className="text-[11px] text-zinc-600">{[role.permissions.length, t('permissionsLabel')].join(' ')}</p>
                                 </div>
                                 {canManage && (
                                     <div className="flex items-center gap-1 flex-shrink-0">
@@ -135,7 +138,7 @@ export default function RolesManagerModal({ roleScope, roles, hierarchy, canMana
                         {canManage && (
                             <button onClick={startCreate}
                                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all">
-                                <Plus className="w-4 h-4" /> Create Role
+                                <Plus className="w-4 h-4" /> {t('createRole')}
                             </button>
                         )}
                     </div>
@@ -143,13 +146,13 @@ export default function RolesManagerModal({ roleScope, roles, hierarchy, canMana
                     <>
                         <div className="p-5 pb-3 flex-shrink-0 space-y-3 border-b border-zinc-800">
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Role Name</label>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('roleNameLabel')}</label>
                                 <input value={name} onChange={(e) => setName(e.target.value)}
                                     disabled={nameIsLocked(editingRole)}
                                     placeholder="e.g. QA Tester"
                                     className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all disabled:opacity-50" />
                             </div>
-                            <p className="text-[11px] text-zinc-600">Picking a higher level automatically includes everything below it — click any level to jump straight there.</p>
+                            <p className="text-[11px] text-zinc-600">{t('permissionTierHint')}</p>
                         </div>
 
                         <div className="p-5 grid md:grid-cols-2 gap-x-8 gap-y-5 overflow-y-auto scrollbar-thin-dark flex-1 content-start">
@@ -184,9 +187,9 @@ export default function RolesManagerModal({ roleScope, roles, hierarchy, canMana
                         </div>
 
                         <div className="flex gap-3 p-5 border-t border-zinc-800 flex-shrink-0">
-                            <button onClick={() => setEditingRole(null)} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">Back</button>
+                            <button onClick={() => setEditingRole(null)} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">{t('back')}</button>
                             <button onClick={save} disabled={(editingRole === 'new' && !name.trim()) || !editable}
-                                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40">Save</button>
+                                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40">{t('save')}</button>
                         </div>
                     </>
                 )}

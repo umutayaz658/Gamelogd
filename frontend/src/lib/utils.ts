@@ -149,3 +149,13 @@ export function formatCount(count: number): string {
     }
     return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 }
+
+/** "@" is not translatable — kept as a plain function so it's usable outside JSX too. */
+export function formatHandle(username: string): string {
+    return `@${username}`;
+}
+
+/** Parentheses are not translatable — kept as a plain function for the same reason. */
+export function wrapInParens(value: string | number): string {
+    return `(${value})`;
+}

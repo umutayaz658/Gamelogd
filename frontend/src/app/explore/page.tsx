@@ -12,6 +12,8 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from '@/lib/useTranslation';
 import { useSearchParams, useRouter } from 'next/navigation';
 
+const EMPTY_INBOX_EMOJI = '📭';
+
 function ExploreContent() {
     const { t } = useTranslation();
     const { user } = useAuth();
@@ -119,6 +121,8 @@ function ExploreContent() {
         };
     }, [hasMorePosts, isLoadingPosts, postsPage, activeFilter, activeHashtag, fetchExplorePosts]);
 
+    const hashtagDisplay = activeHashtag ? `#${activeHashtag}` : '';
+
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
@@ -140,8 +144,8 @@ function ExploreContent() {
                                 {activeHashtag && (
                                     <div className="bg-emerald-950/10 border border-emerald-500/20 rounded-2xl p-4 flex items-center justify-between mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
                                         <div>
-                                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Filtered Hashtag</span>
-                                            <h2 className="text-lg font-black text-white mt-0.5">#{activeHashtag}</h2>
+                                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">{t('filteredHashtag')}</span>
+                                            <h2 className="text-lg font-black text-white mt-0.5">{hashtagDisplay}</h2>
                                         </div>
                                         <button
                                             onClick={() => {
@@ -151,7 +155,7 @@ function ExploreContent() {
                                             }}
                                             className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-zinc-800"
                                         >
-                                            Clear Filter
+                                            {t('clearFilter')}
                                         </button>
                                     </div>
                                 )}
@@ -189,9 +193,9 @@ function ExploreContent() {
 
                                     {!isLoadingPosts && posts.length === 0 && (
                                         <div className="text-center py-16 bg-zinc-900/30 rounded-2xl border border-zinc-800/50">
-                                            <div className="text-4xl mb-3">📭</div>
-                                            <h3 className="text-sm font-bold text-zinc-300">No posts found</h3>
-                                            <p className="text-xs text-zinc-550 mt-1">Be the first to share something!</p>
+                                            <div className="text-4xl mb-3" aria-hidden="true">{EMPTY_INBOX_EMOJI}</div>
+                                            <h3 className="text-sm font-bold text-zinc-300">{t('noPostsFound')}</h3>
+                                            <p className="text-xs text-zinc-550 mt-1">{t('beFirstToShare')}</p>
                                         </div>
                                     )}
 

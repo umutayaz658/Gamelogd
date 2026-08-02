@@ -262,7 +262,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                         {/* Author Identity Selector */}
                         {currentProject?.organisation_details && (
                             <div className="space-y-2 animate-in fade-in duration-200">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Publish As</label>
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('publishAs')}</label>
                                 <div className="grid grid-cols-3 gap-3">
                                     <button
                                         type="button"
@@ -273,7 +273,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                                 : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
                                         }`}
                                     >
-                                        Bireysel (Individual)
+                                        {t('individual')}
                                     </button>
                                     <button
                                         type="button"
@@ -284,7 +284,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                                 : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
                                         }`}
                                     >
-                                        Organisation: {currentProject.organisation_details.name}
+                                        {t('organisationColonLabel')} {currentProject.organisation_details.name}
                                     </button>
                                     <button
                                         type="button"
@@ -295,7 +295,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                                                 : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
                                         }`}
                                     >
-                                        Project: {currentProject.title}
+                                        {t('projectColonLabel')} {currentProject.title}
                                     </button>
                                 </div>
                             </div>

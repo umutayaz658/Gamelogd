@@ -12,12 +12,10 @@ import CreateInvestorCallModal from "@/components/modals/CreateInvestorCallModal
 import { PlusCircle, Search, Filter, Layers, Gamepad2, Globe, Building2, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { Pitch, InvestorCall } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function InvestPage() {
-    if (process.env.NODE_ENV === 'production') {
-        notFound();
-        return null;
-    }
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'showcase' | 'calls'>('showcase');
 
     // Data States
@@ -86,6 +84,11 @@ export default function InvestPage() {
         if (activeTab === 'calls') setCalls([newCall, ...calls]);
     };
 
+    if (process.env.NODE_ENV === 'production') {
+        notFound();
+        return null;
+    }
+
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
             <Navbar />
@@ -103,10 +106,10 @@ export default function InvestPage() {
                         {/* Page Header */}
                         <div className="mb-8">
                             <h1 className="text-3xl font-bold text-white mb-2">
-                                <span className="text-amber-500">Investment</span> Opportunities
+                                <span className="text-amber-500">{t('investment')}</span> {t('opportunities')}
                             </h1>
                             <p className="text-zinc-400">
-                                Connect with top-tier publishers, VC funds, and angel investors. Showcase your project or find the next big hit.
+                                {t('investDescription')}
                             </p>
                         </div>
 
@@ -121,7 +124,7 @@ export default function InvestPage() {
                                         : 'text-zinc-500 hover:text-zinc-300'
                                         }`}
                                 >
-                                    Project Showcase
+                                    {t('projectShowcase')}
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('calls')}
@@ -130,7 +133,7 @@ export default function InvestPage() {
                                         : 'text-zinc-500 hover:text-zinc-300'
                                         }`}
                                 >
-                                    Investor Calls
+                                    {t('investorCalls')}
                                 </button>
                             </div>
 
@@ -234,7 +237,7 @@ export default function InvestPage() {
                                     onClick={() => setFilters({ search: '', genre: '', platform: '', stage: '', investor_type: '', ticket_size: '' })}
                                     className="ml-auto text-sm font-medium text-zinc-500 hover:text-white transition-colors px-3 py-2"
                                 >
-                                    Clear Filters
+                                    {t('clearAll')}
                                 </button>
                             </div>
                         </div>
@@ -255,7 +258,7 @@ export default function InvestPage() {
                                                 ))
                                             ) : (
                                                 <div className="col-span-full py-20 text-center text-zinc-500">
-                                                    No pitches found. Be the first to pitch!
+                                                    {t('noPitchesFound')}
                                                 </div>
                                             )}
                                         </div>
@@ -267,7 +270,7 @@ export default function InvestPage() {
                                                 ))
                                             ) : (
                                                 <div className="col-span-full py-20 text-center text-zinc-500">
-                                                    No investor calls found at the moment.
+                                                    {t('noInvestorCallsFound')}
                                                 </div>
                                             )}
                                         </div>

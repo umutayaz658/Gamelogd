@@ -17,12 +17,12 @@ export default function BookmarksPage() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     // If not authenticated, redirect
-    if (!user && !loading) {
+    if (!user && !authLoading) {
        router.push('/login');
        return;
     }
@@ -51,7 +51,7 @@ export default function BookmarksPage() {
     if (user) {
         fetchBookmarks();
     }
-  }, [user, router]);
+  }, [user, router, authLoading, t]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">

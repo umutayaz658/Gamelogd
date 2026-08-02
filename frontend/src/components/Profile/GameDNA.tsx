@@ -1,6 +1,7 @@
 import { Dna, ArrowRight, Clock, Gamepad2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface Stat {
     name: string;
@@ -44,7 +45,10 @@ const formatHours = (hours: number): string => {
     return `${hours}`;
 };
 
+const formatHoursWithUnit = (hours: number): string => `${formatHours(hours)}h`;
+
 export default function GameDNA({ stats, username, showHeader = true }: GameDNAProps) {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'genres' | 'platforms'>('genres');
 
     const isOldFormat = Array.isArray(stats);
@@ -72,13 +76,13 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
                         onClick={() => setActiveTab('genres')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeTab === 'genres' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                     >
-                        Genres
+                        {t('genres')}
                     </button>
                     <button
                         onClick={() => setActiveTab('platforms')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeTab === 'platforms' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                     >
-                        Platforms
+                        {t('platforms')}
                     </button>
                 </div>
             )}
@@ -92,7 +96,7 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
                                 {stat.total_hours !== undefined && stat.total_hours > 0 && (
                                     <span className="text-zinc-600 text-xs flex items-center gap-1">
                                         <Clock className="h-3 w-3" />
-                                        {formatHours(stat.total_hours)}h
+                                        {formatHoursWithUnit(stat.total_hours)}
                                     </span>
                                 )}
                                 {stat.game_count !== undefined && stat.game_count > 0 && (
@@ -101,7 +105,7 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
                                         {stat.game_count}
                                     </span>
                                 )}
-                                <span className="text-white font-bold">{stat.percentage}%</span>
+                                <span className="text-white font-bold">{[stat.percentage, '%'].join('')}</span>
                             </div>
                         </div>
                         <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
@@ -125,13 +129,13 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-zinc-100 font-bold">
                     <Dna className="h-5 w-5 text-emerald-500" />
-                    <span>Game DNA</span>
+                    <span>{t('gameDna')}</span>
                 </div>
                 <div className="flex items-center gap-3">
                     {totalHours > 0 && (
                         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
                             <Clock className="h-3 w-3" />
-                            <span>{formatHours(totalHours)}h total</span>
+                            <span>{[formatHoursWithUnit(totalHours), t('totalLabel')].join(' ')}</span>
                         </div>
                     )}
                     {username && (

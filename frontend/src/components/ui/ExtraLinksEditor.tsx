@@ -1,6 +1,7 @@
 'use client';
 
 import { Link2, Plus, X } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
 
 export interface ExtraLink {
     label: string;
@@ -17,6 +18,7 @@ interface ExtraLinksEditorProps {
  * extra_links JSON field. Shared by both dashboards so the add/remove/edit behavior never diverges.
  */
 export default function ExtraLinksEditor({ value, onChange }: ExtraLinksEditorProps) {
+    const { t } = useTranslation();
     const updateLink = (index: number, patch: Partial<ExtraLink>) => {
         onChange(value.map((link, i) => (i === index ? { ...link, ...patch } : link)));
     };
@@ -66,7 +68,7 @@ export default function ExtraLinksEditor({ value, onChange }: ExtraLinksEditorPr
                 onClick={addLink}
                 className="flex items-center gap-1.5 text-xs font-bold text-zinc-400 hover:text-white bg-zinc-950 border border-dashed border-zinc-800 hover:border-zinc-700 rounded-xl px-3 py-2 transition-all"
             >
-                <Plus className="h-3.5 w-3.5" /> Add Link
+                <Plus className="h-3.5 w-3.5" /> {t('addLink')}
             </button>
         </div>
     );

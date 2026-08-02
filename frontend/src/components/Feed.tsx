@@ -8,6 +8,9 @@ import ReviewCard from '@/components/ReviewCard';
 import PostComposer from '@/components/PostComposer';
 import FeedSkeleton from '@/components/skeletons/FeedSkeleton';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/lib/useTranslation';
+
+const DOT_SEPARATOR = '•';
 
 interface FeedProps {
     initialItems?: FeedItem[];
@@ -15,6 +18,7 @@ interface FeedProps {
 }
 
 export default function Feed({ initialItems = [], hideComposer = false }: FeedProps) {
+    const { t } = useTranslation();
     const [items, setItems] = useState<FeedItem[]>(initialItems);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -39,8 +43,8 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                 ]);
 
                 if (isMounted) {
-                    const posts = unwrapList<Post>(postsRes.data).map((p: Post) => ({ ...p, type: 'post' }));
-                    const reviews = unwrapList<Review>(reviewsRes.data).map((r: Review) => ({ ...r, type: 'review' }));
+                    const posts = unwrapList<Post>(postsRes.data).map((p: Post) => ({ ...p, type: 'post' as const }));
+                    const reviews = unwrapList<Review>(reviewsRes.data).map((r: Review) => ({ ...r, type: 'review' as const }));
 
                     // Merge and Sort by timestamp desc
                     const combined = [...posts, ...reviews].sort((a, b) =>
@@ -117,7 +121,7 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                 </div>
             ) : items.length === 0 ? (
                 <div className="text-center py-10 text-zinc-500">
-                    No activity yet. Be the first to share something!
+                    {t('noActivityYetShareSomething')}
                 </div>
             ) : (
                 <div className="flex flex-col gap-4">
@@ -160,7 +164,7 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                                                     />
                                                 )}
                                                 <span className="font-medium text-zinc-300">{item.source_name}</span>
-                                                <span>•</span>
+                                                <span aria-hidden="true">{DOT_SEPARATOR}</span>
                                                 <span className="flex items-center gap-1">
                                                     <Calendar className="h-3 w-3" />
                                                     {new Date(item.pub_date).toLocaleDateString()}
@@ -178,7 +182,7 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
                                                 {item.category || 'News'}
                                             </span>
                                             <span className="inline-flex items-center gap-1 text-xs text-emerald-500 font-medium hover:text-emerald-400">
-                                                Read <ExternalLink className="h-3 w-3" />
+                                                {t('readLabel')} <ExternalLink className="h-3 w-3" />
                                             </span>
                                         </div>
                                     </div>

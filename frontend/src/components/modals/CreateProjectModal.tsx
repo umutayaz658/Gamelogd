@@ -198,17 +198,17 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
  
                         {/* Publish As Select */}
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Publish As</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('publishAs')}</label>
                             <div className="relative">
                                 <select
                                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all text-sm"
                                     value={selectedOrgId}
                                     onChange={e => setSelectedOrgId(e.target.value)}
                                 >
-                                    <option value="">Personal Profile (Individual)</option>
+                                    <option value="">{t('personalProfileIndividual')}</option>
                                     {userOrganisations.map(org => (
                                         <option key={org.id} value={org.id}>
-                                            Organisation: {org.name}
+                                            {[t('organisationColonLabel'), org.name].join(' ')}
                                         </option>
                                     ))}
                                 </select>

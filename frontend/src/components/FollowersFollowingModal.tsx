@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { X, Search, Loader2, UserMinus, UserCheck, UserPlus, MoreHorizontal } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import ConfirmModal from './ui/ConfirmModal';
 import { useToast } from '@/context/ToastContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface User {
     id: number;
@@ -35,6 +36,7 @@ export default function FollowersFollowingModal({
 }: FollowersFollowingModalProps) {
     const { user: currentUser } = useAuth();
     const toast = useToast();
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'followers' | 'following'>(initialTab);
     const [searchQuery, setSearchQuery] = useState('');
     const [users, setUsers] = useState<User[]>([]);
@@ -192,7 +194,7 @@ export default function FollowersFollowingModal({
                 {/* Header with Navigation Tabs */}
                 <div className="border-b border-zinc-800 flex flex-col">
                     <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                        <span className="font-bold text-white text-lg">Connections</span>
+                        <span className="font-bold text-white text-lg">{t('connections')}</span>
                         <button
                             onClick={onClose}
                             className="p-1.5 hover:bg-zinc-800 rounded-full transition-colors text-zinc-400 hover:text-white"
@@ -211,7 +213,7 @@ export default function FollowersFollowingModal({
                                 activeTab === 'followers' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                         >
-                            Followers
+                            {t('followers')}
                             {activeTab === 'followers' && (
                                 <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-500 rounded-t-full" />
                             )}
@@ -225,7 +227,7 @@ export default function FollowersFollowingModal({
                                 activeTab === 'following' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                         >
-                            Following
+                            {t('following')}
                             {activeTab === 'following' && (
                                 <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-500 rounded-t-full" />
                             )}
@@ -279,7 +281,7 @@ export default function FollowersFollowingModal({
                                                     {user.real_name || user.username}
                                                 </div>
                                                 <div className="text-xs text-zinc-500 truncate">
-                                                    @{user.username}
+                                                    {formatHandle(user.username)}
                                                 </div>
                                             </div>
                                         </Link>
@@ -298,7 +300,7 @@ export default function FollowersFollowingModal({
                                                         ) : (
                                                             <>
                                                                 <UserMinus className="h-3.5 w-3.5" />
-                                                                <span>Remove</span>
+                                                                <span>{t('remove')}</span>
                                                             </>
                                                         )}
                                                     </button>
@@ -317,12 +319,12 @@ export default function FollowersFollowingModal({
                                                         ) : user.is_following ? (
                                                             <>
                                                                 <UserCheck className="h-3.5 w-3.5" />
-                                                                <span>Unfollow</span>
+                                                                <span>{t('unfollow')}</span>
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <UserPlus className="h-3.5 w-3.5" />
-                                                                <span>Follow</span>
+                                                                <span>{t('follow')}</span>
                                                             </>
                                                         )}
                                                     </button>
@@ -342,7 +344,7 @@ export default function FollowersFollowingModal({
                                                                 onClick={() => handleBlockUser(user)}
                                                                 className="w-full text-left px-2 py-1 text-[11px] text-red-500 hover:bg-red-500/10 rounded-md font-bold transition-colors"
                                                             >
-                                                                Block
+                                                                {t('block')}
                                                             </button>
                                                         </div>
                                                     )}
@@ -355,11 +357,11 @@ export default function FollowersFollowingModal({
                         </div>
                     ) : searchQuery ? (
                         <div className="text-center py-12 text-zinc-500 text-sm">
-                            No connections found matching "{searchQuery}"
+                            {[t('noConnectionsFoundMatching'), `"${searchQuery}"`].join(' ')}
                         </div>
                     ) : (
                         <div className="text-center py-12 text-zinc-500 text-sm">
-                            No {activeTab} yet.
+                            {[t('no'), activeTab === 'followers' ? t('followers').toLowerCase() : t('following').toLowerCase(), t('yetPunctuated')].join(' ')}
                         </div>
                     )}
                 </div>

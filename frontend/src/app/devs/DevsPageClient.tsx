@@ -29,6 +29,8 @@ export default function DevsPageClient() {
     const [devlogs, setDevlogs] = useState<Post[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState(false);
+    const [retryToken, setRetryToken] = useState(0);
     const [showProjectModal, setShowProjectModal] = useState(false);
     const [showDevlogModal, setShowDevlogModal] = useState(false);
 
@@ -38,6 +40,7 @@ export default function DevsPageClient() {
         if (activeTool !== 'devlogs' && activeTool !== 'projects') return;
         const fetchData = async () => {
             setLoading(true);
+            setLoadError(false);
             try {
                 const params = new URLSearchParams();
                 params.append('manageable', 'true');
@@ -54,11 +57,25 @@ export default function DevsPageClient() {
                     const res = await api.get(`/projects/?${params.toString()}`);
                     setProjects(res.data.results ?? res.data);
                 }
-            } catch { /* silent */ }
+            } catch {
+                // A failed fetch must be distinguishable from a genuinely empty list —
+                // otherwise the user sees "No projects found." with no way to retry.
+                setLoadError(true);
+            }
             finally { setLoading(false); }
         };
         fetchData();
-    }, [activeTool, activeWorkspace, user]);
+    }, [activeTool, activeWorkspace, user, retryToken]);
+
+    const loadErrorView = (
+        <div className="text-center py-20 space-y-3">
+            <p className="text-sm text-zinc-500">{t('failedToLoadCheckConnection')}</p>
+            <button onClick={() => setRetryToken((n) => n + 1)}
+                className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors">
+                {t('tryAgainLower')}
+            </button>
+        </div>
+    );
 
     // Not logged in gate
     if (!user) {
@@ -69,16 +86,16 @@ export default function DevsPageClient() {
                         <Building className="h-10 w-10" />
                     </div>
                     <div className="space-y-2">
-                        <h2 className="text-2xl font-extrabold text-white">Developer Workspace</h2>
+                        <h2 className="text-2xl font-extrabold text-white">{t('developerWorkspace')}</h2>
                         <p className="text-sm text-zinc-400 leading-relaxed">
-                            Log in to access your personal studio hub — Kanban boards, GDD editor, asset registry, localisation manager and more.
+                            {t('devWorkspaceLoginHint')}
                         </p>
                     </div>
                     <Link
                         href="/login"
                         className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-blue-600/20"
                     >
-                        Log In / Sign Up
+                        {t('logInSignUp')}
                     </Link>
                 </div>
             </div>
@@ -96,8 +113,6 @@ export default function DevsPageClient() {
             case 'assets':
                 return <AssetRegistry />;
             case 'localisation':
-                // Still under active development — hidden in production, same as /collabs and /invest.
-                if (process.env.NODE_ENV === 'production') return <WorkspaceDashboard />;
                 return <LocalisationManager />;
             case 'members':
                 return <TeamRoles />;
@@ -112,26 +127,26 @@ export default function DevsPageClient() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-xl font-bold text-white">{t('devlogsPublisher')}</h2>
-                                <p className="text-sm text-zinc-500 mt-0.5">Publish developer logs for your projects.</p>
+                                <p className="text-sm text-zinc-500 mt-0.5">{t('publishDevlogsHint')}</p>
                             </div>
                             <button
                                 onClick={() => setShowDevlogModal(true)}
                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20"
                             >
                                 <PlusCircle className="w-4 h-4" />
-                                New Devlog
+                                {t('newDevlog')}
                             </button>
                         </div>
                         {loading ? (
                             <div className="flex justify-center py-20">
                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
                             </div>
-                        ) : devlogs.length > 0 ? (
+                        ) : loadError ? loadErrorView : devlogs.length > 0 ? (
                             <div className="flex flex-col gap-6">
                                 {devlogs.map((post) => <PostCard key={post.id} post={post} />)}
                             </div>
                         ) : (
-                            <div className="text-center py-20 text-zinc-600 text-sm">No devlogs found.</div>
+                            <div className="text-center py-20 text-zinc-600 text-sm">{t('noDevlogsFoundShort')}</div>
                         )}
                     </div>
                 );
@@ -142,7 +157,7 @@ export default function DevsPageClient() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-xl font-bold text-white">{t('projects')}</h2>
-                                <p className="text-sm text-zinc-500 mt-0.5">Manage your game projects.</p>
+                                <p className="text-sm text-zinc-500 mt-0.5">{t('manageGameProjects')}</p>
                             </div>
                             <button
                                 onClick={() => setShowProjectModal(true)}
@@ -156,12 +171,12 @@ export default function DevsPageClient() {
                             <div className="flex justify-center py-20">
                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
                             </div>
-                        ) : projects.length > 0 ? (
+                        ) : loadError ? loadErrorView : projects.length > 0 ? (
                             <div className="flex flex-col gap-6">
                                 {projects.map((p) => <ProjectCard key={p.id} project={p} />)}
                             </div>
                         ) : (
-                            <div className="text-center py-20 text-zinc-600 text-sm">No projects found.</div>
+                            <div className="text-center py-20 text-zinc-600 text-sm">{t('noProjectsFound')}</div>
                         )}
                     </div>
                 );

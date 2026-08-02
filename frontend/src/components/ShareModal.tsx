@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { X, Search, Send, Check, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -30,6 +31,7 @@ interface Conversation {
 export default function ShareModal({ isOpen, onClose, itemType, itemId, title }: ShareModalProps) {
     const { user: currentUser } = useAuth();
     const toast = useToast();
+    const { t } = useTranslation();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [shareComment, setShareComment] = useState('');
@@ -106,8 +108,8 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
                 {/* Header */}
                 <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
                     <div>
-                        <h2 className="text-lg font-bold text-white">Send to Chat</h2>
-                        <p className="text-xs text-zinc-500 truncate max-w-[280px]">Sharing: {title}</p>
+                        <h2 className="text-lg font-bold text-white">{t('sendToChat')}</h2>
+                        <p className="text-xs text-zinc-500 truncate max-w-[280px]">{t('sharingLabel')} {title}</p>
                     </div>
                     <button
                         onClick={onClose}
@@ -149,13 +151,13 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
                     ) : filteredChats.length > 0 ? (
                         <div className="space-y-1">
                             {filteredChats.map((chat) => {
-                                const chatName = chat.is_group 
-                                    ? chat.name || 'Group Chat' 
-                                    : chat.other_user?.real_name || chat.other_user?.username || 'Chat';
-                                const chatAvatar = chat.is_group 
-                                    ? chat.avatar 
+                                const chatName = chat.is_group
+                                    ? chat.name || t('groupChatLabel')
+                                    : chat.other_user?.real_name || chat.other_user?.username || t('chatLabel');
+                                const chatAvatar = chat.is_group
+                                    ? chat.avatar
                                     : chat.other_user?.avatar;
-                                const chatUsername = chat.is_group ? 'Group' : `@${chat.other_user?.username}`;
+                                const chatUsername = chat.is_group ? t('groupLabel') : formatHandle(chat.other_user?.username || '');
 
                                 const status = sendingStates[chat.id] || 'idle';
 
@@ -192,17 +194,17 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
                                             {status === 'sent' ? (
                                                 <>
                                                     <Check className="h-3.5 w-3.5" />
-                                                    <span>Sent</span>
+                                                    <span>{t('sentLabel')}</span>
                                                 </>
                                             ) : status === 'sending' ? (
                                                 <>
                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                    <span>Sending</span>
+                                                    <span>{t('sendingLabel')}</span>
                                                 </>
                                             ) : (
                                                 <>
                                                     <Send className="h-3 w-3" />
-                                                    <span>Send</span>
+                                                    <span>{t('sendLabel')}</span>
                                                 </>
                                             )}
                                         </button>
@@ -212,7 +214,7 @@ export default function ShareModal({ isOpen, onClose, itemType, itemId, title }:
                         </div>
                     ) : (
                         <div className="text-center py-12 text-zinc-500 text-sm">
-                            No conversations found.
+                            {t('noConversationsFound')}
                         </div>
                     )}
                 </div>

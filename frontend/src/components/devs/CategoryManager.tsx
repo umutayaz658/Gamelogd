@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Tag, Edit3, Trash2, Plus, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 export interface CategoryItem {
     id: string;
@@ -42,6 +43,7 @@ interface CategoryManagerProps<T extends CategoryItem> {
 export default function CategoryManager<T extends CategoryItem>({
     title, categories, onSave, onClose, onDeleteReassign, minCount = 1,
 }: CategoryManagerProps<T>) {
+    const { t } = useTranslation();
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
     const [catName, setCatName] = useState('');
     const [catEmoji, setCatEmoji] = useState('');
@@ -143,7 +145,7 @@ export default function CategoryManager<T extends CategoryItem>({
                                 onClick={startAdd}
                                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-xs font-semibold transition-all"
                             >
-                                <Plus className="w-4 h-4" /> Add Category
+                                <Plus className="w-4 h-4" /> {t('addCategory')}
                             </button>
                         </div>
                     </>
@@ -153,7 +155,7 @@ export default function CategoryManager<T extends CategoryItem>({
                     <>
                         <div className="flex items-center justify-between p-5 border-b border-zinc-800">
                             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Tag className="w-4 h-4 text-blue-400" /> {view === 'add' ? 'Add Category' : 'Edit Category'}
+                                <Tag className="w-4 h-4 text-blue-400" /> {view === 'add' ? t('addCategory') : t('editCategory')}
                             </h2>
                             <button onClick={() => setView('list')} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
                                 <X className="w-4 h-4" />
@@ -162,7 +164,7 @@ export default function CategoryManager<T extends CategoryItem>({
                         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="p-5 space-y-4">
                             <div className="flex gap-3">
                                 <div className="w-16">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Emoji</label>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('emojiLabel')}</label>
                                     <input
                                         value={catEmoji}
                                         onChange={(e) => setCatEmoji(e.target.value)}
@@ -172,7 +174,7 @@ export default function CategoryManager<T extends CategoryItem>({
                                     />
                                 </div>
                                 <div className="flex-1">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Category Name *</label>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('categoryNameRequired')}</label>
                                     <input
                                         autoFocus
                                         value={catName}
@@ -184,7 +186,7 @@ export default function CategoryManager<T extends CategoryItem>({
                                 </div>
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">Color Theme</label>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">{t('colorTheme')}</label>
                                 <div className="flex flex-wrap gap-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3.5">
                                     {COLOR_PRESETS.map((preset, idx) => (
                                         <button
@@ -209,7 +211,7 @@ export default function CategoryManager<T extends CategoryItem>({
                                     onClick={() => setView('list')}
                                     className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all"
                                 >
-                                    Cancel
+                                    {t('cancel')}
                                 </button>
                                 <button
                                     type="submit"

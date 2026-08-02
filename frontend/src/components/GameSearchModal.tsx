@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, Loader2, Calendar } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface Game {
     id: number;
@@ -19,6 +20,7 @@ interface GameSearchModalProps {
 }
 
 export default function GameSearchModal({ isOpen, onClose, onSelectGame }: GameSearchModalProps) {
+    const { t } = useTranslation();
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState<Game[]>([]);
     const [loading, setLoading] = useState(false);
@@ -52,7 +54,7 @@ export default function GameSearchModal({ isOpen, onClose, onSelectGame }: GameS
 
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-                    <h2 className="text-lg font-bold text-white">Select a Favorite Game</h2>
+                    <h2 className="text-lg font-bold text-white">{t('selectFavoriteGame')}</h2>
                     <button
                         onClick={onClose}
                         className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
@@ -81,7 +83,7 @@ export default function GameSearchModal({ isOpen, onClose, onSelectGame }: GameS
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
                             <Loader2 className="h-8 w-8 animate-spin mb-2 text-emerald-500" />
-                            <p>Searching...</p>
+                            <p>{t('searching')}</p>
                         </div>
                     ) : results.length > 0 ? (
                         <div className="space-y-1">
@@ -118,11 +120,11 @@ export default function GameSearchModal({ isOpen, onClose, onSelectGame }: GameS
                     ) : searchTerm.length > 1 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
                             <Search className="h-8 w-8 mb-2 opacity-50" />
-                            <p>No games found matching "{searchTerm}"</p>
+                            <p>{[t('noGamesFoundMatching'), `"${searchTerm}"`].join(' ')}</p>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
-                            <p>Type to search for games</p>
+                            <p>{t('typeToSearchGames')}</p>
                         </div>
                     )}
                 </div>

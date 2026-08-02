@@ -134,28 +134,39 @@ export interface Asset {
 
 // ─── Localisation Types ───────────────────────────────────────────────────────
 
-export interface TranslationSuggestion {
-    id: string;
-    author: string;
-    text: string;
-    votes: number; // derived mirror of votedBy.length, kept for old persisted rows without votedBy
-    votedBy?: string[]; // usernames who liked this suggestion — optional, absent on old blob data
-    approved: boolean;
+// The key catalogue only (key/namespace/base text) — this is the taxonomy the Devs team manages
+// (which strings exist, what they say in the source language). Suggestions, votes, and approval
+// state live entirely in the backend CommunityTranslation model instead (see
+// components/localisation/), shared as the single source of truth by both the Devs Localisation
+// Manager and the public project page's Localisation tab. Previously each surface kept its own
+// copy (this blob's per-key `suggestions` map vs. the community model) which meant a translation
+// made on one surface never appeared on the other — that divergence is why suggestions were
+// pulled out of this type entirely rather than kept as a second, easily-out-of-sync store.
+// Matches Intl.PluralRules' category names, and backend/api/locale_registry.py's
+// LocaleDef.cldr_categories.
+export type CldrCategory = 'zero' | 'one' | 'two' | 'few' | 'many' | 'other';
+
+// A project's configured target/source language — `name` is denormalised purely so the UI can
+// render a label without a registry lookup; `code` is the only real identity, matching
+// CommunityTranslation.language and backend/api/locale_registry.py's LocaleDef.code.
+export interface ProjectLocale {
+    code: string;
+    name: string;
 }
 
 export interface TranslationEntry {
     id: string;
     key: string;
     namespace: string; // auto-derived from key prefix e.g. "mainMenu" from "mainMenu.play"
-    baseText: string;
-    approved: boolean;
-    suggestions: Record<string, TranslationSuggestion[]>; // lang -> suggestions
+    baseText: string; // representative form — kept in sync with basePlural.other when isPlural
+    isPlural?: boolean;
+    basePlural?: Partial<Record<CldrCategory, string>>;
 }
 
 export interface GlossaryTerm {
     id: string;
     term: string;
-    translations: Record<string, string>; // lang -> locked translation
+    translations: Record<string, string>; // locale code -> locked translation
 }
 
 // Playtest feedback is now backed by a real backend model (core.models.PlaytestFeedback,
@@ -204,6 +215,10 @@ export interface WorkspaceData {
     assets: Asset[];
     translationKeys: TranslationEntry[];
     glossary: GlossaryTerm[];
+    // Devs-managed, per-project. Absent/empty falls back to the backend's
+    // DEFAULT_PROJECT_LOCALE_CODES (see api.locale_registry) — never a frontend-hardcoded list.
+    translationLanguages?: ProjectLocale[];
+    translationSourceLanguage?: ProjectLocale;
     activities: ActivityItem[];
     // Legacy free-form Kanban categories list (mix of the 5 hardcoded ids and "emoji Label|color"
     // encoded custom strings) — superseded by `kanbanCategories` below; kept only so
@@ -248,9 +263,6 @@ export const DEFAULT_GDD_CATEGORIES: GDDCategory[] = [
     { id: 'technical',    label: 'Technical',     color: 'text-cyan-400',    bg: 'bg-cyan-500/10 border-cyan-500/20',    emoji: '🔧' },
     { id: 'other',        label: 'Other',         color: 'text-zinc-400',    bg: 'bg-zinc-700/20 border-zinc-700/30',    emoji: '📌' },
 ];
-
-export const SUPPORTED_LANGS = ['Turkish', 'Spanish', 'French', 'German', 'Japanese', 'Portuguese'];
-export const SOURCE_LANG = 'English';
 
 export const CATEGORY_EMOJI: Record<TaskCategory, string> = {
     code: '💻',

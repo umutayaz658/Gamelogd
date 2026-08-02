@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import LeftSidebarContent from './LeftSidebarContent';
@@ -58,7 +58,7 @@ export default function MobileSidebarDrawer({ open, onClose }: MobileSidebarDraw
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-bold text-white truncate">{user.real_name || user.username}</p>
-                        <p className="text-xs text-zinc-400 truncate">@{user.username.toLowerCase()}</p>
+                        <p className="text-xs text-zinc-400 truncate">{formatHandle(user.username.toLowerCase())}</p>
                     </div>
                 </Link>
 

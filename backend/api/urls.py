@@ -32,10 +32,12 @@ router.register(r'investor-calls', InvestorCallViewSet, basename='investor-call'
 router.register(r'support-tickets', SupportTicketViewSet, basename='support-ticket')
 router.register(r'feed', FeedViewSet, basename='feed')
 router.register(r'workspace-state', WorkspaceStateViewSet, basename='workspace-state')
-from .views import RoleViewSet, permission_catalog_view, my_permissions_view
+from .views import RoleViewSet, permission_catalog_view, my_permissions_view, localisation_locales_view, localisation_formats_view
 router.register(r'organisation-roles', RoleViewSet, basename='organisation-role')
 from .views import PlaytestFeedbackViewSet
 router.register(r'playtest-feedback', PlaytestFeedbackViewSet, basename='playtest-feedback')
+from .views import CommunityTranslationViewSet
+router.register(r'community-translations', CommunityTranslationViewSet, basename='community-translation')
 from .views import ExplorePostsViewSet
 router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
 
@@ -50,4 +52,6 @@ urlpatterns = [
     path('resend-verification/', ResendVerificationView.as_view(), name='resend-verification'),
     path('permission-catalog/', permission_catalog_view, name='permission-catalog'),
     path('my-permissions/', my_permissions_view, name='my-permissions'),
+    path('localisation/locales/', localisation_locales_view, name='localisation-locales'),
+    path('localisation/formats/', localisation_formats_view, name='localisation-formats'),
 ]

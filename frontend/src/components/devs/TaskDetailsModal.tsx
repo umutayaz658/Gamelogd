@@ -9,9 +9,12 @@ import {
 import { Task, KanbanColumn, TaskSubtask, TaskComment, TaskPriority, PRIORITY_COLOR, DEFAULT_KANBAN_CATEGORIES } from './WorkspaceTypes';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
-import { cn, getImageUrl } from '@/lib/utils';
+import { cn, getImageUrl, formatHandle } from '@/lib/utils';
 import api from '@/lib/api';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import { useTranslation } from '@/lib/useTranslation';
+
+const TASK_PREFIX = 'TASK-';
 
 interface TaskDetailsModalProps {
     task: Task;
@@ -28,6 +31,7 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
 };
 
 export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onDelete }: TaskDetailsModalProps) {
+    const { t } = useTranslation();
     const { data, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
     
@@ -200,7 +204,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                 {/* Top bar */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 flex-shrink-0">
                     <div className="flex items-center gap-3">
-                        <span className="text-[11px] text-zinc-650 font-mono tracking-wider font-semibold">TASK-{task.id.slice(-4).toUpperCase()}</span>
+                        <span className="text-[11px] text-zinc-650 font-mono tracking-wider font-semibold">{[TASK_PREFIX, task.id.slice(-4).toUpperCase()].join('')}</span>
                         {/* Status dropdown styled dynamically */}
                         <div className="relative">
                             <button
@@ -292,7 +296,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
 
                             {/* Description */}
                             <div className="space-y-2">
-                                <p className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Description</p>
+                                <p className="text-xs font-bold text-zinc-200 uppercase tracking-wider">{t('description')}</p>
                                 {editingDesc ? (
                                     <div className="space-y-2">
                                         <textarea
@@ -304,9 +308,9 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                             placeholder="Add a description..."
                                         />
                                         <div className="flex gap-2">
-                                            <button onClick={saveDesc} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-xl font-bold transition-all shadow-md shadow-blue-900/20">Save</button>
+                                            <button onClick={saveDesc} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-xl font-bold transition-all shadow-md shadow-blue-900/20">{t('save')}</button>
                                             <button onClick={() => { setDescription(task.description); setEditingDesc(false); }}
-                                                className="px-3.5 py-2 text-zinc-400 text-xs hover:text-white transition-all">Cancel</button>
+                                                className="px-3.5 py-2 text-zinc-400 text-xs hover:text-white transition-all">{t('cancel')}</button>
                                         </div>
                                     </div>
                                 ) : (
@@ -328,11 +332,11 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                             <div className="space-y-2.5">
                                 <div className="flex items-center justify-between">
                                     <p className="text-xs font-bold text-zinc-200 uppercase tracking-wider">
-                                        Subtasks {task.subtasks.length > 0 && `— ${progress}% Done`}
+                                        {[t('subtasks'), task.subtasks.length > 0 && `— ${progress}% ${t('done')}`].filter(Boolean).join(' ')}
                                     </p>
                                     <button onClick={() => setAddingSubtask(true)}
                                         className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors font-bold">
-                                        <Plus className="w-3 h-3" /> Add Subtask
+                                        <Plus className="w-3 h-3" /> {t('addSubtask')}
                                     </button>
                                 </div>
 
@@ -377,7 +381,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                 className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-all"
                                             />
                                             <button onClick={addSubtask}
-                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-xl font-bold transition-all shadow-md shadow-blue-900/20">Add</button>
+                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-xl font-bold transition-all shadow-md shadow-blue-900/20">{t('add')}</button>
                                             <button onClick={() => setAddingSubtask(false)}
                                                 className="text-zinc-500 hover:text-white transition-all"><X className="w-4 h-4" /></button>
                                         </div>
@@ -388,12 +392,12 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                             {/* Comments/Activity */}
                             <div className="space-y-3.5 pt-2">
                                 <p className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-                                    <MessageSquare className="w-3.5 h-3.5 text-zinc-400" /> Activity / Comments
+                                    <MessageSquare className="w-3.5 h-3.5 text-zinc-400" /> {t('activityComments')}
                                 </p>
 
                                 <div className="space-y-3.5">
                                     {task.comments.length === 0 && (
-                                        <p className="text-xs text-zinc-500 italic">No comments yet. Start the conversation!</p>
+                                        <p className="text-xs text-zinc-500 italic">{t('noCommentsYetStartConversationDesc')}</p>
                                     )}
                                     {task.comments.map((c) => {
                                         const isYou = c.author === 'You' || c.author === user?.username;
@@ -420,7 +424,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                                 className="text-xs text-zinc-300 hover:text-blue-400 hover:underline transition-colors"
                                                             >
                                                                 <span className="font-bold">{displayName}</span>
-                                                                <span className="text-[10px] text-zinc-550 ml-1 font-normal">@{displayAuthor}</span>
+                                                                <span className="text-[10px] text-zinc-550 ml-1 font-normal">{formatHandle(displayAuthor)}</span>
                                                             </Link>
                                                             <span className="text-[10px] text-zinc-500 font-medium">
                                                                 {new Date(c.createdAt).toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -434,7 +438,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                                     onClick={() => handleStartEditComment(c)}
                                                                     className="text-[10px] font-semibold text-zinc-500 hover:text-blue-450 px-1 py-0.5 rounded transition-all"
                                                                 >
-                                                                    Edit
+                                                                    {t('edit')}
                                                                 </button>
                                                             )}
                                                             {canDelete && (
@@ -443,7 +447,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                                     onClick={() => handleDeleteComment(c.id)}
                                                                     className="text-[10px] font-semibold text-zinc-500 hover:text-red-450 px-1 py-0.5 rounded transition-all"
                                                                 >
-                                                                    Delete
+                                                                    {t('delete')}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -467,14 +471,14 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                                     onClick={() => handleSaveEditComment(c.id)}
                                                                     className="text-blue-400 hover:text-blue-300 font-bold"
                                                                 >
-                                                                    Save
+                                                                    {t('save')}
                                                                 </button>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setEditingCommentId(null)}
                                                                     className="text-zinc-500 hover:text-zinc-400 font-bold"
                                                                 >
-                                                                    Cancel
+                                                                    {t('cancel')}
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -500,7 +504,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                         disabled={!newComment.trim()}
                                         className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-xl font-bold transition-all disabled:opacity-40 shadow-lg shadow-blue-900/20"
                                     >
-                                        Send
+                                        {t('send')}
                                     </button>
                                 </div>
                             </div>
@@ -510,7 +514,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                         <div className="space-y-6 bg-zinc-900/10 border border-zinc-800/60 rounded-2xl p-4 h-fit">
                             {/* Priority */}
                             <div>
-                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">Priority</p>
+                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">{t('priority')}</p>
                                 <div className="grid grid-cols-2 gap-1.5">
                                     {PRIORITIES.map((p) => (
                                         <button
@@ -529,7 +533,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
 
                             {/* Category */}
                             <div>
-                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">Category</p>
+                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">{t('category')}</p>
                                 <div className="grid grid-cols-2 gap-1.5">
                                     {(data?.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES).map((cat) => {
                                         return (
@@ -552,7 +556,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
 
                             {/* Story Points */}
                             <div>
-                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">Story Points</p>
+                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-2">{t('storyPoints')}</p>
                                 <div className="flex gap-1.5 flex-wrap">
                                     {[1, 2, 3, 5, 8].map((pts) => (
                                         <button
@@ -573,7 +577,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
 
                             {/* Assignee */}
                             <div className="relative">
-                                <p className="text-[10px] text-zinc-100 uppercase tracking-wider font-bold mb-1.5 font-sans">Assignee</p>
+                                <p className="text-[10px] text-zinc-100 uppercase tracking-wider font-bold mb-1.5 font-sans">{t('assignee')}</p>
                                 <button
                                     type="button"
                                     onClick={() => setShowAssigneeDropdown(!showAssigneeDropdown)}
@@ -618,7 +622,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                     }}
                                                     className="w-full text-left px-2.5 py-1.5 text-xs text-zinc-500 hover:bg-zinc-900 hover:text-white rounded-lg transition-colors"
                                                 >
-                                                    Unassigned
+                                                    {t('unassigned')}
                                                 </button>
                                                 
                                                 {filteredMembers.map((member) => (
@@ -642,11 +646,11 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                             </div>
                                                             <span className="truncate text-zinc-350 font-semibold">{member.real_name || member.username}</span>
                                                         </div>
-                                                        <span className="text-[10px] text-zinc-550 truncate max-w-[30%] font-normal">@{member.username}</span>
+                                                        <span className="text-[10px] text-zinc-550 truncate max-w-[30%] font-normal">{formatHandle(member.username)}</span>
                                                     </button>
                                                 ))}
                                                 {filteredMembers.length === 0 && (
-                                                    <p className="text-[10px] text-zinc-700 text-center py-4 italic">No members found</p>
+                                                    <p className="text-[10px] text-zinc-700 text-center py-4 italic">{t('noMembersFound')}</p>
                                                 )}
                                             </div>
                                         </div>
@@ -656,7 +660,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
 
                             {/* Due Date */}
                             <div>
-                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-1.5">Due Date</p>
+                                <p className="text-[10px] text-zinc-550 uppercase tracking-wider font-bold mb-1.5">{t('dueDate')}</p>
                                 <input
                                     type="date"
                                     defaultValue={task.dueDate ?? ''}
@@ -668,7 +672,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
 
                             {/* Metadata */}
                             <div className="border-t border-zinc-800 pt-4 flex items-center justify-between text-[11px] text-zinc-550">
-                                <span>Created</span>
+                                <span>{t('createdLabel')}</span>
                                 <span className="flex items-center gap-1 font-medium text-zinc-400">
                                     <Clock className="w-3.5 h-3.5 text-zinc-500" />
                                     {new Date(task.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -684,12 +688,11 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                 title="Delete Task"
                 description="Are you sure you want to delete this task? This action will permanently remove it from the board."
                 onConfirm={() => {
-                    api.delete(`/tasks/${task.id}/`)
-                        .then(() => {
-                            onDelete(task.id);
-                            setShowDeleteConfirm(false);
-                        })
-                        .catch((err) => console.error('Failed to delete task:', err));
+                    // Kanban tasks live inside the WorkspaceState blob, not behind a /tasks/
+                    // endpoint (there is none) — onDelete mutates the board via the workspace
+                    // context, which persists the blob to the backend.
+                    onDelete(task.id);
+                    setShowDeleteConfirm(false);
                 }}
                 onCancel={() => setShowDeleteConfirm(false)}
             />

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import FilterDropdown from "@/components/FilterDropdown";
-import { ExternalLink, Calendar, Newspaper, Search } from 'lucide-react';
+import { ExternalLink, Calendar, Newspaper, Search, X } from 'lucide-react';
 
 interface NewsItem {
     id: number;
@@ -287,7 +287,7 @@ export default function NewsPage() {
                                             {heroNews[0].title}
                                         </h2>
                                         <div className="flex items-center gap-2 text-sm text-zinc-400">
-                                            {heroNews[0].source_icon && <img src={heroNews[0].source_icon} className="w-4 h-4 rounded-full" />}
+                                            {heroNews[0].source_icon && <img src={heroNews[0].source_icon} alt="" className="w-4 h-4 rounded-full" />}
                                             <span>{heroNews[0].source_name}</span>
                                         </div>
                                     </div>
@@ -347,7 +347,7 @@ export default function NewsPage() {
                                             }}
                                             className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-500 hover:text-zinc-300"
                                         >
-                                            ✕
+                                            <X className="h-4 w-4" />
                                         </button>
                                     )}
                                 </div>
@@ -391,7 +391,7 @@ export default function NewsPage() {
                                             }}
                                             className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-500 hover:text-zinc-300"
                                         >
-                                            ✕
+                                            <X className="h-4 w-4" />
                                         </button>
                                     )}
                                 </div>
@@ -462,9 +462,9 @@ export default function NewsPage() {
                                                     </h3>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 text-xs text-zinc-500 mt-1">
-                                                    {item.source_icon && <img src={item.source_icon} className="w-3.5 h-3.5 rounded-full flex-shrink-0" />}
+                                                    {item.source_icon && <img src={item.source_icon} alt="" className="w-3.5 h-3.5 rounded-full flex-shrink-0" />}
                                                     <span className="truncate">{item.source_name}</span>
-                                                    <span className="flex-shrink-0">•</span>
+                                                    <span className="flex-shrink-0 w-1 h-1 rounded-full bg-zinc-600" aria-hidden="true" />
                                                     <span className="flex-shrink-0">{new Date(item.pub_date).toLocaleDateString()}</span>
                                                 </div>
                                             </div>
@@ -490,9 +490,9 @@ export default function NewsPage() {
                                             </div>
                                             <div className="p-5 flex-1 flex flex-col">
                                                 <div className="flex items-center gap-2 text-xs text-zinc-400 mb-3">
-                                                    {item.source_icon && <img src={item.source_icon} className="w-4 h-4 rounded-full" />}
+                                                    {item.source_icon && <img src={item.source_icon} alt="" className="w-4 h-4 rounded-full" />}
                                                     <span className="font-medium text-zinc-300">{item.source_name}</span>
-                                                    <span>•</span>
+                                                    <span className="w-1 h-1 rounded-full bg-zinc-600" aria-hidden="true" />
                                                     <span>{new Date(item.pub_date).toLocaleDateString()}</span>
                                                 </div>
                                                 <h3 className="text-xl font-bold leading-snug line-clamp-2 mb-3 group-hover:text-emerald-400 transition-colors">

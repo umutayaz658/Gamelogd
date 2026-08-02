@@ -1,11 +1,11 @@
 from rest_framework import serializers
-from django.db.models import Count, OuterRef, Subquery, IntegerField
+from django.db.models import Count, OuterRef, Subquery, IntegerField, Q
 from django.db.models.functions import Coalesce
-from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback
+from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback, CommunityTranslation
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
 
 
-def count_subquery(related_model, fk_name, **extra_filters):
+def count_subquery(related_model, fk_name, q_filter=None, **extra_filters):
     """A correlated-subquery COUNT for annotating list querysets.
 
     Lets feed/list views precompute engagement counts in one query instead of the serializer /
@@ -14,12 +14,27 @@ def count_subquery(related_model, fk_name, **extra_filters):
     Count()s over different relations JOIN-multiply the rows (catastrophic for a viral post with
     tens of thousands of likes and replies).
     """
-    sub = (
-        related_model.objects
-        .filter(**{fk_name: OuterRef('pk')}, **extra_filters)
-        .order_by().values(fk_name).annotate(c=Count('*')).values('c')
-    )
+    qs = related_model.objects.filter(**{fk_name: OuterRef('pk')}, **extra_filters)
+    if q_filter is not None:
+        qs = qs.filter(q_filter)
+    sub = qs.order_by().values(fk_name).annotate(c=Count('*')).values('c')
     return Coalesce(Subquery(sub, output_field=IntegerField()), 0)
+
+
+# A "direct" repost (the plain Repost toggle, PostViewSet.repost) has no content of its own —
+# as opposed to a quote-repost, which is a separate post with its own caption/media/gif/poll.
+# Filtering on `content==''` alone isn't enough to tell them apart: the quote composer lets you
+# submit a quote with attached media/gif/poll but no caption text, which also has content=='' —
+# that quote-repost was being miscounted as a direct repost (inflating reposts_count and wrongly
+# flipping is_reposted/the repost button to "active" for someone who only quoted, never reposted).
+DIRECT_REPOST_Q = (
+    Q(content='')
+    & (Q(image__isnull=True) | Q(image=''))
+    & (Q(media_file__isnull=True) | Q(media_file=''))
+    & (Q(gif_url__isnull=True) | Q(gif_url=''))
+    & (Q(poll_options__isnull=True) | Q(poll_options=[]))
+    & Q(media__isnull=True)
+)
 
 RESERVED_USERNAMES = [
     'admin', 'administrator', 'root', 'settings', 'explore', 'messages',
@@ -94,7 +109,7 @@ def get_request_cache(request):
             
             cache['liked_post_ids'] = set(Like.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
             cache['bookmarked_post_ids'] = set(Bookmark.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
-            cache['reposted_post_ids'] = set(Post.objects.filter(user=request.user, repost_parent__isnull=False).values_list('repost_parent_id', flat=True))
+            cache['reposted_post_ids'] = set(Post.objects.filter(DIRECT_REPOST_Q, user=request.user, repost_parent__isnull=False).values_list('repost_parent_id', flat=True))
             cache['liked_review_ids'] = set(Like.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
             cache['bookmarked_review_ids'] = set(Bookmark.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
             cache['liked_news_ids'] = set(Like.objects.filter(user=request.user, news__isnull=False).values_list('news_id', flat=True))
@@ -373,9 +388,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        user = User.objects.filter(email=value).first()
-        if user and user.is_active:
-            raise serializers.ValidationError("A user with that email already exists.")
+        # No "already exists" error here: rejecting a known email would let anyone probe which
+        # addresses have accounts (enumeration). RegisterView.create silently short-circuits
+        # for active emails instead, returning the same verification_required response.
+        # (Usernames are public identifiers — profiles live at /<username> — so the username
+        # duplicate error above leaks nothing that isn't already public.)
         return value
 
     def create(self, validated_data):
@@ -475,6 +492,8 @@ class ReviewSerializer(serializers.ModelSerializer):
     bookmarks_count = serializers.SerializerMethodField()
     is_liked_by_user = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
+    replies_count = serializers.SerializerMethodField()
+    reposts_count = serializers.SerializerMethodField()
 
     def get_likes_count(self, obj):
         # Prefer the queryset annotation (feed/list views set it) to avoid a per-object COUNT.
@@ -485,12 +504,23 @@ class ReviewSerializer(serializers.ModelSerializer):
         ann = getattr(obj, 'bookmarks_count_ann', None)
         return ann if ann is not None else obj.bookmarks.count()
 
+    def get_replies_count(self, obj):
+        ann = getattr(obj, 'replies_count_ann', None)
+        return ann if ann is not None else obj.replies.count()
+
+    def get_reposts_count(self, obj):
+        # Unlike Post, a Review has no plain "direct repost" action — every repost of a
+        # review is a quote-repost (ReplyModal always sets repost_parent_review with the
+        # user's own content/media), so the total count is the right number here.
+        ann = getattr(obj, 'reposts_count_ann', None)
+        return ann if ann is not None else obj.reposts.count()
+
     class Meta:
         model = Review
         fields = [
-            'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked', 
+            'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked',
             'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
-            'is_liked_by_user', 'likes_count', 'playthrough_number'
+            'is_liked_by_user', 'likes_count', 'playthrough_number', 'replies_count', 'reposts_count'
         ]
         read_only_fields = ['id', 'user', 'timestamp']
 
@@ -655,17 +685,28 @@ class PostSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'user', 'author_details', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details', 'trending_score']
 
+    def validate_uploaded_media(self, files):
+        from .uploads import MAX_POST_MEDIA_COUNT, validate_media_file
+        if len(files) > MAX_POST_MEDIA_COUNT:
+            raise serializers.ValidationError(f"A post can have at most {MAX_POST_MEDIA_COUNT} media files.")
+        for file in files:
+            validate_media_file(file, allow_video=True)
+        return files
+
     def create(self, validated_data):
+        from .uploads import validate_media_file
         uploaded_media = validated_data.pop('uploaded_media', [])
         # Legacy single-file support (optional, can be inferred from first media item)
         # But frontend might still send media_file for now.
-        
+
         post = super().create(validated_data)
 
         # Handle Multiple Media
         if uploaded_media:
             for index, file in enumerate(uploaded_media):
-                media_type = 'video' if file.content_type.startswith('video') else 'image'
+                # Kind comes from the (already validated) extension — the multipart
+                # content_type header is client-supplied and can't be trusted.
+                media_type = validate_media_file(file, allow_video=True)
                 PostMedia.objects.create(post=post, file=file, media_type=media_type, order=index)
             
             # Legacy Backfill: Set the first item as the main media_file for backward compatibility
@@ -727,11 +768,11 @@ class PostSerializer(serializers.ModelSerializer):
         return ann if ann is not None else obj.bookmarks.count()
 
     def get_reposts_count(self, obj):
-        # Count only direct reposts (content='') so this matches the repost toggle action
-        # (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are separate
-        # posts with their own content and are not part of this counter.
+        # Count only direct reposts (see DIRECT_REPOST_Q) so this matches the repost toggle
+        # action (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are
+        # separate posts with their own content/media and are not part of this counter.
         ann = getattr(obj, 'reposts_count_ann', None)
-        return ann if ann is not None else obj.reposts.filter(content='').count()
+        return ann if ann is not None else obj.reposts.filter(DIRECT_REPOST_Q).count()
 
     def get_is_reposted(self, obj):
         request = self.context.get('request')
@@ -989,14 +1030,14 @@ class LibraryEntrySerializer(serializers.ModelSerializer):
 class LikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Like
-        fields = ['id', 'user', 'post', 'review', 'news', 'playtest_feedback', 'timestamp']
+        fields = ['id', 'user', 'post', 'review', 'news', 'playtest_feedback', 'community_translation', 'timestamp']
         read_only_fields = ['id', 'user', 'timestamp']
 
     def create(self, validated_data):
         # Ensure only one target is set
-        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news'), validated_data.get('playtest_feedback')]
+        targets = [validated_data.get('post'), validated_data.get('review'), validated_data.get('news'), validated_data.get('playtest_feedback'), validated_data.get('community_translation')]
         if sum(x is not None for x in targets) != 1:
-            raise serializers.ValidationError("Like must target exactly one item (post, review, news, or playtest_feedback).")
+            raise serializers.ValidationError("Like must target exactly one item (post, review, news, playtest_feedback, or community_translation).")
         return super().create(validated_data)
 
 class NewsSerializer(serializers.ModelSerializer):
@@ -1178,12 +1219,14 @@ class ProjectSerializer(serializers.ModelSerializer):
         return validate_extra_links_value(value)
 
     def get_followers_count(self, obj):
-        return obj.followers.count()
+        # len() over the prefetched rows (ProjectViewSet prefetches 'followers') — .count()
+        # would issue one query per project on list endpoints.
+        return len(obj.followers.all())
 
     def get_is_following(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return obj.followers.filter(user=request.user).exists()
+            return any(f.user_id == request.user.id for f in obj.followers.all())
         return False
 
     def get_organisation_details(self, obj):
@@ -1200,7 +1243,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 class PlaytestFeedbackSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
-    likes_count = serializers.IntegerField(source='likes.count', read_only=True)
+    likes_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
 
     class Meta:
@@ -1221,10 +1264,16 @@ class PlaytestFeedbackSerializer(serializers.ModelSerializer):
         validated_data.pop('project', None)
         return super().update(instance, validated_data)
 
+    def get_likes_count(self, obj):
+        # len() over the prefetched rows (see the viewset's prefetch_related('likes')) —
+        # a per-row COUNT query would defeat the prefetch on every list render.
+        return len(obj.likes.all())
+
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return obj.likes.filter(user=request.user).exists()
+            # Iterate the prefetch cache: .filter() would issue a fresh query per row.
+            return any(like.user_id == request.user.id for like in obj.likes.all())
         return False
 
     def validate_title(self, value):
@@ -1234,6 +1283,134 @@ class PlaytestFeedbackSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("This field is required.")
         return value
+
+
+class CommunityTranslationSerializer(serializers.ModelSerializer):
+    author = UserSerializer(read_only=True)
+    approved_by = UserSerializer(read_only=True)
+    votes_count = serializers.SerializerMethodField()
+    is_voted = serializers.SerializerMethodField()
+    # Neither is unconditionally required at the DRF-field level — whether `text` or
+    # `plural_forms` is the one actually required (and the other forced to a derived/null value)
+    # depends on the target key's `isPlural` flag, resolved and enforced in
+    # _validate_payload_shape() below.
+    text = serializers.CharField(required=False, allow_blank=True)
+    plural_forms = serializers.JSONField(required=False, allow_null=True)
+
+    class Meta:
+        model = CommunityTranslation
+        fields = [
+            'id', 'project', 'key', 'namespace', 'language', 'author', 'text', 'plural_forms',
+            'status', 'approved_by', 'approved_at', 'votes_count', 'is_voted',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'author', 'namespace', 'status', 'approved_by', 'approved_at',
+            'votes_count', 'is_voted', 'created_at', 'updated_at',
+        ]
+
+    def get_votes_count(self, obj):
+        # Prefer the viewset's Count annotation; fall back to the prefetched rows. Either way
+        # no per-row COUNT query.
+        annotated = getattr(obj, 'vote_count', None)
+        if annotated is not None:
+            return annotated
+        return len(obj.likes.all())
+
+    def get_is_voted(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Iterate the prefetch cache: .filter() would issue a fresh query per row.
+            return any(like.user_id == request.user.id for like in obj.likes.all())
+        return False
+
+    def update(self, instance, validated_data):
+        # A translation suggestion's identity (which project/key/language it targets) is fixed
+        # at creation — an author editing their suggestion can only change its text/plural_forms.
+        validated_data.pop('project', None)
+        validated_data.pop('key', None)
+        validated_data.pop('language', None)
+        return super().update(instance, validated_data)
+
+    def validate(self, attrs):
+        from .locale_registry import get as get_locale, resolve_project_locales
+        from .views import _project_workspace_state_readonly
+
+        project = attrs.get('project') if self.instance is None else self.instance.project
+        key = attrs.get('key') if self.instance is None else self.instance.key
+        language = attrs.get('language') if self.instance is None else self.instance.language
+
+        state = _project_workspace_state_readonly(project) if project else None
+        entries = (state.data or {}).get('translationKeys', []) if state else []
+        entry = next((e for e in entries if e.get('key') == key), None)
+
+        # Key/language identity and the duplicate-suggestion check are create-only — on update,
+        # project/key/language are dropped above (and can't be resubmitted), so the instance
+        # already passed this once.
+        if self.instance is None:
+            if entry is None:
+                raise serializers.ValidationError("Unknown translation key for this project.")
+            attrs['namespace'] = entry.get('namespace', '')
+
+            locale_codes = {l.code for l in resolve_project_locales(state.data if state else {})}
+            if language not in locale_codes:
+                raise serializers.ValidationError("This project does not accept translations in that language.")
+
+            request = self.context.get('request')
+            user = request.user if request else None
+            if user and user.is_authenticated:
+                duplicate = CommunityTranslation.objects.filter(
+                    project=project, key=key, language=language, author=user,
+                ).exclude(status='rejected').exists()
+                if duplicate:
+                    raise serializers.ValidationError(
+                        "You've already suggested a translation for this string — edit your existing suggestion instead."
+                    )
+
+        # Payload-shape validation runs on BOTH create and update — round 1's version of this
+        # method only ran on create, which meant a PATCH could smuggle plural_forms onto a flat
+        # key (or clear plural_forms off a plural one) with no check at all.
+        self._validate_payload_shape(attrs, entry, get_locale(language))
+        return attrs
+
+    def _validate_payload_shape(self, attrs, entry, locale):
+        is_plural = bool(entry.get('isPlural')) if entry else False
+
+        if not is_plural:
+            if attrs.get('plural_forms'):
+                raise serializers.ValidationError({'plural_forms': ["This string isn't pluralisable — submit `text` instead."]})
+            text = attrs.get('text', self.instance.text if self.instance else None)
+            if not text or not text.strip():
+                raise serializers.ValidationError({'text': ["This field is required."]})
+            if len(text) > 2000:
+                raise serializers.ValidationError({'text': ["Keep suggestions under 2000 characters."]})
+            attrs['text'] = text.strip()
+            attrs['plural_forms'] = None
+            return
+
+        if locale is None:
+            raise serializers.ValidationError("Unknown language.")
+
+        plural_forms = attrs.get('plural_forms', self.instance.plural_forms if self.instance else None)
+        if not isinstance(plural_forms, dict):
+            raise serializers.ValidationError({'plural_forms': ["This field is required for a pluralisable string."]})
+
+        missing = [c for c in locale.gettext_category_order if not str(plural_forms.get(c, '')).strip()]
+        if missing:
+            raise serializers.ValidationError({'plural_forms': [f"Missing form(s) for: {', '.join(missing)}."]})
+
+        unknown = set(plural_forms.keys()) - set(locale.cldr_categories)
+        if unknown:
+            raise serializers.ValidationError({'plural_forms': [f"Unknown plural categor{'y' if len(unknown) == 1 else 'ies'}: {', '.join(sorted(unknown))}."]})
+
+        cleaned = {k: str(v).strip() for k, v in plural_forms.items() if str(v).strip()}
+        if any(len(v) > 2000 for v in cleaned.values()):
+            raise serializers.ValidationError({'plural_forms': ["Keep each form under 2000 characters."]})
+        if sum(len(v) for v in cleaned.values()) > 12000:
+            raise serializers.ValidationError({'plural_forms': ["Keep the total under 12000 characters."]})
+
+        attrs['plural_forms'] = cleaned
+        attrs['text'] = cleaned.get(locale.gettext_category_order[-1]) or next(iter(cleaned.values()))
 
 
 class JobPostingSerializer(serializers.ModelSerializer):

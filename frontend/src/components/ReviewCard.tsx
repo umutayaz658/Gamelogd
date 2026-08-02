@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2 } from 'lucide-react';
 import { Review } from '@/types';
-import { getImageUrl, getRelativeTime, formatCount } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, formatCount, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
@@ -13,6 +13,8 @@ import ShareModal from '@/components/ShareModal';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+
+const DOT_SEPARATOR = '•';
 
 interface ReviewCardProps {
     review: Review;
@@ -36,6 +38,8 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const [likesCount, setLikesCount] = useState(review.likes_count || 0);
     const [isBookmarked, setIsBookmarked] = useState(review.is_bookmarked || false);
     const [bookmarksCount, setBookmarksCount] = useState(review.bookmarks_count || 0);
+    const [repliesCount, setRepliesCount] = useState(review.replies_count || 0);
+    const [repostsCount, setRepostsCount] = useState(review.reposts_count || 0);
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -57,12 +61,43 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    useEffect(() => {
+    // Re-sync optimistic UI state from the review prop whenever a new review object arrives
+    // (e.g. a feed refetch), overriding any stale local like/bookmark state — computed during
+    // render rather than in an effect. See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevReview, setPrevReview] = useState(review);
+    if (review !== prevReview) {
+        setPrevReview(review);
         setIsLiked(review.is_liked_by_user || false);
         setLikesCount(review.likes_count || 0);
         setIsBookmarked(review.is_bookmarked || false);
         setBookmarksCount(review.bookmarks_count || 0);
-    }, [review]);
+        setRepliesCount(review.replies_count || 0);
+        setRepostsCount(review.reposts_count || 0);
+    }
+
+    // See PostCard's identical listener — ReplyModal broadcasts this since it has no direct
+    // reference back to every ReviewCard instance showing this same review.
+    useEffect(() => {
+        const handleReplyCreated = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.parentType === 'review' && detail?.parentId === review.id) {
+                setRepliesCount(prev => prev + 1);
+            }
+        };
+        window.addEventListener('reply-created', handleReplyCreated);
+        return () => window.removeEventListener('reply-created', handleReplyCreated);
+    }, [review.id]);
+
+    useEffect(() => {
+        const handlePostCreated = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.repost_parent_review === review.id) {
+                setRepostsCount(prev => prev + 1);
+            }
+        };
+        window.addEventListener('post-created', handlePostCreated);
+        return () => window.removeEventListener('post-created', handlePostCreated);
+    }, [review.id]);
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -176,9 +211,9 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 className="text-zinc-500 text-sm hover:text-zinc-400 truncate min-w-0 shrink"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                @{review.user.username.toLowerCase()}
+                                {formatHandle(review.user.username.toLowerCase())}
                             </Link>
-                            <span className="text-zinc-700 text-sm flex-shrink-0">•</span>
+                            <span className="text-zinc-700 text-sm flex-shrink-0" aria-hidden="true">{DOT_SEPARATOR}</span>
                             <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(review.timestamp).toLocaleString()} suppressHydrationWarning>
                                 {getRelativeTime(review.timestamp, language)}
                             </span>
@@ -198,7 +233,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
                                         >
                                             <Trash2 className="h-4 w-4" />
-                                            Delete Review
+                                            {t('deleteReview')}
                                         </button>
                                     )}
                                     <button
@@ -206,7 +241,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                         className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
                                     >
                                         <LinkIcon className="h-4 w-4" />
-                                        Copy Link
+                                        {t('copyLink')}
                                     </button>
                                 </div>
                             )}
@@ -287,17 +322,17 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     {review.playthrough_number && review.playthrough_number > 1 && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                                            {review.playthrough_number === 2 ? '2nd' : review.playthrough_number === 3 ? '3rd' : `${review.playthrough_number}th`} Playthrough
+                                            {review.playthrough_number === 2 ? '2nd' : review.playthrough_number === 3 ? '3rd' : `${review.playthrough_number}th`} {t('playthrough')}
                                         </span>
                                     )}
                                     {review.is_liked && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20">
-                                            <Heart className="h-3 w-3 fill-current" /> Liked
+                                            <Heart className="h-3 w-3 fill-current" /> {t('liked')}
                                         </span>
                                     )}
                                     {review.is_completed && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                                            <Check className="h-3 w-3" /> Completed
+                                            <Check className="h-3 w-3" /> {t('completed')}
                                         </span>
                                     )}
                                     {review.contains_spoilers && (
@@ -309,7 +344,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors"
                                         >
                                             {isSpoilerVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                                            Spoilers
+                                            {t('spoilers')}
                                         </button>
                                     )}
                                 </div>
@@ -343,7 +378,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 <div className="p-2 rounded-full group-hover:bg-emerald-500/10 transition-colors">
                                     <MessageCircle className="h-4 w-4" />
                                 </div>
-                                <span className="text-sm">{formatCount(0)}</span>
+                                <span className="text-sm">{formatCount(repliesCount)}</span>
                             </button>
 
                             <div className="relative">
@@ -358,7 +393,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
                                         <Repeat2 className="h-4 w-4" />
                                     </div>
-                                    <span className="text-sm">{formatCount(0)}</span>
+                                    <span className="text-sm">{formatCount(repostsCount)}</span>
                                 </button>
                             </div>
 
@@ -395,7 +430,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
                                         >
                                             <Send className="h-3.5 w-3.5 text-emerald-500" />
-                                            Send via Direct Message
+                                            {t('sendViaDirectMessage')}
                                         </button>
                                         <button
                                             onClick={(e) => {
@@ -408,7 +443,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >
                                             <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
-                                            Copy Link
+                                            {t('copyLink')}
                                         </button>
                                         <button
                                             onClick={(e) => {
@@ -419,7 +454,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >
                                             <Share2 className="h-3.5 w-3.5 text-zinc-550" />
-                                            Share via...
+                                            {t('shareVia')}
                                         </button>
                                     </div>
                                 )}

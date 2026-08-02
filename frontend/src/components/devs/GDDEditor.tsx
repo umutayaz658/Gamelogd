@@ -27,6 +27,13 @@ import {
     Globe, Lock, ArrowLeft, ChevronRight, Check, Loader2, MessageSquare, Palette
 } from 'lucide-react';
 import type { GDDDoc, Task, GDDComment } from './WorkspaceTypes';
+import { useTranslation } from '@/lib/useTranslation';
+
+const MIDDLE_DOT = '·';
+const TILDE = '~';
+const QUOTE_MARK = '"';
+const TEXT_COLOR_GLYPH = 'A';
+const SLASH_SEPARATOR = '/';
 
 // ─── Editor CSS ───────────────────────────────────────────────────────────────
 
@@ -329,8 +336,15 @@ function getCurrentBlockType(editor: any) {
 // ─── Slash Dropdown ───────────────────────────────────────────────────────────
 
 function SlashDropdown({ items, onSelect, onClose, position }: { items: SlashItem[]; onSelect: (i: SlashItem) => void; onClose: () => void; position: { top: number; left: number }; }) {
+    const { t } = useTranslation();
     const [idx, setIdx] = useState(0);
-    useEffect(() => { setIdx(0); }, [items]);
+    // Reset the highlighted item whenever the filtered items list changes, computed during
+    // render rather than in an effect. See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevItems, setPrevItems] = useState(items);
+    if (items !== prevItems) {
+        setPrevItems(items);
+        setIdx(0);
+    }
     useEffect(() => {
         const h = (e: KeyboardEvent) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => Math.min(i + 1, items.length - 1)); }
@@ -346,7 +360,7 @@ function SlashDropdown({ items, onSelect, onClose, position }: { items: SlashIte
     return (
         <div style={{ top: position.top, left: position.left }} className="absolute z-50 w-72 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/60 overflow-hidden">
             <div className="px-3 py-2 border-b border-zinc-800">
-                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Blocks</p>
+                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">{t('blocks')}</p>
             </div>
             <div className="p-1.5 max-h-72 overflow-y-auto">
                 {items.map((item, i) => {
@@ -373,6 +387,7 @@ function SlashDropdown({ items, onSelect, onClose, position }: { items: SlashIte
 // ─── Turn Into Menu ───────────────────────────────────────────────────────────
 
 function TurnIntoMenu({ position, onSelect }: { position: { top: number; left: number }; onSelect: (i: TurnIntoItem) => void; }) {
+    const { t } = useTranslation();
     const ref = useRef<HTMLDivElement>(null);
     const [top, setTop] = useState(position.top);
 
@@ -388,7 +403,7 @@ function TurnIntoMenu({ position, onSelect }: { position: { top: number; left: n
     return createPortal(
         <div ref={ref} data-turninto style={{ top, left: position.left }} className="fixed z-[9999] w-52 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/60 overflow-hidden">
             <div className="px-3 py-2 border-b border-zinc-800">
-                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Turn Into</p>
+                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">{t('turnInto')}</p>
             </div>
             <div className="p-1 max-h-60 overflow-y-auto scrollbar-thin-dark">
                 {TURN_INTO_ITEMS.map((item) => {
@@ -416,6 +431,7 @@ function TurnIntoMenu({ position, onSelect }: { position: { top: number; left: n
 // ─── Color Menu ──────────────────────────────────────────────────────────────
 
 function ColorMenu({ position, onSelect }: { position: { top: number; left: number }; onSelect: (i: ColorItem) => void; }) {
+    const { t } = useTranslation();
     const ref = useRef<HTMLDivElement>(null);
     const [top, setTop] = useState(position.top);
 
@@ -431,7 +447,7 @@ function ColorMenu({ position, onSelect }: { position: { top: number; left: numb
     return createPortal(
         <div ref={ref} data-colormenu style={{ top, left: position.left }} className="fixed z-[9999] w-52 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/60 overflow-hidden">
             <div className="px-3 py-2 border-b border-zinc-800">
-                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Color</p>
+                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">{t('color')}</p>
             </div>
             <div className="p-1 max-h-64 overflow-y-auto scrollbar-thin-dark">
                 {COLOR_ITEMS.map((item) => {
@@ -466,6 +482,7 @@ function ColorMenu({ position, onSelect }: { position: { top: number; left: numb
 // ─── Block Context Menu ───────────────────────────────────────────────────────
 
 function BlockContextMenu({ position, onTurnInto, onColor, onComment, onDelete, onDuplicate }: { position: { top: number; left: number }; onTurnInto: () => void; onColor: () => void; onComment: () => void; onDelete: () => void; onDuplicate: () => void; }) {
+    const { t } = useTranslation();
     const ref = useRef<HTMLDivElement>(null);
     const [top, setTop] = useState(position.top);
 
@@ -489,7 +506,7 @@ function BlockContextMenu({ position, onTurnInto, onColor, onComment, onDelete, 
                     }}
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                 >
-                    <span className="flex items-center gap-2"><Type className="w-3.5 h-3.5 text-zinc-500" />Turn into</span>
+                    <span className="flex items-center gap-2"><Type className="w-3.5 h-3.5 text-zinc-500" />{t('turnIntoLower')}</span>
                     <ChevronRight className="w-3 h-3 text-zinc-600" />
                 </button>
                 <button
@@ -500,7 +517,7 @@ function BlockContextMenu({ position, onTurnInto, onColor, onComment, onDelete, 
                     }}
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                 >
-                    <span className="flex items-center gap-2"><Palette className="w-3.5 h-3.5 text-zinc-500" />Color</span>
+                    <span className="flex items-center gap-2"><Palette className="w-3.5 h-3.5 text-zinc-500" />{t('color')}</span>
                     <ChevronRight className="w-3 h-3 text-zinc-600" />
                 </button>
                 <button
@@ -511,7 +528,7 @@ function BlockContextMenu({ position, onTurnInto, onColor, onComment, onDelete, 
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                 >
-                    <span className="flex items-center gap-2"><MessageSquare className="w-3.5 h-3.5 text-zinc-500" />Comment</span>
+                    <span className="flex items-center gap-2"><MessageSquare className="w-3.5 h-3.5 text-zinc-500" />{t('comment')}</span>
                 </button>
                 <div className="border-t border-zinc-800 my-1" />
                 <button
@@ -522,7 +539,7 @@ function BlockContextMenu({ position, onTurnInto, onColor, onComment, onDelete, 
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                 >
-                    <Plus className="w-3.5 h-3.5 text-zinc-500" />Duplicate
+                    <Plus className="w-3.5 h-3.5 text-zinc-500" />{t('duplicate')}
                 </button>
                 <button
                     onMouseDown={(e) => {
@@ -532,7 +549,7 @@ function BlockContextMenu({ position, onTurnInto, onColor, onComment, onDelete, 
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
                 >
-                    <Minus className="w-3.5 h-3.5" />Delete block
+                    <Minus className="w-3.5 h-3.5" />{t('deleteBlock')}
                 </button>
             </div>
         </div>,
@@ -674,7 +691,7 @@ function BubbleToolbar({ editor, onRequestComment }: { editor: ReturnType<typeof
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
                     title="Text color / Highlight"
                 >
-                    <span className="w-4 h-4 flex items-center justify-center font-bold text-xs border border-zinc-700 rounded bg-zinc-850">A</span>
+                    <span className="w-4 h-4 flex items-center justify-center font-bold text-xs border border-zinc-700 rounded bg-zinc-850" aria-hidden="true">{TEXT_COLOR_GLYPH}</span>
                 </button>
 
                 {openDropdown === 'color' && (
@@ -893,6 +910,7 @@ interface GDDEditorProps {
 }
 
 export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpdate, onBack, selectedComment }: GDDEditorProps) {
+    const { t } = useTranslation();
     const [title, setTitle] = useState(doc.title);
     const [isPublic, setIsPublic] = useState(doc.isPublic);
     const [isDirty, setIsDirty] = useState(false);
@@ -985,7 +1003,10 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
             TableHeader,
             TableCell,
             Placeholder.configure({ placeholder: "Type '/' for commands, or start writing…" }),
-            Markdown.configure({ html: true, transformPastedText: true }),
+            // html: false — GDD content is multi-author (any member with gdd write permission
+            // edits the shared blob), and Tiptap documents html: true as safe only for
+            // trusted single-author content.
+            Markdown.configure({ html: false, transformPastedText: true }),
             ToggleSummary,
             ToggleContent,
             ToggleBlock,
@@ -1518,11 +1539,11 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
                 <div className="flex items-center gap-2">
                     {isDirty ? (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-500">
-                            <Loader2 className="w-3 h-3 animate-spin" />Saving…
+                            <Loader2 className="w-3 h-3 animate-spin" />{t('savingEllipsis')}
                         </span>
                     ) : lastSaved ? (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-600">
-                            <Check className="w-3 h-3" />Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            <Check className="w-3 h-3" />{[t('savedCapitalized'), lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })].join(' ')}
                         </span>
                     ) : null}
                     <button
@@ -1633,18 +1654,18 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
                                     <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
-                                    Add comment
+                                    {t('addComment')}
                                 </span>
                                 <button
                                     onClick={() => { setCommentInputOpen(null); setCommentText(''); }}
                                     className="text-[10px] text-zinc-500 hover:text-zinc-300"
                                 >
-                                    Cancel
+                                    {t('cancel')}
                                 </button>
                             </div>
                             {commentInputOpen.selectionText && (
                                 <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-2 mb-2 text-[10px] text-zinc-400 italic max-h-16 overflow-y-auto break-words leading-normal scrollbar-thin-dark">
-                                    "{commentInputOpen.selectionText}"
+                                    {[QUOTE_MARK, commentInputOpen.selectionText, QUOTE_MARK].join('')}
                                 </div>
                             )}
                             <textarea
@@ -1665,7 +1686,7 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
                                     onClick={submitComment}
                                     className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all"
                                 >
-                                    Comment
+                                    {t('comment')}
                                 </button>
                             </div>
                         </div>
@@ -1713,11 +1734,11 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
             {/* Status bar */}
             <div className="flex items-center justify-between px-6 py-1.5 border-t border-zinc-800/50 flex-shrink-0 bg-zinc-950">
                 <div className="flex items-center gap-3 text-[11px] text-zinc-700">
-                    <span>{wordCount} words</span>
-                    <span>·</span>
-                    <span>~{Math.max(1, Math.ceil(wordCount / 200))} min read</span>
+                    <span>{[wordCount, t('wordsLower')].join(' ')}</span>
+                    <span aria-hidden="true">{MIDDLE_DOT}</span>
+                    <span>{[TILDE, Math.max(1, Math.ceil(wordCount / 200)), t('minReadLower')].join(' ')}</span>
                 </div>
-                <div className="text-[11px] text-zinc-700">/ for commands · auto-saved</div>
+                <div className="text-[11px] text-zinc-700">{[SLASH_SEPARATOR, t('forCommandsAutoSavedDesc')].join(' ')}</div>
             </div>
         </div>
     );

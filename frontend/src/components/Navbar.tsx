@@ -10,6 +10,9 @@ import { getImageUrl, getMediaUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import { useTranslation } from '@/lib/useTranslation';
 import MobileSidebarDrawer from './MobileSidebarDrawer';
+import { formatHandle } from '@/lib/utils';
+
+const BRAND_NAME = 'Gamelogd';
 
 export default function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -163,7 +166,7 @@ export default function Navbar() {
                                         )}
                                         {isCompany && (
                                             <p className="text-xs text-indigo-400 font-medium uppercase tracking-wider">
-                                                Company
+                                                {t('company')}
                                             </p>
                                         )}
                                     </div>
@@ -179,7 +182,7 @@ export default function Navbar() {
             ) : recentSearches.length > 0 ? (
                 <div className="py-2">
                     <div className="px-4 pb-2 pt-1">
-                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Recent Searches</p>
+                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('recentSearches')}</p>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                         {recentSearches.map((item) => {
@@ -206,7 +209,7 @@ export default function Navbar() {
                                         </p>
                                         {isCompany && (
                                             <p className="text-[10px] text-indigo-400 uppercase tracking-wider">
-                                                Company
+                                                {t('company')}
                                             </p>
                                         )}
                                     </div>
@@ -217,7 +220,7 @@ export default function Navbar() {
                 </div>
             ) : (
                 <div className="py-6 text-center">
-                    <p className="text-sm text-zinc-500">Search for games or developers...</p>
+                    <p className="text-sm text-zinc-500">{t('searchForGamesOrDevelopers')}</p>
                 </div>
             )}
         </div>
@@ -230,7 +233,7 @@ export default function Navbar() {
                 <div className="container mx-auto hidden lg:flex h-16 items-center justify-between px-4">
                     <div className="flex items-center gap-8">
                         <Link href="/" className="text-xl font-bold text-white hover:text-zinc-200 transition-colors">
-                            Gamelogd
+                            {BRAND_NAME}
                         </Link>
                         <div className="hidden md:flex items-center gap-6">
                             <Link href="/" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
@@ -315,7 +318,7 @@ export default function Navbar() {
                                     <div className="absolute top-16 right-4 w-56 bg-zinc-800 border border-zinc-700 rounded-xl shadow-xl py-2 animate-in fade-in slide-in-from-top-2 duration-200">
                                         <div className="px-4 py-3 border-b border-zinc-700 mb-2">
                                             <p className="text-sm font-bold text-white">{user.real_name || user.username}</p>
-                                            <p className="text-xs text-zinc-400 truncate">@{user.username.toLowerCase()}</p>
+                                            <p className="text-xs text-zinc-400 truncate">{formatHandle(user.username.toLowerCase())}</p>
                                         </div>
 
                                         <Link
@@ -390,7 +393,7 @@ export default function Navbar() {
                         href="/"
                         className={`justify-self-center text-lg font-bold text-white hover:text-zinc-200 transition-opacity ${isMobileSearchOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
                     >
-                        Gamelogd
+                        {BRAND_NAME}
                     </Link>
 
                     <button
@@ -428,7 +431,7 @@ export default function Navbar() {
                                 onClick={() => { setIsMobileSearchOpen(false); clearSearch(); }}
                                 className="flex-shrink-0 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
                             >
-                                Cancel
+                                {t('cancel')}
                             </button>
                         </div>
                     </div>

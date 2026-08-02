@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function Error({
     error,
@@ -12,6 +13,7 @@ export default function Error({
     reset: () => void;
 }) {
     const router = useRouter();
+    const { t } = useTranslation();
 
     useEffect(() => {
         // Log to an error reporting service in production
@@ -30,12 +32,12 @@ export default function Error({
 
                 {/* Text */}
                 <div className="space-y-2">
-                    <h1 className="text-2xl font-bold text-zinc-100">Something went wrong</h1>
+                    <h1 className="text-2xl font-bold text-zinc-100">{t('somethingWentWrong')}</h1>
                     <p className="text-zinc-400 text-sm leading-relaxed">
-                        An unexpected error occurred. Our team has been notified.
+                        {t('unexpectedErrorNotified')}
                         {error?.digest && (
                             <span className="block mt-1 text-xs text-zinc-600 font-mono">
-                                Error ID: {error.digest}
+                                {t('errorId')} {error.digest}
                             </span>
                         )}
                     </p>
@@ -48,14 +50,14 @@ export default function Error({
                         className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-colors"
                     >
                         <RefreshCw className="w-4 h-4" />
-                        Try Again
+                        {t('tryAgain')}
                     </button>
                     <button
                         onClick={() => router.push('/')}
                         className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors"
                     >
                         <Home className="w-4 h-4" />
-                        Go Home
+                        {t('goHome')}
                     </button>
                 </div>
             </div>

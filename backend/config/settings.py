@@ -75,14 +75,13 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.gamelogd.net",
 ]
 
-# Vercel preview deployments for THIS project. Anchored to the exact project family
-# (gamelogd-coral) rather than "gamelogd.*", which would also match an attacker-registered
-# gamelogd-<anything>.vercel.app and — with CORS_ALLOW_CREDENTIALS — let it read authenticated
-# responses. For full safety, prefer anchoring on the Vercel team slug or dropping the regex and
-# listing preview URLs explicitly.
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://gamelogd-coral(-[a-z0-9]+)*\.vercel\.app$",
-]
+# No preview-deployment regex: a pattern like ^https://gamelogd-coral(-[a-z0-9]+)*\.vercel\.app$
+# is NOT safe — the "gamelogd-coral" prefix is not reserved on Vercel, so anyone can register a
+# free project named e.g. "gamelogd-coral-x" whose URL matches, and with CORS_ALLOW_CREDENTIALS
+# that origin could read authenticated responses. If preview deployments need API access, add a
+# regex anchored on your Vercel TEAM slug (only your team can mint those hostnames), e.g.:
+#   r"^https://gamelogd-coral-[a-z0-9-]+-<your-team-slug>\.vercel\.app$"
+CORS_ALLOWED_ORIGIN_REGEXES = []
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
@@ -150,10 +149,10 @@ else:
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-if os.environ.get('GITHUB_ACTIONS') == 'true':
-    DB_ENGINE = 'django.db.backends.sqlite3'
-else:
-    DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.postgresql')
+# CI runs against a real Postgres service (see .github/workflows/ci.yml), the same engine as
+# production — the old SQLite-on-CI shortcut silently no-op'ed select_for_update and skipped
+# the partial unique constraints the concurrency design depends on.
+DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.postgresql')
 
 DATABASES = {
     'default': {

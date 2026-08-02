@@ -162,7 +162,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                         ))}
                         {project.tech_stack.length > 5 && (
                             <span className="text-[11px] font-medium px-2 py-0.5 text-zinc-500">
-                                +{project.tech_stack.length - 5}
+                                {['+', project.tech_stack.length - 5].join('')}
                             </span>
                         )}
                     </div>

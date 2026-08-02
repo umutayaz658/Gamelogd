@@ -68,6 +68,8 @@ export interface Review {
     playthrough_number?: number;
     timestamp: string;
     type?: 'review';
+    replies_count?: number;
+    reposts_count?: number;
 }
 
 export interface Project {
@@ -119,6 +121,113 @@ export interface PlaytestFeedback {
     is_liked: boolean;
     submitted_at: string;
     created_at: string;
+}
+
+export type CommunityTranslationStatus = 'pending' | 'approved' | 'rejected';
+
+// The CLDR plural categories Intl.PluralRules(locale).select() can return — this is also what
+// backend/api/locale_registry.py's LocaleDef.cldr_categories is built from, so a plural form
+// editor never needs to hardcode which categories a language uses.
+export type CldrCategory = 'zero' | 'one' | 'two' | 'few' | 'many' | 'other';
+
+export interface CommunityTranslation {
+    id: number;
+    project: number;
+    key: string;
+    namespace: string;
+    language: string;
+    author: User | null;
+    text: string;
+    // Present instead of a meaningful `text` when the target key is pluralisable — `text` is
+    // still always populated (server-derived from this) so every existing reader of `.text`
+    // keeps working unchanged regardless of whether a row is a plural one.
+    plural_forms: Partial<Record<CldrCategory, string>> | null;
+    status: CommunityTranslationStatus;
+    approved_by: User | null;
+    approved_at: string | null;
+    votes_count: number;
+    is_voted: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+// Language-independent — key/namespace/base_text never vary per language. Which strings are
+// already translated is derived client-side from CommunityTranslation rows (the single shared
+// source of truth for both the Devs Localisation Manager and the public project page), not from
+// this catalog.
+export interface TranslationKeyCatalogEntry {
+    key: string;
+    namespace: string;
+    base_text: string;
+    is_plural: boolean;
+    base_plural: Partial<Record<CldrCategory, string>> | null;
+}
+
+export interface LocaleSummary {
+    code: string;
+    name: string;
+    native_name: string;
+    plural_categories: CldrCategory[];
+}
+
+export interface GlossaryTermSummary {
+    id: string;
+    term: string;
+    translations: Record<string, string>;
+}
+
+export interface TranslationKeyCatalog {
+    project: number;
+    // This project's configured target/source languages — the single source both the Devs
+    // Localisation Manager and the public panel read their language list from; there is no
+    // separate hardcoded frontend list to keep in sync.
+    languages: LocaleSummary[];
+    source_language: LocaleSummary;
+    has_key_catalog: boolean;
+    keys: TranslationKeyCatalogEntry[];
+    glossary: GlossaryTermSummary[];
+}
+
+export interface ContributorUserSummary {
+    id: number;
+    username: string;
+    real_name: string;
+    avatar: string | null;
+}
+
+export interface ContributorSummary {
+    user: ContributorUserSummary;
+    role_badge: 'team' | 'org' | 'community';
+    total_characters: number;
+    by_language: Record<string, number>;
+}
+
+export interface ContributorListResponse {
+    count: number;
+    next: string | null;
+    previous: string | null;
+    results: ContributorSummary[];
+}
+
+export interface LocalisationFormat {
+    slug: string;
+    label: string;
+    extension: string;
+    supports_multi_language: boolean;
+    supports_plurals: boolean;
+}
+
+export interface LocalisationImportResult {
+    mode: 'preview' | 'commit';
+    format: string;
+    language: string;
+    keys_added: number;
+    keys_updated: number;
+    translations_created: number;
+    translations_updated: number;
+    skipped: number;
+    warnings: string[];
+    sample: { key: string; base_text: string }[];
 }
 
 export interface Role {

@@ -1,6 +1,7 @@
 import { TrendingUp, Lock, Gamepad2, Layers, Monitor } from 'lucide-react';
 import { Pitch } from '@/types';
 import { getImageUrl } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface PitchCardProps {
     pitch: Pitch;
@@ -8,6 +9,7 @@ interface PitchCardProps {
 }
 
 export default function PitchCard({ pitch, onClick }: PitchCardProps) {
+    const { t } = useTranslation();
     return (
         <div
             onClick={onClick}
@@ -42,7 +44,7 @@ export default function PitchCard({ pitch, onClick }: PitchCardProps) {
 
                 <div className="mb-4 space-y-2">
                     <div>
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider font-bold mb-1">Funding Goal</div>
+                        <div className="text-xs text-zinc-500 uppercase tracking-wider font-bold mb-1">{t('fundingGoal')}</div>
                         <div className="text-lg font-bold text-emerald-400 flex items-center gap-2">
                             <TrendingUp className="h-4 w-4" />
                             {pitch.funding_goal}
@@ -56,14 +58,14 @@ export default function PitchCard({ pitch, onClick }: PitchCardProps) {
 
                 <div className="flex items-center gap-2 mb-6 text-xs text-zinc-500 font-medium">
                     <Layers className="h-3.5 w-3.5" />
-                    <span className="capitalize">{pitch.stage.replace('_', ' ')} Stage</span>
+                    <span className="capitalize">{pitch.stage.replace('_', ' ')} {t('stage')}</span>
                 </div>
 
                 {/* Action */}
                 <button className="w-full py-3 rounded-xl border border-amber-500/30 text-amber-500 font-bold text-sm hover:bg-amber-500 hover:text-black transition-all flex items-center justify-center gap-2 group/btn mt-auto">
                     <Lock className="h-4 w-4 group-hover/btn:hidden" />
-                    <span className="hidden group-hover/btn:inline">Unlock Data</span>
-                    <span>Request Pitch Deck</span>
+                    <span className="hidden group-hover/btn:inline">{t('unlockData')}</span>
+                    <span>{t('requestPitchDeck')}</span>
                 </button>
             </div>
         </div>

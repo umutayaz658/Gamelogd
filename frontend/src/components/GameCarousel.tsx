@@ -69,9 +69,13 @@ export default function GameCarousel({
     const [activeIndex, setActiveIndex] = useState(0);
     const [isHovered, setIsHovered] = useState(false);
 
-    useEffect(() => {
+    // Reset to the first slide whenever the games list itself changes, computed during render
+    // rather than in an effect. See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevGames, setPrevGames] = useState(games);
+    if (games !== prevGames) {
+        setPrevGames(games);
         setActiveIndex(0);
-    }, [games]);
+    }
 
     useEffect(() => {
         if (games.length <= 1 || isHovered) return;

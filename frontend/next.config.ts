@@ -35,7 +35,6 @@ const CONNECT_SRC = [
   .join(' ');
 
 const nextConfig: NextConfig = {
-  // @ts-ignore
   turbopack: {
     root: path.resolve(__dirname),
   },
@@ -97,18 +96,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // @ts-ignore
+  // @ts-expect-error - eslint config key isn't in this Next version's NextConfig type yet
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
+    // 56 pre-existing error-level violations remain (mostly react-hooks/rules-of-hooks and
+    // setState-in-effect) that need a deliberate, reviewed fix rather than a blind bulk edit —
+    // tracked as separate follow-up work. Flip to false once those are cleared.
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    // !! WARN !!
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   async headers() {
     return [

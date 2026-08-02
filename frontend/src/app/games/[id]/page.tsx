@@ -13,8 +13,14 @@ import { getMediaUrl } from '@/lib/utils';
 import Image from 'next/image';
 import { useLogModal } from '@/context/LogModalContext';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/lib/useTranslation';
+
+const ERROR_CODE_404 = '404';
+const STAR_SYMBOL = '★';
+const NO_LOGS_EMOJI = '🎮';
 
 export default function GameDetailPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const gameId = params.id as string;
     const { openLogModal } = useLogModal();
@@ -148,10 +154,10 @@ export default function GameDetailPage() {
                     <div className="grid grid-cols-12 gap-6">
                         <div className="hidden lg:block col-span-3"><LeftSidebar /></div>
                         <div className="col-span-12 lg:col-span-9 flex flex-col justify-center items-center h-64 text-center">
-                            <h2 className="text-4xl font-bold text-zinc-500 mb-4">404</h2>
-                            <p className="text-zinc-400 text-lg">This game was removed from the database during cleanup or doesn't exist.</p>
+                            <h2 className="text-4xl font-bold text-zinc-500 mb-4">{ERROR_CODE_404}</h2>
+                            <p className="text-zinc-400 text-lg">{t('gameRemovedOrNotExist')}</p>
                             <Link href="/" className="mt-6 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-full font-medium transition-colors">
-                                Go back Home
+                                {t('goBackHome')}
                             </Link>
                         </div>
                     </div>
@@ -206,7 +212,7 @@ export default function GameDetailPage() {
                                 <Image src={coverUrl} alt={game.title} fill className="object-cover" unoptimized />
                             ) : (
                                 <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                                    <span className="text-zinc-500 font-medium">No Cover</span>
+                                    <span className="text-zinc-500 font-medium">{t('noCover')}</span>
                                 </div>
                             )}
                         </div>
@@ -238,7 +244,7 @@ export default function GameDetailPage() {
 
                             {game.genres && game.genres.length > 0 && (
                                 <div className="mb-4">
-                                    <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Genres</h3>
+                                    <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">{t('genres')}</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {game.genres.map(genre => (
                                             <span key={genre} className="bg-zinc-800/80 text-zinc-300 px-3 py-1 rounded-md text-xs font-semibold tracking-wide border border-zinc-700/50 backdrop-blur-sm">
@@ -251,7 +257,7 @@ export default function GameDetailPage() {
 
                             {game.platforms && game.platforms.length > 0 && (
                                 <div className="mb-6">
-                                    <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Platforms</h3>
+                                    <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">{t('platforms')}</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {game.platforms.map(plat => (
                                             <span key={plat} className="bg-zinc-800/80 text-zinc-300 px-3 py-1 rounded-md text-xs font-semibold tracking-wide border border-zinc-700/50 backdrop-blur-sm">
@@ -266,12 +272,12 @@ export default function GameDetailPage() {
                                 <div className="flex items-center gap-6">
                                     <div className="flex items-center gap-2">
                                         <span className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">
-                                            ★ {game.average_rating ? game.average_rating.toFixed(1) : '-'}
+                                            {STAR_SYMBOL} {game.average_rating ? game.average_rating.toFixed(1) : '-'}
                                         </span>
                                     </div>
                                     <div className="flex flex-col text-xs text-zinc-300 font-medium border-l border-zinc-700/80 pl-6 drop-shadow">
-                                        <span><strong className="text-white">{game.review_count || 0}</strong> Reviews</span>
-                                        <span><strong className="text-white">{game.log_count || 0}</strong> Logs</span>
+                                        <span><strong className="text-white">{game.review_count || 0}</strong> {t('reviews')}</span>
+                                        <span><strong className="text-white">{game.log_count || 0}</strong> {t('logs')}</span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -284,7 +290,7 @@ export default function GameDetailPage() {
                                         ) : (
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
                                         )}
-                                        {myReview ? 'Edit Log' : 'Log Game'}
+                                        {myReview ? t('editLog') : t('logGame')}
                                     </button>
                                     {myReview && (
                                         <button 
@@ -292,7 +298,7 @@ export default function GameDetailPage() {
                                             className="px-5 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm bg-purple-600 hover:bg-purple-500 shadow-purple-900/20"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                                            Log Replay
+                                            {t('logReplay')}
                                         </button>
                                     )}
                                 </div>
@@ -312,7 +318,7 @@ export default function GameDetailPage() {
                         <div className="flex items-center justify-between mb-6 px-4">
                             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                                 <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                Screenshots
+                                {t('screenshots')}
                             </h2>
                         </div>
                         
@@ -338,7 +344,7 @@ export default function GameDetailPage() {
                             <div 
                                 ref={carouselRef}
                                 onScroll={handleScroll}
-                                className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-4 pb-8 px-[7.5%] md:px-[15%]"
+                                className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-4 pb-8 px-[7.5%] md:px-[15%]"
                                 style={{ scrollBehavior: 'smooth' }}
                             >
                                 {game.screenshots.map((url, index) => {
@@ -368,14 +374,14 @@ export default function GameDetailPage() {
                     <div className="px-4 mb-16">
                         <div className="flex items-center gap-2 mb-6">
                             <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                            <h2 className="text-2xl font-bold text-white">Game Stats</h2>
+                            <h2 className="text-2xl font-bold text-white">{t('gameStats')}</h2>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             {/* Metacritic Card */}
                             {game.metacritic_score && (
                                 <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col items-center justify-center text-center shadow-lg hover:border-zinc-700 transition-all">
-                                    <h3 className="text-zinc-400 font-semibold mb-3 text-sm tracking-wider uppercase">Critic Score</h3>
+                                    <h3 className="text-zinc-400 font-semibold mb-3 text-sm tracking-wider uppercase">{t('criticScore')}</h3>
                                     <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl font-black border-4 shadow-lg ${
                                         game.metacritic_score >= 75 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-emerald-500/20' :
                                         game.metacritic_score >= 50 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/50 shadow-yellow-500/20' :
@@ -383,7 +389,7 @@ export default function GameDetailPage() {
                                     }`}>
                                         {game.metacritic_score}
                                     </div>
-                                    <div className="mt-3 text-xs text-zinc-500">Based on IGDB / Critics</div>
+                                    <div className="mt-3 text-xs text-zinc-500">{t('basedOnIgdbCritics')}</div>
                                 </div>
                             )}
 
@@ -395,10 +401,10 @@ export default function GameDetailPage() {
                                             <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <svg className="w-24 h-24 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
                                             </div>
-                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">Main Story</h3>
+                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">{t('mainStory')}</h3>
                                             <div className="flex items-baseline gap-1">
                                                 <span className="text-3xl font-bold text-indigo-400">{game.hltb_main}</span>
-                                                <span className="text-zinc-500 font-medium">Hours</span>
+                                                <span className="text-zinc-500 font-medium">{t('hours')}</span>
                                             </div>
                                         </div>
                                     )}
@@ -407,10 +413,10 @@ export default function GameDetailPage() {
                                             <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <svg className="w-24 h-24 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
                                             </div>
-                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">Main + Extras</h3>
+                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">{t('mainPlusExtras')}</h3>
                                             <div className="flex items-baseline gap-1">
                                                 <span className="text-3xl font-bold text-purple-400">{game.hltb_main_extra}</span>
-                                                <span className="text-zinc-500 font-medium">Hours</span>
+                                                <span className="text-zinc-500 font-medium">{t('hours')}</span>
                                             </div>
                                         </div>
                                     )}
@@ -419,10 +425,10 @@ export default function GameDetailPage() {
                                             <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <svg className="w-24 h-24 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
                                             </div>
-                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">Completionist</h3>
+                                            <h3 className="text-zinc-400 font-semibold mb-1 text-sm tracking-wider uppercase">{t('completionist')}</h3>
                                             <div className="flex items-baseline gap-1">
                                                 <span className="text-3xl font-bold text-pink-400">{game.hltb_completionist}</span>
-                                                <span className="text-zinc-500 font-medium">Hours</span>
+                                                <span className="text-zinc-500 font-medium">{t('hours')}</span>
                                             </div>
                                         </div>
                                     )}
@@ -442,7 +448,7 @@ export default function GameDetailPage() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 border-b border-zinc-800 pb-4">
                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                             <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
-                            Player Logs
+                            {t('playerLogs')}
                         </h2>
 
                         <div className="flex flex-wrap gap-2">
@@ -479,9 +485,9 @@ export default function GameDetailPage() {
                         </div>
                     ) : (
                         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 border-dashed">
-                            <span className="text-4xl block mb-3">🎮</span>
-                            <h3 className="text-lg font-bold text-zinc-300 mb-1">No logs yet</h3>
-                            <p className="text-zinc-500">Be the first to log this game!</p>
+                            <span className="text-4xl block mb-3" aria-hidden="true">{NO_LOGS_EMOJI}</span>
+                            <h3 className="text-lg font-bold text-zinc-300 mb-1">{t('noLogsYet')}</h3>
+                            <p className="text-zinc-500">{t('beFirstToLogGame')}</p>
                         </div>
                     )}
                 </div>
@@ -490,20 +496,6 @@ export default function GameDetailPage() {
                 </div>
             </main>
             </div>
-            
-            <style jsx global>{`
-                .hide-scrollbar::-webkit-scrollbar {
-                    display: none;
-                }
-                .hide-scrollbar {
-                    -ms-overflow-style: none;
-                    scrollbar-width: none;
-                }
-                .mask-image-gradient-b {
-                    -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
-                    mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
-                }
-            `}</style>
         </div>
     );
 }

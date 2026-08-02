@@ -19,11 +19,6 @@ const AVAILABLE_TECH = [
 ];
 
 export default function CollabsPage() {
-    if (process.env.NODE_ENV === 'production') {
-        notFound();
-        return null;
-    }
-
     const { t } = useTranslation();
     const [jobPostings, setJobPostings] = useState<JobPosting[]>([]);
     const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
@@ -43,6 +38,14 @@ export default function CollabsPage() {
     const [showTechDrawer, setShowTechDrawer] = useState(false);
     const techDrawerRef = useRef<HTMLDivElement>(null);
 
+    // Read inside the debounced fetch below without making it a dependency — depending on it
+    // directly would re-trigger the fetch (and its own re-selection logic) every time the user
+    // just clicks a different job card.
+    const selectedJobRef = useRef(selectedJob);
+    useEffect(() => {
+        selectedJobRef.current = selectedJob;
+    }, [selectedJob]);
+
     useEffect(() => {
         const fetchJobs = async () => {
             setLoading(true);
@@ -60,9 +63,10 @@ export default function CollabsPage() {
                 setJobPostings(data);
 
                 // If selected job is no longer in results, clear selection or select first
-                if (selectedJob && !data.find((j: JobPosting) => j.id === selectedJob.id)) {
+                const currentSelection = selectedJobRef.current;
+                if (currentSelection && !data.find((j: JobPosting) => j.id === currentSelection.id)) {
                     setSelectedJob(null);
-                } else if (!selectedJob && data.length > 0 && window.innerWidth >= 1024) {
+                } else if (!currentSelection && data.length > 0 && window.innerWidth >= 1024) {
                     // Auto-select first item on desktop
                     setSelectedJob(data[0]);
                 }
@@ -97,6 +101,11 @@ export default function CollabsPage() {
             prev.includes(tech) ? prev.filter(t => t !== tech) : [...prev, tech]
         );
     };
+
+    if (process.env.NODE_ENV === 'production') {
+        notFound();
+        return null;
+    }
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 flex flex-col">

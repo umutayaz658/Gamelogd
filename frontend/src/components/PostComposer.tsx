@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Image as ImageIcon, ImagePlay, FileImage, X, Smile, BarChart2, Plus, Trash2, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import api from '@/lib/api';
 import GifPicker from '@/components/GifPicker';
 import type { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -246,7 +246,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     {replyingTo && (
                         <div className="mb-2">
                             <span className="text-zinc-500 text-sm">{t('replyingTo')} </span>
-                            <span className="text-emerald-500 text-sm font-medium">@{replyingTo.username}</span>
+                            <span className="text-emerald-500 text-sm font-medium">{formatHandle(replyingTo.username)}</span>
                         </div>
                     )}
                     <textarea
@@ -319,7 +319,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                                     onClick={addPollOption}
                                     className="mt-3 text-emerald-500 text-sm font-medium hover:underline flex items-center gap-1"
                                 >
-                                    <Plus className="h-3 w-3" /> Add Option
+                                    <Plus className="h-3 w-3" /> {t('addOption')}
                                 </button>
                             )}
                         </div>

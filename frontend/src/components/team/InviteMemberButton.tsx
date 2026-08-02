@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import type { Role } from '@/types';
 import InviteModal from './InviteModal';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface InviteMemberButtonProps {
     scope: 'organisation' | 'project';
@@ -32,20 +33,34 @@ export default function InviteMemberButton({
 }: InviteMemberButtonProps) {
     const { user: currentUser } = useAuth();
     const toast = useToast();
+    const { t } = useTranslation();
     const [roles, setRoles] = useState<Role[]>([]);
     const [showInviteModal, setShowInviteModal] = useState(false);
 
+    // Clearing roles when a prerequisite (user, or the scope's own id) is missing is a pure
+    // state update, done synchronously during render rather than as the effect's first branch
+    // below, which only performs the actual request and its async callbacks.
+    // See https://react.dev/learn/you-might-not-need-an-effect
+    const rolesFetchKey = `${scope}:${organisationId}:${projectId}:${!!currentUser}`;
+    const [prevRolesFetchKey, setPrevRolesFetchKey] = useState(rolesFetchKey);
+    if (rolesFetchKey !== prevRolesFetchKey) {
+        setPrevRolesFetchKey(rolesFetchKey);
+        if (!currentUser) setRoles([]);
+        else if (scope === 'project' && !projectId) setRoles([]);
+        else if (scope !== 'project' && !organisationId) setRoles([]);
+    }
+
     useEffect(() => {
-        if (!currentUser) { setRoles([]); return; }
+        if (!currentUser) return;
         // Organisation roles and project roles are separate catalogs — mirrors MemberManager's
         // own fetchRoles (a project's invite picker must only ever offer that project's roles).
         if (scope === 'project') {
-            if (!projectId) { setRoles([]); return; }
+            if (!projectId) return;
             api.get(`/organisation-roles/?project=${projectId}`)
                 .then((res) => setRoles(res.data.results ?? res.data))
                 .catch(() => setRoles([]));
         } else {
-            if (!organisationId) { setRoles([]); return; }
+            if (!organisationId) return;
             api.get(`/organisation-roles/?organisation=${organisationId}`)
                 .then((res) => setRoles(res.data.results ?? res.data))
                 .catch(() => setRoles([]));
@@ -70,7 +85,7 @@ export default function InviteMemberButton({
                 onClick={() => setShowInviteModal(true)}
                 className={className ?? 'flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20'}
             >
-                <Plus className="w-4 h-4" /> Invite Member
+                <Plus className="w-4 h-4" /> {t('inviteMember')}
             </button>
             {showInviteModal && (
                 <InviteModal

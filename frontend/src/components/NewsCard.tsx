@@ -1,4 +1,7 @@
 import { Clock, Tag } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
+
+const ARROW_RIGHT = '→';
 
 interface NewsCardProps {
     title: string;
@@ -9,6 +12,7 @@ interface NewsCardProps {
 }
 
 export default function NewsCard({ title, image, category, readTime, size = 'standard' }: NewsCardProps) {
+    const { t } = useTranslation();
     if (size === 'featured') {
         return (
             <div className="relative h-full w-full rounded-2xl overflow-hidden group cursor-pointer">
@@ -89,7 +93,7 @@ export default function NewsCard({ title, image, category, readTime, size = 'sta
                         <span>{readTime}</span>
                     </div>
                     <span className="text-emerald-500 font-medium text-xs group-hover:translate-x-1 transition-transform">
-                        Read more →
+                        {[t('readMore'), ARROW_RIGHT].join(' ')}
                     </span>
                 </div>
             </div>

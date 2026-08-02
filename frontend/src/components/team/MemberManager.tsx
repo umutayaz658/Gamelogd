@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, Lock, Search, Settings2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle, wrapInParens } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 import type { OrganisationMember, PermissionHierarchy, ProjectMember, Role, User } from '@/types';
 import ConfirmDeleteModal from '@/components/devs/ConfirmDeleteModal';
 import InviteMemberButton from './InviteMemberButton';
@@ -103,6 +104,7 @@ export default function MemberManager({
 }: MemberManagerProps) {
     const { user: currentUser } = useAuth();
     const toast = useToast();
+    const { t } = useTranslation();
 
     const [permissions, setPermissions] = useState<string[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
@@ -114,8 +116,17 @@ export default function MemberManager({
     const [searchQuery, setSearchQuery] = useState('');
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
+    // Clearing permissions when there's no current user is a pure state update, done
+    // synchronously during render rather than as the effect's first branch below.
+    // See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevPermUser, setPrevPermUser] = useState(currentUser);
+    if (currentUser !== prevPermUser) {
+        setPrevPermUser(currentUser);
+        if (!currentUser) setPermissions([]);
+    }
+
     useEffect(() => {
-        if (!currentUser) { setPermissions([]); return; }
+        if (!currentUser) return;
         const params = new URLSearchParams();
         if (organisationId) params.append('organisation', String(organisationId));
         if (projectId) params.append('project', String(projectId));
@@ -124,28 +135,42 @@ export default function MemberManager({
             .catch(() => setPermissions([]));
     }, [currentUser, organisationId, projectId]);
 
-    const fetchRoles = () => {
-        if (!currentUser) { setRoles([]); return; }
+    const [rolesFetchToken, setRolesFetchToken] = useState(0);
+    const fetchRoles = useCallback(() => setRolesFetchToken((n) => n + 1), []);
+
+    // Clearing roles when a prerequisite (user, or the scope's own id) is missing is a pure
+    // state update, done synchronously during render rather than inside the effect below,
+    // which only performs the actual request and its async callbacks.
+    const rolesFetchKey = `${scope}:${organisationId}:${projectId}:${!!currentUser}:${rolesFetchToken}`;
+    const [prevRolesFetchKey, setPrevRolesFetchKey] = useState(rolesFetchKey);
+    if (rolesFetchKey !== prevRolesFetchKey) {
+        setPrevRolesFetchKey(rolesFetchKey);
+        if (!currentUser) setRoles([]);
+        else if (scope === 'project' && !projectId) setRoles([]);
+        else if (scope !== 'project' && !organisationId) setRoles([]);
+    }
+
+    useEffect(() => {
+        if (!currentUser) return;
         // Organisation roles and project roles are separate catalogs — a project's role
         // picker must only ever offer that project's own roles, never the org's.
         if (scope === 'project') {
-            if (!projectId) { setRoles([]); return; }
+            if (!projectId) return;
             api.get(`/organisation-roles/?project=${projectId}`)
                 .then((res) => setRoles(res.data.results ?? res.data))
                 .catch(() => setRoles([]));
         } else {
-            if (!organisationId) { setRoles([]); return; }
+            if (!organisationId) return;
             api.get(`/organisation-roles/?organisation=${organisationId}`)
                 .then((res) => setRoles(res.data.results ?? res.data))
                 .catch(() => setRoles([]));
         }
-    };
-    useEffect(() => { fetchRoles(); }, [scope, organisationId, projectId, currentUser]);
+    }, [scope, organisationId, projectId, currentUser, rolesFetchToken]);
 
     useEffect(() => {
         if (!showRolesModal || !currentUser || Object.keys(hierarchy).length > 0) return;
         api.get('/permission-catalog/').then((res) => setHierarchy(res.data?.hierarchy ?? {})).catch(() => setHierarchy({}));
-    }, [showRolesModal, currentUser]);
+    }, [showRolesModal, currentUser, hierarchy]);
 
     const hasPermission = (key: string) => permissions.includes(key);
     const canAssignRoles = hasPermission('team.role.assign');
@@ -208,7 +233,7 @@ export default function MemberManager({
                         {roleManagementScopeId && canManageRoles && (
                             <button onClick={() => setShowRolesModal(true)}
                                 className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 px-3 py-2 rounded-xl text-sm font-semibold transition-all">
-                                <Settings2 className="w-4 h-4" /> Manage Roles
+                                <Settings2 className="w-4 h-4" /> {t('manageRoles')}
                             </button>
                         )}
                         {showInviteButton && canInvite && (
@@ -234,7 +259,7 @@ export default function MemberManager({
                                 className="flex items-center gap-1.5 mb-2 text-zinc-400 hover:text-white transition-colors">
                                 <ChevronRight className={`w-3.5 h-3.5 transition-transform ${!isCollapsed ? 'rotate-90' : ''}`} />
                                 <span className="text-xs font-bold uppercase tracking-wider">{group.label}</span>
-                                <span className="text-[11px] text-zinc-600">({group.members.length})</span>
+                                <span className="text-[11px] text-zinc-600">{wrapInParens(group.members.length)}</span>
                             </button>
                             {!isCollapsed && (
                                 <div className="space-y-3">
@@ -248,7 +273,7 @@ export default function MemberManager({
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-bold text-white truncate">{member.user.real_name || member.user.username}</p>
-                                                    <p className="text-xs text-zinc-500 truncate">@{member.user.username}</p>
+                                                    <p className="text-xs text-zinc-500 truncate">{formatHandle(member.user.username)}</p>
                                                     {member.dateLabel && <p className="text-xs text-zinc-500 mt-0.5">{member.dateLabel}</p>}
                                                 </div>
 

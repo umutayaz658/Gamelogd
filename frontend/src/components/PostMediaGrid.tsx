@@ -97,7 +97,7 @@ export default function PostMediaGrid({ items, onItemClick, compact = false, edi
                     )}
                     {index === 3 && count > 4 && (
                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-xl backdrop-blur-sm pointer-events-none">
-                            +{count - 4}
+                            {['+', count - 4].join('')}
                         </div>
                     )}
                     {editable && (

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import api from '@/lib/api';
 import { InvestorCall } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface CreateInvestorCallModalProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface CreateInvestorCallModalProps {
 }
 
 export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: CreateInvestorCallModalProps) {
+    const { t } = useTranslation();
     const [formData, setFormData] = useState({
         organization_name: '',
         investor_type: 'vc',
@@ -46,8 +48,8 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950">
                     <div>
-                        <h2 className="text-xl font-bold text-white">Create Investor Call</h2>
-                        <p className="text-xs text-zinc-500 mt-1">Announce your funding specifications.</p>
+                        <h2 className="text-xl font-bold text-white">{t('createInvestorCall')}</h2>
+                        <p className="text-xs text-zinc-500 mt-1">{t('announceFundingSpecs')}</p>
                     </div>
                     <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white rounded-full"><X className="h-5 w-5" /></button>
                 </div>
@@ -55,7 +57,7 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
                 {/* Form */}
                 <div className="flex-1 overflow-y-auto p-8 space-y-6">
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Organization Name</label>
+                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('organisationName')}</label>
                         <input
                             type="text"
                             required
@@ -68,21 +70,21 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
 
                     <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Investor Type</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('investorType')}</label>
                             <select
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
                                 value={formData.investor_type}
                                 onChange={e => setFormData({ ...formData, investor_type: e.target.value })}
                             >
-                                <option value="vc">Venture Capital</option>
-                                <option value="publisher">Publisher</option>
-                                <option value="angel">Angel Investor</option>
-                                <option value="grant">Grant / Fund</option>
-                                <option value="accelerator">Accelerator</option>
+                                <option value="vc">{t('investorTypeVc')}</option>
+                                <option value="publisher">{t('investorTypePublisher')}</option>
+                                <option value="angel">{t('investorTypeAngel')}</option>
+                                <option value="grant">{t('investorTypeGrant')}</option>
+                                <option value="accelerator">{t('investorTypeAccelerator')}</option>
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ticket Size</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('ticketSize')}</label>
                             <input
                                 type="text"
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
@@ -94,7 +96,7 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">What are you looking for?</label>
+                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('whatAreYouLookingFor')}</label>
                         <textarea
                             rows={4}
                             required
@@ -106,7 +108,7 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Deadline (Optional)</label>
+                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('deadlineOptional')}</label>
                         <input
                             type="date"
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
@@ -122,14 +124,14 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
                         onClick={onClose}
                         className="px-6 py-2.5 rounded-xl font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
                     >
-                        Cancel
+                        {t('cancel')}
                     </button>
                     <button
                         onClick={handleSubmit}
                         disabled={loading || !formData.organization_name}
                         className="px-8 py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2 text-sm"
                     >
-                        {loading ? 'Posting...' : 'Post Call'}
+                        {loading ? t('posting') : t('postCall')}
                     </button>
                 </div>
             </div>

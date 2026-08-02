@@ -230,7 +230,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         if (profileUser) {
             fetchSteamStatus();
         }
-    }, [profileUser]);
+    }, [profileUser, currentUser?.username]);
 
     // Sync privacy state with profileUser settings
     useEffect(() => {
@@ -326,7 +326,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             }
         };
         fetchUserFeed();
-    }, [username, profileUser]);
+    }, [username, profileUser, currentUser?.username]);
 
     // Fetch Game DNA - only when authorized to view content
     const fetchGameDNA = useCallback(() => {
@@ -347,7 +347,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 console.error("Failed to fetch Game DNA:", err);
                 setGameDNA({ genres: [], platforms: [] });
             });
-    }, [username, profileUser]);
+    }, [username, profileUser, currentUser?.username]);
 
     useEffect(() => {
         fetchGameDNA();
@@ -596,8 +596,8 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         return (
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
                 <div className="text-center">
-                    <h2 className="text-2xl font-bold mb-4">User Not Found</h2>
-                    <Link href="/" className="text-emerald-500 hover:underline">Go Home</Link>
+                    <h2 className="text-2xl font-bold mb-4">{t('userNotFound')}</h2>
+                    <Link href="/" className="text-emerald-500 hover:underline">{t('goHome')}</Link>
                 </div>
             </div>
         );
@@ -1157,7 +1157,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                         className="flex-1 h-full flex items-center gap-2 text-zinc-100 font-bold text-left"
                                     >
                                         <Dna className="h-5 w-5 text-emerald-500" />
-                                        <span>Game DNA</span>
+                                        <span>{t('gameDna')}</span>
                                     </button>
                                     <div className="flex items-center gap-1 flex-shrink-0">
                                         <Link

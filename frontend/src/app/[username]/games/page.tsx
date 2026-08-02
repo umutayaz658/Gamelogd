@@ -13,6 +13,9 @@ import { useTranslation } from "@/lib/useTranslation";
 import { useToast } from "@/context/ToastContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
+const formatHours = (hours: number) => `${hours}h`;
+const NO_PLAYTIME_PLACEHOLDER = '--';
+
 interface Game {
     id: number;
     title: string;
@@ -92,6 +95,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
     // Calculate totals
     const totalGames = games.length;
     const totalHours = games.reduce((acc, curr) => acc + curr.playtime_hours, 0);
+    const totalHoursDisplay = formatHours(Math.round(totalHours));
 
     // Status Editing
     const [editingId, setEditingId] = useState<number | null>(null);
@@ -155,8 +159,10 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                 </Link>
                                 <h1 className="text-2xl sm:text-3xl font-bold truncate">{t('gamesLibraryTitle').replace('{username}', username)}</h1>
                             </div>
-                            <p className="text-zinc-400 pl-11">
-                                <span className="text-white font-bold">{totalGames}</span> {t('gamesInCollection')} • <span className="text-emerald-400 font-bold">{Math.round(totalHours)}h</span> {t('playedTotal')}
+                            <p className="text-zinc-400 pl-11 flex items-center flex-wrap gap-x-1.5">
+                                <span className="text-white font-bold">{totalGames}</span> {t('gamesInCollection')}
+                                <span className="w-1 h-1 rounded-full bg-zinc-600 inline-block" aria-hidden="true" />
+                                <span className="text-emerald-400 font-bold">{totalHoursDisplay}</span> {t('playedTotal')}
                             </p>
                         </div>
 
@@ -337,7 +343,7 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                 {/* Playtime Badge */}
                                                 {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) && (
                                                     <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-xs font-bold text-white shadow-lg">
-                                                        {entry.playtime_hours}h
+                                                        {formatHours(entry.playtime_hours)}
                                                     </div>
                                                 )}
 
@@ -415,16 +421,16 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                                                         <PlatformIcon platform={entry.platform} />
                                                         <span className="uppercase text-xs">{entry.platform}</span>
                                                     </div>
-                                                    <span>•</span>
+                                                    <span className="w-1 h-1 rounded-full bg-zinc-600 inline-block" aria-hidden="true" />
                                                     <span className="capitalize text-emerald-400 text-xs font-bold">{statusMap[entry.status] || entry.status}</span>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <div className="text-right">
                                                     {!(entry.platform === 'Xbox' && entry.playtime_hours === 0) ? (
-                                                        <div className="font-bold text-zinc-400 text-sm">{entry.playtime_hours}h</div>
+                                                        <div className="font-bold text-zinc-400 text-sm">{formatHours(entry.playtime_hours)}</div>
                                                     ) : (
-                                                        <div className="font-bold text-zinc-600 text-sm">--</div>
+                                                        <div className="font-bold text-zinc-600 text-sm">{NO_PLAYTIME_PLACEHOLDER}</div>
                                                     )}
                                                 </div>
                                                 {isOwnProfile && (

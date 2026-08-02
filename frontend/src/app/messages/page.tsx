@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle, wrapInParens } from '@/lib/utils';
 import NewChatModal from '@/components/NewChatModal';
 import { useNotifications } from '@/context/NotificationContext';
 import GifPicker from '@/components/GifPicker';
@@ -23,6 +23,8 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
+
+const BACK_ARROW = '←';
 
 // `shared_post_details` on a Message is typed `any` (comes straight from a nested
 // serializer), so this mirrors PostCard.tsx's getPostMediaItems without a shared Post type.
@@ -120,6 +122,7 @@ interface Conversation {
 
 function MessageAttachment({ msg }: { msg: Message }) {
     const router = useRouter();
+    const { t } = useTranslation();
     if (msg.image) {
         return (
             <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800 bg-black max-w-sm max-h-60 cursor-pointer" onClick={() => window.open(getImageUrl(msg.image), '_blank')}>
@@ -154,7 +157,7 @@ function MessageAttachment({ msg }: { msg: Message }) {
                         <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-bold text-white text-xs truncate max-w-[130px]">{post.user.real_name || post.user.username}</span>
-                                <span className="text-[10px] text-zinc-500 truncate">@{post.user.username}</span>
+                                <span className="text-[10px] text-zinc-500 truncate">{formatHandle(post.user.username)}</span>
                             </div>
                             <div className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wider mt-0.5">
                                 {isDevlog ? 'Devlog' : isOpinion ? 'Opinion' : 'Post'}
@@ -182,6 +185,8 @@ function MessageAttachment({ msg }: { msg: Message }) {
     }
     if (msg.shared_review_details) {
         const review = msg.shared_review_details;
+        const ratingDisplay = `${review.rating}/10`;
+        const byLine = `${t('by')} ${formatHandle(review.user.username)}`;
         return (
             <Link 
                 href={`/${review.user.username}/review/${review.id}`} 
@@ -193,10 +198,10 @@ function MessageAttachment({ msg }: { msg: Message }) {
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col justify-center">
                         <h4 className="font-bold text-xs text-white truncate mb-0.5">{review.game.title}</h4>
-                        <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {review.rating}/10</div>
-                        <p className="text-zinc-400 text-[11px] line-clamp-2 leading-tight">{review.content || 'No review written.'}</p>
+                        <div className="text-emerald-500 text-xs font-bold mb-1">{t('logged')} {ratingDisplay}</div>
+                        <p className="text-zinc-400 text-[11px] line-clamp-2 leading-tight">{review.content || t('noReviewWritten')}</p>
                         <div className="mt-1 flex items-center gap-1 text-[9px] text-zinc-500">
-                            <span>By @{review.user.username}</span>
+                            <span>{byLine}</span>
                         </div>
                     </div>
                 </div>
@@ -435,7 +440,7 @@ function MessagesContent() {
             markMessagesRead();
             setDndMode(user.dnd_mode || false);
         }
-    }, [user]);
+    }, [user, markMessagesRead]);
 
     // On mobile, an open chat thread takes over the whole screen — hide the global
     // Navbar/MobileTabBar (the in-chat header already provides its own back button).
@@ -1185,12 +1190,12 @@ function MessagesContent() {
                                         </div>
                                         {chat.is_group && (
                                             <div className="absolute -bottom-1 -right-1 bg-zinc-900 border border-zinc-800 text-[9px] px-1 rounded font-bold text-zinc-500">
-                                                GP
+                                                {t('groupBadge')}
                                             </div>
                                         )}
                                         {chat.is_pending_invite && (
                                             <div className="absolute -top-1 -right-1 bg-amber-500 border border-amber-600 text-[8px] px-1 rounded font-bold text-black">
-                                                INVITE
+                                                {t('inviteBadge')}
                                             </div>
                                         )}
                                     </div>
@@ -1243,7 +1248,7 @@ function MessagesContent() {
                                             onClick={() => setSelectedChatId(null)}
                                             className="lg:hidden p-2 -ml-2 text-zinc-400 hover:text-white"
                                         >
-                                            ←
+                                            {BACK_ARROW}
                                         </button>
                                         {activeChat.is_group ? (
                                             <div className="flex items-center gap-4 min-w-0">
@@ -1280,7 +1285,7 @@ function MessagesContent() {
                                                 <div className="min-w-0">
                                                     <h2 className="font-bold text-sm truncate hover:underline">{getChatName(activeChat)}</h2>
                                                     <p className="text-xs text-zinc-500 truncate">
-                                                        @{activeChat.other_user?.username}
+                                                        {formatHandle(activeChat.other_user?.username || '')}
                                                     </p>
                                                 </div>
                                             </Link>
@@ -1351,22 +1356,22 @@ function MessagesContent() {
                                             <div className="h-20 w-20 bg-amber-950/30 rounded-full flex items-center justify-center mb-4 border border-amber-900/40">
                                                 <MailQuestion className="h-8 w-8 text-amber-500" />
                                             </div>
-                                            <h3 className="text-lg font-bold text-white mb-2">Group Invitation</h3>
+                                            <h3 className="text-lg font-bold text-white mb-2">{t('groupInvitation')}</h3>
                                             <p className="text-sm text-zinc-400 mb-6 max-w-xs">
-                                                You&apos;ve been invited to join <span className="font-bold text-white">{getChatName(activeChat)}</span>. Would you like to accept?
+                                                {t('youveBeenInvitedToJoin')} <span className="font-bold text-white">{getChatName(activeChat)}</span>{t('wouldYouLikeToAccept')}
                                             </p>
                                             <div className="flex items-center gap-3">
                                                 <button
                                                     onClick={handleAcceptInvite}
                                                     className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold text-sm transition-all shadow-lg shadow-emerald-950/30"
                                                 >
-                                                    Accept
+                                                    {t('accept')}
                                                 </button>
                                                 <button
                                                     onClick={handleDeclineInvite}
                                                     className="px-6 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full font-bold text-sm transition-all"
                                                 >
-                                                    Decline
+                                                    {t('decline')}
                                                 </button>
                                                 <button
                                                     onClick={handleBlockGroup}
@@ -1424,14 +1429,14 @@ function MessagesContent() {
                                                         
                                                         {/* Sender name in groups */}
                                                         {activeChat.is_group && !msg.is_me && (
-                                                            <span className="text-[10px] text-zinc-500 mb-1 pl-2">@{msg.sender.username}</span>
+                                                            <span className="text-[10px] text-zinc-500 mb-1 pl-2">{formatHandle(msg.sender.username)}</span>
                                                         )}
 
                                                         {/* Pinned indicator */}
                                                         {msg.is_pinned && (
                                                             <div className="flex items-center gap-1 text-[9px] text-zinc-500 mb-0.5">
                                                                 <Pin className="h-2.5 w-2.5" />
-                                                                <span>Pinned</span>
+                                                                <span>{t('pinned')}</span>
                                                             </div>
                                                         )}
 
@@ -1440,7 +1445,7 @@ function MessagesContent() {
                                                                 ? 'bg-zinc-800/50 rounded-tr-none'
                                                                 : 'bg-zinc-800/50 rounded-tl-none'
                                                             }`}>
-                                                                <p className="text-sm italic text-zinc-500">This message was deleted</p>
+                                                                <p className="text-sm italic text-zinc-500">{t('thisMessageWasDeleted')}</p>
                                                             </div>
                                                         ) : editingMessage?.id === msg.id ? (
                                                             <div className={`rounded-2xl px-4 py-2 ${msg.is_me
@@ -1459,8 +1464,8 @@ function MessagesContent() {
                                                                     autoFocus
                                                                 />
                                                                 <div className="flex items-center gap-2 mt-1.5">
-                                                                    <button onClick={() => handleEditMessage(msg.id, editContent)} className="text-[10px] font-bold hover:underline">Save</button>
-                                                                    <button onClick={() => { setEditingMessage(null); setEditContent(''); }} className="text-[10px] opacity-70 hover:underline">Cancel</button>
+                                                                    <button onClick={() => handleEditMessage(msg.id, editContent)} className="text-[10px] font-bold hover:underline">{t('save')}</button>
+                                                                    <button onClick={() => { setEditingMessage(null); setEditContent(''); }} className="text-[10px] opacity-70 hover:underline">{t('cancel')}</button>
                                                                 </div>
                                                             </div>
                                                         ) : (
@@ -1481,7 +1486,7 @@ function MessagesContent() {
                                                                     }`}
                                                                 >
                                                                     <span className={`text-[10px] font-bold ${msg.is_me ? 'text-emerald-250' : 'text-emerald-400'}`}>
-                                                                        @{msg.reply_to_details.sender_username}
+                                                                        {formatHandle(msg.reply_to_details.sender_username)}
                                                                     </span>
                                                                     <span className="text-[11px] truncate opacity-90">
                                                                         {msg.reply_to_details.content || (msg.reply_to_details.image ? '📷 Photo' : msg.reply_to_details.gif_url ? 'GIF' : 'Attachment')}
@@ -1496,7 +1501,7 @@ function MessagesContent() {
 
                                                             <p className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${msg.is_me ? 'text-emerald-200' : 'text-zinc-500'}`}>
                                                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                                                {msg.is_edited && <span className="italic">(edited)</span>}
+                                                                {msg.is_edited && <span className="italic">{t('editedLabel')}</span>}
                                                                 {msg.is_me && (
                                                                     msg.is_read 
                                                                         ? <span title="Read"><CheckCheck className="h-3 w-3 text-emerald-300" /></span>
@@ -1702,7 +1707,7 @@ function MessagesContent() {
                                                 <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-zinc-900/60 border-l-4 border-emerald-500 border border-zinc-800/80 text-left animate-in slide-in-from-bottom-2 duration-200">
                                                     <div className="min-w-0 flex-1">
                                                         <div className="text-[10px] font-bold text-emerald-400">
-                                                            {t('replyingTo')} @{replyingTo.sender.username}
+                                                            {t('replyingTo')} {formatHandle(replyingTo.sender.username)}
                                                         </div>
                                                         <div className="text-xs text-zinc-400 truncate mt-0.5">
                                                             {replyingTo.content || (replyingTo.image ? '📷 Photo' : replyingTo.gif_url ? 'GIF' : 'Attachment')}
@@ -1812,7 +1817,7 @@ function MessagesContent() {
                                             {showGifPicker && (
                                                 <div className="absolute bottom-14 left-0 right-0 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-2xl max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                                                     <div className="flex justify-between items-center mb-2">
-                                                        <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Trending GIFs</span>
+                                                        <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">{t('trendingGifs')}</span>
                                                         <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white"><X className="h-4 w-4" /></button>
                                                     </div>
                                                     <GifPicker onSelected={handleGifSelect} />
@@ -1868,7 +1873,7 @@ function MessagesContent() {
                                             className="w-full flex items-center gap-3 p-3.5 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-zinc-900 transition-colors"
                                         >
                                             <Search className="h-5 w-5 text-zinc-400" />
-                                            <span className="text-sm font-semibold text-zinc-200">Search in Conversation</span>
+                                            <span className="text-sm font-semibold text-zinc-200">{t('searchInConversation')}</span>
                                         </button>
                                         {showSearchMessages && (
                                             <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -1901,7 +1906,7 @@ function MessagesContent() {
                                                     </div>
                                                 )}
                                                 {searchMessagesQuery && searchResults.length === 0 && (
-                                                    <p className="text-xs text-zinc-500 text-center py-2">No messages found</p>
+                                                    <p className="text-xs text-zinc-500 text-center py-2">{t('noMessagesFound')}</p>
                                                 )}
                                             </div>
                                         )}
@@ -1987,7 +1992,7 @@ function MessagesContent() {
                                     {/* Members Section (Groups only) */}
                                     {activeChat.is_group && (
                                         <div className="space-y-4 border-t border-zinc-800 pt-4 flex-1 flex flex-col min-h-0">
-                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('groupMembers')} ({activeChat.memberships?.length || 0})</h4>
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('groupMembers')} {wrapInParens(activeChat.memberships?.length || 0)}</h4>
                                             
                                             {/* Add member (Admin only) */}
                                             {isAdmin && (
@@ -2012,7 +2017,7 @@ function MessagesContent() {
                                                                     className="w-full p-2 flex items-center gap-2 hover:bg-zinc-800 rounded-lg text-left"
                                                                 >
                                                                     <img src={getImageUrl(u.avatar, u.username)} className="h-5 w-5 rounded-full object-cover" alt="" />
-                                                                    <div className="text-xs font-semibold text-white truncate">@{u.username}</div>
+                                                                    <div className="text-xs font-semibold text-white truncate">{formatHandle(u.username)}</div>
                                                                 </button>
                                                             ))}
                                                         </div>
@@ -2035,7 +2040,7 @@ function MessagesContent() {
                                                                     {member.user.real_name || member.user.username}
                                                                     {member.is_admin && <span title="Group Admin"><Shield className="h-3 w-3 text-emerald-500" /></span>}
                                                                 </div>
-                                                                <div className="text-[10px] text-zinc-500 truncate">@{member.user.username}</div>
+                                                                <div className="text-[10px] text-zinc-500 truncate">{formatHandle(member.user.username)}</div>
                                                             </div>
                                                         </div>
                                                         
@@ -2069,27 +2074,27 @@ function MessagesContent() {
                                     {/* Individual chat action buttons */}
                                     {!activeChat.is_group && (
                                         <div className="space-y-2 border-t border-zinc-800 pt-4">
-                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Conversation Actions</h4>
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('conversationActions')}</h4>
                                             <button
                                                 onClick={handleBlockUser}
                                                 className="w-full flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-red-950/20 hover:border-red-900/30 transition-colors text-sm font-semibold text-zinc-300 hover:text-red-400"
                                             >
                                                 <Ban className="h-4.5 w-4.5" />
-                                                Block User
+                                                {t('blockUser')}
                                             </button>
                                             <button
                                                 onClick={handleReportConversation}
                                                 className="w-full flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-amber-950/20 hover:border-amber-900/30 transition-colors text-sm font-semibold text-zinc-300 hover:text-amber-400"
                                             >
                                                 <Flag className="h-4.5 w-4.5" />
-                                                Report Conversation
+                                                {t('reportConversation')}
                                             </button>
                                             <button
                                                 onClick={handleDeleteConversation}
                                                 className="w-full flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl hover:bg-red-950/20 hover:border-red-900/30 transition-colors text-sm font-semibold text-zinc-300 hover:text-red-400"
                                             >
                                                 <Trash2 className="h-4.5 w-4.5" />
-                                                Delete Conversation
+                                                {t('deleteConversation')}
                                             </button>
                                         </div>
                                     )}
@@ -2110,7 +2115,7 @@ function MessagesContent() {
                                                     className="w-full flex items-center justify-center gap-2 p-2.5 hover:bg-amber-950/20 rounded-2xl text-zinc-500 hover:text-amber-400 transition-all text-xs"
                                                 >
                                                     <Flag className="h-3.5 w-3.5" />
-                                                    Report Group
+                                                    {t('reportGroup')}
                                                 </button>
                                                 {isAdmin && (
                                                     <button
@@ -2118,7 +2123,7 @@ function MessagesContent() {
                                                         className="w-full flex items-center justify-center gap-2 p-2.5 hover:bg-red-950/20 rounded-2xl text-zinc-500 hover:text-red-400 transition-all text-xs"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
-                                                        Delete Group
+                                                        {t('deleteGroup')}
                                                     </button>
                                                 )}
                                             </div>
