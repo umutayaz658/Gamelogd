@@ -60,7 +60,7 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
             };
             fetchNotifications();
         }
-    }, [isNotifMode]);
+    }, [isNotifMode, markNotificationsRead]);
 
     const formatTime = (dateString: string) => {
         return getRelativeTime(dateString, language);

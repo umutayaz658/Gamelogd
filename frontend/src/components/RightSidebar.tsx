@@ -9,6 +9,8 @@ import NewsSkeleton from '@/components/skeletons/NewsSkeleton';
 import { useTranslation } from '@/lib/useTranslation';
 import { getRelativeTime } from '@/lib/utils';
 
+const DOT_SEPARATOR = '•';
+
 interface NewsItem {
     id: number;
     title: string;
@@ -114,7 +116,7 @@ export default function RightSidebar() {
                                 </div>
                                 <div className="flex items-center gap-2 mt-1">
                                     <span className="text-xs text-zinc-500">{timeAgo(news.pub_date)}</span>
-                                    <span className="text-zinc-700">•</span>
+                                    <span className="text-zinc-700" aria-hidden="true">{DOT_SEPARATOR}</span>
                                     <span className="text-xs text-zinc-500">{news.source_name}</span>
                                 </div>
                             </div>

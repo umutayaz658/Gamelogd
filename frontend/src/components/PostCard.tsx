@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send } from 'lucide-react';
 import { Post } from '@/types';
-import { getImageUrl, getRelativeTime, formatCount, isUnreachableForImageOptimizer } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
@@ -15,6 +15,9 @@ import ReviewCard from '@/components/ReviewCard';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+
+const DOT_SEPARATOR = '•';
+const ZERO_PERCENT = '0%';
 
 // Normalizes a post's various legacy/modern media fields into one ordered array —
 // used for both the main media block and the nested quote/repost embed card.
@@ -197,7 +200,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    useEffect(() => {
+    // Re-sync optimistic UI state from the post prop whenever a new post object arrives (e.g.
+    // a feed refetch), overriding any stale local like/bookmark/repost state — computed during
+    // render rather than in an effect. See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevPost, setPrevPost] = useState(post);
+    if (post !== prevPost) {
+        setPrevPost(post);
         setIsLiked(post.is_liked || false);
         setLikesCount(post.likes_count ?? (Array.isArray(post.likes) ? post.likes.length : post.likes) ?? 0);
         setIsBookmarked(post.is_bookmarked || false);
@@ -205,7 +213,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setRepliesCount(post.replies_count || 0);
         setIsReposted(post.is_reposted || false);
         setRepostsCount(post.reposts_count || 0);
-    }, [post]);
+    }
 
     // ReplyModal has no direct reference back to every PostCard instance showing this same
     // post (feed list, detail page, profile), so it broadcasts a 'reply-created' event instead
@@ -389,7 +397,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="text-emerald-500 hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                @{post.reply_to_username}
+                                {formatHandle(post.reply_to_username)}
                             </Link>
                         </div>
                     )}
@@ -416,14 +424,14 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     className="text-zinc-500 text-sm hover:text-zinc-400 min-w-0 shrink truncate"
                                     onClick={(e) => e.stopPropagation()}
                                 >
-                                    @{author.slug.toString().toLowerCase()}
+                                    {formatHandle(author.slug.toString().toLowerCase())}
                                 </Link>
                             ) : (
                                 <span className="text-zinc-500 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 border border-zinc-750 rounded uppercase select-none tracking-wider flex-shrink-0">
                                     {author.type}
                                 </span>
                             )}
-                            <span className="text-zinc-700 text-sm flex-shrink-0">•</span>
+                            <span className="text-zinc-700 text-sm flex-shrink-0" aria-hidden="true">{DOT_SEPARATOR}</span>
                             {/* suppressHydrationWarning: this tooltip's exact wording depends on the
                                 renderer's timezone, which can legitimately differ between the SSR
                                 pass (server/container timezone) and hydration (browser timezone) —
@@ -433,7 +441,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             </span>
                             {post.news_details && !hideNewsQuote && (
                                 <span className="ml-2 text-zinc-500 text-sm font-normal truncate hidden sm:inline">
-                                    • Commented on this news
+                                    {DOT_SEPARATOR} {t('commentedOnThisNews')}
                                 </span>
                             )}
                         </div>
@@ -551,8 +559,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     />
                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                                         <span className="font-bold text-white text-sm">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
-                                        <span className="text-zinc-500 text-sm">@{post.repost_details.user.username.toLowerCase()}</span>
-                                        <span className="text-zinc-600 text-sm">•</span>
+                                        <span className="text-zinc-500 text-sm">{formatHandle(post.repost_details.user.username.toLowerCase())}</span>
+                                        <span className="text-zinc-600 text-sm" aria-hidden="true">{DOT_SEPARATOR}</span>
                                         <span className="text-zinc-500 text-sm">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
                                     </div>
                                 </div>
@@ -596,8 +604,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     />
                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                                         <span className="font-bold text-white text-sm">{post.repost_review_details.user.real_name || post.repost_review_details.user.username}</span>
-                                        <span className="text-zinc-500 text-sm">@{post.repost_review_details.user.username.toLowerCase()}</span>
-                                        <span className="text-zinc-600 text-sm">•</span>
+                                        <span className="text-zinc-500 text-sm">{formatHandle(post.repost_review_details.user.username.toLowerCase())}</span>
+                                        <span className="text-zinc-600 text-sm" aria-hidden="true">{DOT_SEPARATOR}</span>
                                         <span className="text-zinc-500 text-sm">{new Date(post.repost_review_details.timestamp).toLocaleDateString()}</span>
                                     </div>
                                 </div>
@@ -614,9 +622,9 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     )}
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold text-sm text-white mb-0.5">{post.repost_review_details.game?.title}</div>
-                                        <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {post.repost_review_details.rating}/10</div>
+                                        <div className="text-emerald-500 text-xs font-bold mb-1">{t('logged')} {[post.repost_review_details.rating, '/10'].join('')}</div>
                                         <p className="text-zinc-300 text-sm line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                                            {renderContentWithLinks(post.repost_review_details.content) || 'No review written.'}
+                                            {renderContentWithLinks(post.repost_review_details.content) || t('noReviewWritten')}
                                         </p>
                                     </div>
                                 </div>
@@ -634,13 +642,13 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 <div key={idx} className="relative p-3 bg-zinc-950/50 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50 transition-colors cursor-pointer group">
                                     <div className="flex justify-between items-center relative z-10">
                                         <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">{option}</span>
-                                        <span className="text-xs text-zinc-500">0%</span>
+                                        <span className="text-xs text-zinc-500">{ZERO_PERCENT}</span>
                                     </div>
                                     <div className="absolute left-0 top-0 bottom-0 bg-zinc-800/30 w-0 group-hover:w-full transition-all duration-500"></div>
                                 </div>
                             ))}
                             <div className="p-2 bg-zinc-900 text-center text-xs text-zinc-500 border-t border-zinc-800">
-                                0 votes • Final results
+                                {[t('zeroVotes'), DOT_SEPARATOR, t('finalResults')].join(' ')}
                             </div>
                         </div>
                     )}

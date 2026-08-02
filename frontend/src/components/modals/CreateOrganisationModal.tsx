@@ -124,8 +124,8 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                 <div className="w-full md:w-2/5 bg-zinc-950 border-r border-zinc-800 p-6 flex flex-col justify-between gap-6 overflow-y-auto">
                     <div className="space-y-6">
                         <div>
-                            <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2">Organisation Branding</h3>
-                            <p className="text-xs text-zinc-500">Provide high-resolution visual identities for your company page.</p>
+                            <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('organisationBranding')}</h3>
+                            <p className="text-xs text-zinc-500">{t('provideHighResVisualIdentities')}</p>
                         </div>
 
                         {/* Banner Upload Box */}
@@ -145,8 +145,8 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                             ) : (
                                 <div className="p-4 space-y-1">
                                     <Upload className="h-6 w-6 text-zinc-500 mx-auto group-hover:scale-110 transition-transform" />
-                                    <div className="text-xs font-semibold text-zinc-400">Upload Banner</div>
-                                    <div className="text-[10px] text-zinc-600">Recom. 16:9 ratio</div>
+                                    <div className="text-xs font-semibold text-zinc-400">{t('uploadBanner')}</div>
+                                    <div className="text-[10px] text-zinc-600">{t('recom16x9')}</div>
                                 </div>
                             )}
                         </div>
@@ -169,8 +169,8 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                                 ) : (
                                     <div className="p-2 space-y-1">
                                         <ImageIcon className="h-6 w-6 text-zinc-500 mx-auto group-hover:scale-110 transition-transform" />
-                                        <div className="text-[10px] font-semibold text-zinc-400">Upload Logo</div>
-                                        <div className="text-[8px] text-zinc-600">1:1 square</div>
+                                        <div className="text-[10px] font-semibold text-zinc-400">{t('uploadLogo')}</div>
+                                        <div className="text-[8px] text-zinc-600">{t('oneToOneSquare')}</div>
                                     </div>
                                 )}
                             </div>
@@ -178,7 +178,7 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                     </div>
 
                     <div className="text-[10px] text-zinc-600 bg-zinc-900/40 p-3 rounded-lg border border-zinc-800">
-                        * Once created, your organisation will have its own public route under `/organisations/[slug]` where other users can find your developer page and follow it.
+                        {t('orgSlugRouteHint')}
                     </div>
                 </div>
 
@@ -187,8 +187,8 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-950">
                         <div>
-                            <h2 className="text-xl font-bold text-white">Create Organisation</h2>
-                            <p className="text-xs text-zinc-500 mt-1">Establish a unified game studio or team presence.</p>
+                            <h2 className="text-xl font-bold text-white">{t('createOrganisation')}</h2>
+                            <p className="text-xs text-zinc-500 mt-1">{t('establishUnifiedStudio')}</p>
                         </div>
                         <button type="button" onClick={onClose} className="p-2 text-zinc-400 hover:text-white rounded-full transition-colors"><X className="h-5 w-5" /></button>
                     </div>
@@ -203,7 +203,7 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Organisation Name</label>
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('organisationName')}</label>
                                 <input 
                                     type="text"
                                     required
@@ -215,7 +215,7 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Slug / Handle</label>
+                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('slugHandle')}</label>
                                 <input 
                                     type="text"
                                     required
@@ -228,7 +228,7 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">About / Biography</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('aboutBiography')}</label>
                             <textarea 
                                 rows={3}
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-white placeholder:text-zinc-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all text-sm"
@@ -239,7 +239,7 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Links & Social Profiles</label>
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">{t('linksAndSocialProfiles')}</label>
                             
                             {/* Website */}
                             <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1 group focus-within:border-blue-500/50 transition-all">
@@ -286,9 +286,9 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                             onClick={onClose}
                             className="px-5 py-2.5 rounded-xl border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all text-sm font-semibold"
                         >
-                            Cancel
+                            {t('cancel')}
                         </button>
-                        <button 
+                        <button
                             type="submit"
                             disabled={loading || !formData.name || !formData.slug}
                             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-650 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20 text-sm"
@@ -296,12 +296,12 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
                             {loading ? (
                                 <>
                                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white" />
-                                    <span>Creating...</span>
+                                    <span>{t('creating')}</span>
                                 </>
                             ) : (
                                 <>
                                     <Check className="h-4 w-4" />
-                                    <span>Create Organisation</span>
+                                    <span>{t('createOrganisation')}</span>
                                 </>
                             )}
                         </button>

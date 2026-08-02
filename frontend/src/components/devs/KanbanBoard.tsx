@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, PlusCircle, X, Check, Search, Filter, GripVertical, Edit2, Trash2, ChevronDown, Tag, Settings } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,12 @@ import ConfirmDeleteModal from './ConfirmDeleteModal';
 import BoardSwitcher from './BoardSwitcher';
 import { cn, getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
+import { useTranslation } from '@/lib/useTranslation';
+
+const SLASH_SEPARATOR = '/';
+const MIDDLE_DOT = '·';
+const SP_ABBREV = 'SP';
+const CLIPBOARD_EMOJI = '📋';
 
 const COLUMN_COLORS = [
     'border-violet-500/30',
@@ -30,6 +36,7 @@ const COLUMN_DOTS = [
 ];
 
 export default function KanbanBoard() {
+    const { t } = useTranslation();
     const { data, setColumns, setTasks, setKanbanCategories, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { columns, tasks } = data;
     const { user } = useAuth();
@@ -166,32 +173,29 @@ export default function KanbanBoard() {
         setCollapsedLanes(prev => ({ ...prev, [laneId]: !prev[laneId] }));
     };
 
-    const getTasksByColumn = (colId: string) => {
-        return tasks.filter((t) => {
-            if (t.columnId !== colId) return false;
-
-            // Search filter
-            if (searchTaskQuery) {
-                const q = searchTaskQuery.toLowerCase();
+    // One pass over all tasks per (tasks, filters) change, instead of re-filtering the whole
+    // task array once per column × per lane on every render — this board re-renders on every
+    // workspace-context keystroke, so the repeated scans added up fast.
+    const tasksByColumn = useMemo(() => {
+        const map = new Map<string, Task[]>();
+        const q = searchTaskQuery.toLowerCase();
+        for (const t of tasks) {
+            if (q) {
                 const matchTitle = t.title.toLowerCase().includes(q);
                 const matchDesc = t.description?.toLowerCase().includes(q) ?? false;
                 const matchId = `task-${t.id.slice(-4)}`.toLowerCase().includes(q);
-                if (!matchTitle && !matchDesc && !matchId) return false;
+                if (!matchTitle && !matchDesc && !matchId) continue;
             }
+            if (filterMe && user && t.assignee !== user.username) continue;
+            if (filterCats.length > 0 && !filterCats.includes(t.category)) continue;
+            const arr = map.get(t.columnId);
+            if (arr) arr.push(t);
+            else map.set(t.columnId, [t]);
+        }
+        return map;
+    }, [tasks, searchTaskQuery, filterMe, filterCats, user]);
 
-            // "My Tasks" filter
-            if (filterMe && user) {
-                if (t.assignee !== user.username) return false;
-            }
-
-            // Category filter
-            if (filterCats.length > 0) {
-                if (!filterCats.includes(t.category)) return false;
-            }
-
-            return true;
-        });
-    };
+    const getTasksByColumn = (colId: string) => tasksByColumn.get(colId) ?? [];
 
     // ── Task Drag Handlers ────────────────────────────────────────────────────
     const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -339,13 +343,13 @@ export default function KanbanBoard() {
                     <div className="flex items-center gap-3">
                         <BoardSwitcher />
 
-                        <span className="text-zinc-700 text-lg font-light">/</span>
+                        <span className="text-zinc-700 text-lg font-light" aria-hidden="true">{SLASH_SEPARATOR}</span>
 
                         {/* Title on the Right */}
-                        <h2 className="text-xl font-extrabold text-zinc-300">Kanban Board</h2>
+                        <h2 className="text-xl font-extrabold text-zinc-300">{t('kanbanBoard')}</h2>
                     </div>
                     <p className="text-sm text-zinc-500 mt-0.5">
-                        {doneTasks}/{totalTasks} tasks done · Drag columns & tasks to reorder
+                        {[[doneTasks, totalTasks].join(SLASH_SEPARATOR), t('tasksDoneDragToReorderDesc')].join(' ')}
                     </p>
                 </div>
                 <button
@@ -353,7 +357,7 @@ export default function KanbanBoard() {
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20"
                 >
                     <Plus className="w-4 h-4" />
-                    Add Task
+                    {t('addTask')}
                 </button>
             </div>
 
@@ -361,7 +365,7 @@ export default function KanbanBoard() {
             <div className="flex items-center justify-between gap-3 flex-wrap bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-3">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-zinc-550 uppercase tracking-wider flex items-center gap-1.5 mr-2 font-sans">
-                        <Filter className="w-3.5 h-3.5" /> Filters:
+                        <Filter className="w-3.5 h-3.5" /> {t('filtersColon')}
                     </span>
                     <button
                         onClick={() => setFilterMe(!filterMe)}
@@ -370,7 +374,7 @@ export default function KanbanBoard() {
                             filterMe ? "bg-blue-600/20 border-blue-500/50 text-blue-400 font-bold" : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                         )}
                     >
-                        Assigned to Me
+                        {t('assignedToMe')}
                     </button>
 
                     {/* Categories Filter Dropdown/Drawer */}
@@ -386,7 +390,7 @@ export default function KanbanBoard() {
                             )}
                         >
                             <Tag className="w-3 h-3 text-zinc-405" />
-                            <span>Categories {filterCats.length > 0 && `(${filterCats.length})`}</span>
+                            <span>{[t('categories'), filterCats.length > 0 && `(${filterCats.length})`].filter(Boolean).join(' ')}</span>
                             <ChevronDown className="w-3 h-3 text-zinc-500" />
                         </button>
                         {showCategoriesDropdown && (
@@ -395,7 +399,7 @@ export default function KanbanBoard() {
                                 <div className="absolute left-0 mt-2 z-50 bg-zinc-950/95 backdrop-blur border border-zinc-800 rounded-xl shadow-2xl w-60 p-2.5 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
                                     <div className="flex items-center justify-between px-1 pb-1.5 border-b border-zinc-900/60 font-sans">
                                         <span className="text-[10px] font-bold text-zinc-555 uppercase tracking-widest">
-                                            Filter by Category
+                                            {t('filterByCategory')}
                                         </span>
                                         <button
                                             type="button"
@@ -405,7 +409,7 @@ export default function KanbanBoard() {
                                             }}
                                             className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer transition-all hover:underline"
                                         >
-                                            <Settings className="w-3 h-3" /> Manage
+                                            <Settings className="w-3 h-3" /> {t('manage')}
                                         </button>
                                     </div>
                                     <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin-dark pr-1">
@@ -453,7 +457,7 @@ export default function KanbanBoard() {
                             }}
                             className="text-xs text-red-400 hover:text-red-300 font-semibold px-2 py-1 font-sans"
                         >
-                            Clear Filters
+                            {t('clearFilters')}
                         </button>
                     )}
                 </div>
@@ -479,7 +483,7 @@ export default function KanbanBoard() {
                             onClick={() => setShowGroupByDropdown(!showGroupByDropdown)}
                             className="bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 rounded-xl px-3 py-1.5 focus:outline-none transition-all flex items-center gap-1.5 font-sans"
                         >
-                            <span>Group By: {groupBy === 'none' ? 'None' : groupBy === 'assignee' ? 'Assignee' : 'Priority'}</span>
+                            <span>{[t('groupByColon'), groupBy === 'none' ? t('none') : groupBy === 'assignee' ? t('assignee') : t('priority')].join(' ')}</span>
                             <ChevronDown className="w-3.5 h-3.5 text-zinc-550" />
                         </button>
                         {showGroupByDropdown && (
@@ -585,7 +589,7 @@ export default function KanbanBoard() {
                                         )}
                                         {totalSP > 0 && (
                                             <span className="text-[9px] bg-zinc-800/80 border border-zinc-700/60 text-zinc-400 px-1.5 py-0.5 rounded-full font-semibold">
-                                                {totalSP} SP
+                                                {[totalSP, SP_ABBREV].join(' ')}
                                             </span>
                                         )}
                                         {/* Column Limit Edit Trigger */}
@@ -635,7 +639,7 @@ export default function KanbanBoard() {
                                                 {lane.label}
                                             </span>
                                             <span className="text-[10px] text-zinc-500 font-semibold ml-1">
-                                                {laneTasks.length} tasks · {laneSP} SP
+                                                {[laneTasks.length, t('tasksLower'), MIDDLE_DOT, laneSP, SP_ABBREV].join(' ')}
                                             </span>
                                         </button>
                                     </div>
@@ -679,7 +683,7 @@ export default function KanbanBoard() {
 
                                                         {filteredColTasks.length === 0 && (
                                                             <div className="flex-1 flex items-center justify-center border border-dashed border-zinc-800/40 rounded-xl py-6">
-                                                                <p className="text-[10px] text-zinc-700">Empty Column</p>
+                                                                <p className="text-[10px] text-zinc-700">{t('emptyColumn')}</p>
                                                             </div>
                                                         )}
                                                     </div>
@@ -802,7 +806,7 @@ export default function KanbanBoard() {
                                                     )}
                                                     {totalSP > 0 && (
                                                         <span className="text-[9px] bg-zinc-850/80 border border-zinc-800 text-zinc-550 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">
-                                                            {totalSP} SP
+                                                            {[totalSP, SP_ABBREV].join(' ')}
                                                         </span>
                                                     )}
                                                 </div>
@@ -848,8 +852,8 @@ export default function KanbanBoard() {
                                         {colTasks.length === 0 ? (
                                             <div className="flex-1 flex items-center justify-center text-center text-zinc-700 text-xs py-6">
                                                 <div>
-                                                    <div className="text-xl mb-1">📋</div>
-                                                    Drop tasks here
+                                                    <div className="text-xl mb-1" aria-hidden="true">{CLIPBOARD_EMOJI}</div>
+                                                    {t('dropTasksHere')}
                                                 </div>
                                             </div>
                                         ) : (
@@ -889,11 +893,11 @@ export default function KanbanBoard() {
                                                 <div className="flex gap-2">
                                                     <button onClick={() => handleCreateInlineTask(col.id)}
                                                         className="flex-1 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition-all shadow-md shadow-blue-900/20">
-                                                        Add Task
+                                                        {t('addTask')}
                                                     </button>
                                                     <button onClick={() => setActiveInlineColId(null)}
                                                         className="flex-1 py-1 rounded-lg border border-zinc-800 text-zinc-550 text-[11px] hover:bg-zinc-900 transition-all">
-                                                        Cancel
+                                                        {t('cancel')}
                                                     </button>
                                                 </div>
                                             </div>
@@ -906,7 +910,7 @@ export default function KanbanBoard() {
                                                 className="w-full py-1.5 flex items-center justify-center gap-1 bg-transparent hover:bg-zinc-900/30 text-zinc-600 hover:text-zinc-450 rounded-xl text-xs font-semibold transition-all mt-1"
                                             >
                                                 <Plus className="w-3 h-3" />
-                                                Create Task
+                                                {t('createTask')}
                                             </button>
                                         )}
                                     </div>
@@ -933,11 +937,11 @@ export default function KanbanBoard() {
                                     <div className="flex gap-2">
                                         <button onClick={handleAddColumn}
                                             className="flex-1 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all">
-                                            Add
+                                            {t('add')}
                                         </button>
                                         <button onClick={() => setAddingColumn(false)}
                                             className="flex-1 py-1.5 rounded-lg border border-zinc-700 text-zinc-550 text-xs hover:bg-zinc-800 transition-all">
-                                            Cancel
+                                            {t('cancel')}
                                         </button>
                                     </div>
                                 </div>
@@ -947,7 +951,7 @@ export default function KanbanBoard() {
                                     className="w-full h-12 flex items-center justify-center gap-2 bg-zinc-900/30 border border-dashed border-zinc-700 rounded-2xl text-zinc-650 hover:text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800/30 text-sm font-semibold transition-all"
                                 >
                                     <PlusCircle className="w-4 h-4" />
-                                    Add Column
+                                    {t('addColumn')}
                                 </button>
                             )}
                         </div>

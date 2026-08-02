@@ -29,8 +29,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/gamelogd
       - REDIS_URL=redis://redis:6379/0
+      # This compose file is the local dev stack; DEBUG also unlocks the dev SECRET_KEY
+      # fallback so the stack boots on a fresh clone without a backend/.env.
+      - DEBUG=True
     env_file:
-      - ./backend/.env
+      # Copy backend/.env.example to backend/.env and fill it in; required: false lets the
+      # stack still boot on a fresh clone (integrations simply stay disabled).
+      - path: ./backend/.env
+        required: false
 
   frontend:
     build:
@@ -46,6 +52,10 @@ services:
     environment:
       - WATCHPACK_POLLING=true
       - API_INTERNAL_URL=http://backend:8000/api
+      # Browser-visible API base — requests from the user's browser go to the host-mapped
+      # port, not the compose-internal hostname (see frontend/.env.example).
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_AUTH_MODE=header
 
 volumes:
   postgres_data:

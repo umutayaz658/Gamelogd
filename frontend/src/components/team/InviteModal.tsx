@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Mail, Search, UserPlus, X } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import type { Role } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface MemberUser {
     id: number;
@@ -38,6 +39,7 @@ function legacyRoleForPick(scope: 'org' | 'project', pickedRole: Role, legacyRol
 }
 
 export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddOrganisationId, excludeUserIds, onClose, onInvite }: InviteModalProps) {
+    const { t } = useTranslation();
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<MemberUser[]>([]);
     const [searching, setSearching] = useState(false);
@@ -107,7 +109,7 @@ export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddO
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white truncate">{u.real_name || u.username}</p>
-                <p className="text-xs text-zinc-500 truncate">@{u.username}</p>
+                <p className="text-xs text-zinc-500 truncate">{formatHandle(u.username)}</p>
             </div>
             <button onClick={() => openRoleStep(u)}
                 className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-bold transition-all flex-shrink-0 ${actionClassName}`}>
@@ -127,7 +129,7 @@ export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddO
                                 <ArrowLeft className="w-4 h-4" />
                             </button>
                         )}
-                        <Mail className="w-5 h-5 text-blue-400" /> {step === 'role' ? `Role for @${pendingUser?.username}` : `Invite ${scope === 'project' ? 'to Project' : 'Member'}`}
+                        <Mail className="w-5 h-5 text-blue-400" /> {step === 'role' ? `${t('roleFor')} ${formatHandle(pendingUser?.username || '')}` : `${t('invite')} ${scope === 'project' ? t('toProject') : t('memberLabel')}`}
                     </h3>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
                 </div>
@@ -140,26 +142,26 @@ export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddO
                     >
                         <div className={`w-1/2 h-full grid ${quickAddOrganisationId ? 'md:grid-cols-2' : 'grid-cols-1'} divide-y md:divide-y-0 md:divide-x divide-zinc-800`}>
                             <div className="p-5 flex flex-col min-h-0">
-                                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Search users</p>
+                                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">{t('searchUsers')}</p>
                                 <div className="relative mb-3">
                                     <Search className="w-4 h-4 text-zinc-600 absolute left-3 top-1/2 -translate-y-1/2" />
                                     <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by username..."
                                         className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-9 pr-3 py-2 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all" />
                                 </div>
                                 <div className="space-y-1.5 overflow-y-auto scrollbar-thin-dark flex-1">
-                                    {searching && <p className="text-xs text-zinc-600 text-center py-4">Searching...</p>}
+                                    {searching && <p className="text-xs text-zinc-600 text-center py-4">{t('searching')}</p>}
                                     {!searching && query.trim() && filteredResults.length === 0 && (
-                                        <p className="text-xs text-zinc-600 text-center py-4">No users found.</p>
+                                        <p className="text-xs text-zinc-600 text-center py-4">{t('noUsersFound')}</p>
                                     )}
                                     {!searching && filteredResults.map((u) => (
-                                        <UserRow key={u.id} u={u} actionLabel="Invite" actionClassName="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400" />
+                                        <UserRow key={u.id} u={u} actionLabel={t('invite')} actionClassName="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400" />
                                     ))}
                                 </div>
                             </div>
 
                             {quickAddOrganisationId && (
                                 <div className="p-5 flex flex-col min-h-0">
-                                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Add from organisation</p>
+                                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">{t('addFromOrganisation')}</p>
                                     <div className="relative mb-3">
                                         <Search className="w-4 h-4 text-zinc-600 absolute left-3 top-1/2 -translate-y-1/2" />
                                         <input value={orgSearchQuery} onChange={(e) => setOrgSearchQuery(e.target.value)} placeholder="Filter organisation members..."
@@ -167,10 +169,10 @@ export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddO
                                     </div>
                                     <div className="space-y-1.5 overflow-y-auto scrollbar-thin-dark flex-1">
                                         {filteredQuickAdd.length === 0 && (
-                                            <p className="text-xs text-zinc-600 text-center py-4">No matching organisation members.</p>
+                                            <p className="text-xs text-zinc-600 text-center py-4">{t('noMatchingOrgMembers')}</p>
                                         )}
                                         {filteredQuickAdd.map((u) => (
-                                            <UserRow key={u.id} u={u} actionLabel="Add" actionClassName="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-400" />
+                                            <UserRow key={u.id} u={u} actionLabel={t('add')} actionClassName="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-400" />
                                         ))}
                                     </div>
                                 </div>
@@ -186,11 +188,11 @@ export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddO
                                         </div>
                                         <div className="min-w-0">
                                             <p className="text-sm font-bold text-white truncate">{pendingUser.real_name || pendingUser.username}</p>
-                                            <p className="text-xs text-zinc-500 truncate">@{pendingUser.username}</p>
+                                            <p className="text-xs text-zinc-500 truncate">{formatHandle(pendingUser.username)}</p>
                                         </div>
                                     </div>
                                     <div className="p-5 space-y-2 overflow-y-auto scrollbar-thin-dark flex-1">
-                                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Pick a role to invite with</p>
+                                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">{t('pickRoleToInviteWith')}</p>
                                         {assignableRoles.map((role) => (
                                             <button key={role.id} onClick={() => setPickedRoleId(role.id)}
                                                 className={`w-full flex items-start gap-3 text-left p-3.5 rounded-xl border transition-all ${
@@ -205,10 +207,10 @@ export default function InviteModal({ scope, legacyRoleOptions, roles, quickAddO
                                         ))}
                                     </div>
                                     <div className="flex gap-3 p-5 border-t border-zinc-800 flex-shrink-0">
-                                        <button onClick={backToBrowse} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">Back</button>
+                                        <button onClick={backToBrowse} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">{t('back')}</button>
                                         <button onClick={confirmInvite} disabled={pickedRoleId === null}
                                             className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40">
-                                            Send Invite
+                                            {t('sendInvite')}
                                         </button>
                                     </div>
                                 </>

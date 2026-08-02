@@ -7,7 +7,7 @@ import LeftSidebar from "@/components/LeftSidebar";
 import FilterDropdown from "@/components/FilterDropdown";
 import GameCarousel from "@/components/GameCarousel";
 import api from '@/lib/api';
-import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, Users, TrendingUp, LinkIcon, Settings, Gem } from 'lucide-react';
+import { Gamepad2, ArrowLeft, ChevronLeft, ChevronRight, Users, TrendingUp, LinkIcon, Settings, Gem, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
@@ -93,9 +93,14 @@ const DiscoverySection = ({
     const PER_PAGE = 5;
     const totalPages = Math.ceil(items.length / PER_PAGE);
 
-    useEffect(() => {
+    // Reset to page 0 whenever the items list itself changes (new filter/refetch), computed
+    // during render rather than in an effect — avoids the extra commit+repaint an effect-based
+    // reset would cause. See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevItems, setPrevItems] = useState(items);
+    if (items !== prevItems) {
+        setPrevItems(items);
         setPage(0);
-    }, [items]);
+    }
 
     const visible = isMobile ? items.slice(page * PER_PAGE, (page + 1) * PER_PAGE) : items.slice(0, 3);
 
@@ -130,7 +135,7 @@ const DiscoverySection = ({
                     {visible.map(game => (
                         <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
                             <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                {game.cover_image && <img src={game.cover_image} className="w-full h-full object-cover" />}
+                                {game.cover_image && <img src={game.cover_image} alt="" className="w-full h-full object-cover" />}
                             </div>
                             <div>
                                 <h4 className={`text-sm font-semibold ${accentClass} line-clamp-1`}>{game.title}</h4>
@@ -168,6 +173,10 @@ export default function RecommendedGamesPage() {
     const [selectedYear, setSelectedYear] = useState('All');
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [pageIndex, setPageIndex] = useState(0);
+    const [isTopPicksHovered, setIsTopPicksHovered] = useState(false);
+
+    const GAMES_PER_PAGE = 5;
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -184,7 +193,7 @@ export default function RecommendedGamesPage() {
                 // Only fetch DNA/friends if platform is linked
                 if (hasPlatformLinked) {
                     const dnaRes = await api.get(`/users/${username}/game-dna/`);
-                    setDnaGenres(dnaRes.data.slice(0, 5)); // Take top 5
+                    setDnaGenres(dnaRes.data.genres.slice(0, 5)); // Take top 5
 
                     const friendsRes = await api.get(`/users/${username}/friends-playing/`);
                     setFriendsPlaying(friendsRes.data);
@@ -239,6 +248,7 @@ export default function RecommendedGamesPage() {
 
                 const response = await api.get(url);
                 setGames(response.data);
+                setPageIndex(0);
 
                 // Cache the new results
                 localStorage.setItem(cacheKey, JSON.stringify({
@@ -290,6 +300,24 @@ export default function RecommendedGamesPage() {
         }
         return true;
     });
+
+    const totalPages = Math.ceil(filteredGames.length / GAMES_PER_PAGE);
+    const visibleGames = filteredGames.slice(pageIndex * GAMES_PER_PAGE, (pageIndex + 1) * GAMES_PER_PAGE);
+
+    const nextPage = () => setPageIndex(p => (p + 1) % totalPages);
+    const prevPage = () => setPageIndex(p => (p - 1 + totalPages) % totalPages);
+
+    // Auto-advance the desktop Top Picks grid every 10s, mirroring GameCarousel's mobile
+    // behavior. Depending on pageIndex (not just totalPages) restarts the timer on every
+    // manual prev/next click too, so a manual nav doesn't get immediately overridden by a
+    // stale auto-advance tick.
+    useEffect(() => {
+        if (isMobile || totalPages <= 1 || isTopPicksHovered) return;
+        const interval = setInterval(() => {
+            setPageIndex(p => (p + 1) % totalPages);
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [isMobile, totalPages, isTopPicksHovered, pageIndex]);
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-indigo-500/30">
@@ -374,7 +402,7 @@ export default function RecommendedGamesPage() {
                                                 allLabel={t('all')}
                                                 options={GENRE_OPTIONS.map(g => ({ value: g, label: g }))}
                                                 value={activeTab === 'all' ? '' : activeTab}
-                                                onChange={(v) => setActiveTab(v || 'all')}
+                                                onChange={(v) => { setActiveTab(v || 'all'); setPageIndex(0); }}
                                             />
                                         </div>
                                         <div className="flex-shrink-0">
@@ -383,24 +411,90 @@ export default function RecommendedGamesPage() {
                                                 allLabel={t('allYears')}
                                                 options={YEAR_RANGES.filter(r => r.value !== 'All').map(r => ({ value: r.value, label: r.label }))}
                                                 value={selectedYear === 'All' ? '' : selectedYear}
-                                                onChange={(v) => setSelectedYear(v || 'All')}
+                                                onChange={(v) => { setSelectedYear(v || 'All'); setPageIndex(0); }}
                                             />
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Top Picks — shared carousel, same design as the RightSidebar's "You Might Like These" */}
-                                <div className="mt-6">
-                                    <GameCarousel
-                                        title={activeTab === 'all' ? t('topPicks') : t('genreShowcase').replace('{genre}', activeTab)}
-                                        games={filteredGames}
-                                        loading={loading}
-                                        loadingLabel={t('loadingShowcase')}
-                                        emptyLabel={t('noRecommendationsFound')}
-                                        onRefresh={handleManualRefresh}
-                                        isRefreshing={isRefreshing}
-                                    />
-                                </div>
+                                {/* Top Picks — narrow carousel on mobile (matches the RightSidebar's "You Might
+                                    Like These" widget), full-width paginated grid on desktop where a 130px-wide
+                                    carousel would leave large empty margins on either side. */}
+                                {isMobile ? (
+                                    <div className="mt-6">
+                                        <GameCarousel
+                                            title={activeTab === 'all' ? t('topPicks') : t('genreShowcase').replace('{genre}', activeTab)}
+                                            games={filteredGames}
+                                            loading={loading}
+                                            loadingLabel={t('loadingShowcase')}
+                                            emptyLabel={t('noRecommendationsFound')}
+                                            onRefresh={handleManualRefresh}
+                                            isRefreshing={isRefreshing}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div
+                                        onMouseEnter={() => setIsTopPicksHovered(true)}
+                                        onMouseLeave={() => setIsTopPicksHovered(false)}
+                                        className="bg-gradient-to-br from-zinc-900/80 to-zinc-950 border border-zinc-800 rounded-3xl p-6 relative shadow-2xl overflow-hidden mt-6"
+                                    >
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+                                        <div className="flex justify-between items-center mb-6">
+                                            <div>
+                                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                                    <Gamepad2 className="text-indigo-400 h-5 w-5" />
+                                                    {activeTab === 'all' ? t('topPicks') : t('genreShowcase').replace('{genre}', activeTab)}
+                                                </h2>
+                                                <p className="text-sm text-zinc-500 mt-1">
+                                                    {t('showcaseDesc')}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {totalPages > 1 && (
+                                                    <span className="text-sm text-zinc-500 mr-2">{[pageIndex + 1, totalPages].join(' / ')}</span>
+                                                )}
+                                                <button
+                                                    onClick={handleManualRefresh}
+                                                    disabled={loading || isRefreshing}
+                                                    className="p-2 bg-zinc-800 hover:bg-indigo-500 hover:text-white rounded-full transition-all text-zinc-300 disabled:opacity-50"
+                                                    title="Refresh Recommendations"
+                                                >
+                                                    <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                                </button>
+                                                {totalPages > 1 && (
+                                                    <>
+                                                        <button onClick={prevPage} className="p-2 bg-zinc-800 hover:bg-indigo-500 hover:text-white rounded-full transition-all text-zinc-300">
+                                                            <ChevronLeft className="w-5 h-5" />
+                                                        </button>
+                                                        <button onClick={nextPage} className="p-2 bg-zinc-800 hover:bg-indigo-500 hover:text-white rounded-full transition-all text-zinc-300">
+                                                            <ChevronRight className="w-5 h-5" />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {loading ? (
+                                            <div className="flex justify-center items-center h-64">
+                                                <span className="loading-spinner text-indigo-500">{t('loadingShowcase')}</span>
+                                            </div>
+                                        ) : games.length === 0 ? (
+                                            <div className="text-center py-16 text-zinc-500">
+                                                {t('noRecommendationsFound')}
+                                            </div>
+                                        ) : (
+                                            <div key={pageIndex} className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                {visibleGames.map((game, i) => (
+                                                    <div key={game.id} className="animate-fade-in" style={{ animationDelay: `${i * 60}ms` }}>
+                                                        <GameCard game={game} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Deep Discovery Sections */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-10 border-t border-zinc-800/50 mt-12">

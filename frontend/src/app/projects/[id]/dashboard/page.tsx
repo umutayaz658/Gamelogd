@@ -12,6 +12,8 @@ import Link from 'next/link';
 import { Check, X, Upload, ArrowLeft, Globe, Twitter, Youtube } from 'lucide-react';
 import InviteMemberButton from '@/components/team/InviteMemberButton';
 import ExtraLinksEditor, { ExtraLink } from '@/components/ui/ExtraLinksEditor';
+import { useTranslation } from '@/lib/useTranslation';
+import { formatHandle, wrapInParens } from '@/lib/utils';
 
 const AVAILABLE_TECH = [
     'Unity', 'Unreal Engine', 'Godot', 'GameMaker', 'C#', 'C++', 'Python', 'JavaScript', 'TypeScript',
@@ -19,6 +21,7 @@ const AVAILABLE_TECH = [
 ];
 
 export default function ProjectDashboardPage() {
+    const { t } = useTranslation();
     const { id } = useParams() as { id: string };
     const { user: currentUser } = useAuth();
 
@@ -145,10 +148,10 @@ export default function ProjectDashboardPage() {
             <div className="min-h-screen bg-zinc-950 text-white font-sans">
                 <Navbar />
                 <div className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 py-20 text-center">
-                    <h2 className="text-2xl font-bold mb-4">Access Denied</h2>
-                    <p className="text-zinc-400 mb-8">You do not have permission to access the management dashboard for this project.</p>
+                    <h2 className="text-2xl font-bold mb-4">{t('accessDenied')}</h2>
+                    <p className="text-zinc-400 mb-8">{t('noPermissionProjectDashboard')}</p>
                     <Link href={`/projects/${id}`} className="bg-zinc-900 hover:bg-zinc-800 px-6 py-2.5 rounded-xl font-bold border border-zinc-800 transition-all">
-                        Back to Profile
+                        {t('backToProfile')}
                     </Link>
                 </div>
             </div>
@@ -178,9 +181,9 @@ export default function ProjectDashboardPage() {
                                 </Link>
                                 <div>
                                     <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
-                                        {project?.title} Dashboard
+                                        {project?.title} {t('dashboard')}
                                     </h1>
-                                    <p className="text-xs text-zinc-500 font-medium">Manage identity, settings, and sent invitations.</p>
+                                    <p className="text-xs text-zinc-500 font-medium">{t('manageIdentitySettingsInvitations')}</p>
                                 </div>
                             </div>
                         </div>
@@ -204,14 +207,14 @@ export default function ProjectDashboardPage() {
                                 onClick={() => setActiveTab('general')}
                                 className={`pb-4 px-2 text-base font-bold transition-all relative ${activeTab === 'general' ? 'text-white' : 'text-zinc-550 hover:text-zinc-350'}`}
                             >
-                                General Settings
+                                {t('generalSettings')}
                                 {activeTab === 'general' && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />}
                             </button>
                             <button
                                 onClick={() => setActiveTab('invites')}
                                 className={`pb-4 px-2 text-base font-bold transition-all relative ${activeTab === 'invites' ? 'text-white' : 'text-zinc-550 hover:text-zinc-350'}`}
                             >
-                                Invite &amp; Outgoing ({pendingMembers.length})
+                                {t('inviteAndOutgoing')} {wrapInParens(pendingMembers.length)}
                                 {activeTab === 'invites' && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />}
                             </button>
                         </div>
@@ -220,12 +223,12 @@ export default function ProjectDashboardPage() {
                         <div className="animate-in fade-in duration-300">
                             {activeTab === 'general' ? (
                                 <form onSubmit={handleGeneralSave} className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6 space-y-6">
-                                    <h3 className="text-base font-bold text-white border-b border-zinc-800/40 pb-2">Visual Identity</h3>
+                                    <h3 className="text-base font-bold text-white border-b border-zinc-800/40 pb-2">{t('visualIdentity')}</h3>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {/* Cover image upload */}
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Cover Image</label>
+                                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">{t('coverImage')}</label>
                                             <div
                                                 className="w-full h-36 rounded-xl bg-zinc-950 border border-dashed border-zinc-800 relative cursor-pointer overflow-hidden flex items-center justify-center text-center group hover:border-zinc-700 transition-all"
                                                 onClick={() => coverInputRef.current?.click()}
@@ -248,7 +251,7 @@ export default function ProjectDashboardPage() {
                                                 ) : (
                                                     <div className="p-4 space-y-1">
                                                         <Upload className="h-6 w-6 text-zinc-650 mx-auto group-hover:scale-110 transition-transform" />
-                                                        <div className="text-xs font-semibold text-zinc-400">Change Cover Image</div>
+                                                        <div className="text-xs font-semibold text-zinc-400">{t('changeCoverImage')}</div>
                                                     </div>
                                                 )}
                                             </div>
@@ -256,7 +259,7 @@ export default function ProjectDashboardPage() {
 
                                         {/* Logo upload */}
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Logo / Avatar</label>
+                                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">{t('logoAvatar')}</label>
                                             <div className="flex items-center gap-4">
                                                 <div
                                                     className="w-24 h-24 rounded-2xl bg-zinc-950 border border-dashed border-zinc-800 relative cursor-pointer overflow-hidden flex items-center justify-center text-center group hover:border-zinc-700 transition-all shrink-0"
@@ -280,21 +283,21 @@ export default function ProjectDashboardPage() {
                                                     ) : (
                                                         <div className="p-2 space-y-1">
                                                             <Upload className="h-5 w-5 text-zinc-650 mx-auto group-hover:scale-110 transition-transform" />
-                                                            <div className="text-[10px] font-semibold text-zinc-400">Change Logo</div>
+                                                            <div className="text-[10px] font-semibold text-zinc-400">{t('changeLogo')}</div>
                                                         </div>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-zinc-500">
-                                                    We recommend uploading a square logo. This will show on all aggregated feeds, comments, and project cards.
+                                                    {t('squareLogoHint')}
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <h3 className="text-base font-bold text-white border-b border-zinc-800/40 pb-2 pt-4">General Details</h3>
+                                    <h3 className="text-base font-bold text-white border-b border-zinc-800/40 pb-2 pt-4">{t('generalDetails')}</h3>
 
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Project Title</label>
+                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('projectTitle')}</label>
                                         <input
                                             type="text"
                                             required
@@ -305,7 +308,7 @@ export default function ProjectDashboardPage() {
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Description</label>
+                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('description')}</label>
                                         <textarea
                                             rows={4}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all text-sm font-medium"
@@ -316,7 +319,7 @@ export default function ProjectDashboardPage() {
                                     </div>
 
                                     <div className="space-y-2 relative" style={{ overflow: 'visible' }}>
-                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Tech Stack</label>
+                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('techStack')}</label>
                                         <div
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white cursor-pointer min-h-[50px] flex flex-wrap gap-2 items-center hover:border-zinc-700 transition-colors"
                                             onClick={() => setShowTechDropdown(!showTechDropdown)}
@@ -335,7 +338,7 @@ export default function ProjectDashboardPage() {
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-zinc-700">Select technologies used...</span>
+                                                <span className="text-zinc-700">{t('selectTechnologiesUsed')}</span>
                                             )}
                                         </div>
                                         {showTechDropdown && (
@@ -364,7 +367,7 @@ export default function ProjectDashboardPage() {
                                     </div>
 
                                     <div className="space-y-3">
-                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Links &amp; Social Profiles</label>
+                                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">{t('linksAndSocialProfiles')}</label>
 
                                         <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1 focus-within:border-blue-500/50 transition-all">
                                             <Globe className="h-4 w-4 text-zinc-650 mr-2" />
@@ -411,12 +414,12 @@ export default function ProjectDashboardPage() {
                                             {saveLoading ? (
                                                 <>
                                                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white" />
-                                                    <span>Saving...</span>
+                                                    <span>{t('saving')}</span>
                                                 </>
                                             ) : (
                                                 <>
                                                     <Check className="h-4 w-4" />
-                                                    <span>Save Changes</span>
+                                                    <span>{t('saveChanges')}</span>
                                                 </>
                                             )}
                                         </button>
@@ -427,8 +430,8 @@ export default function ProjectDashboardPage() {
                                     {/* Invite Member */}
                                     <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap">
                                         <div>
-                                            <h3 className="text-base font-bold text-white">Invite a developer</h3>
-                                            <p className="text-xs text-zinc-500 mt-0.5">Search for a user and assign them a role — same flow as Team &amp; Roles.</p>
+                                            <h3 className="text-base font-bold text-white">{t('inviteADeveloper')}</h3>
+                                            <p className="text-xs text-zinc-500 mt-0.5">{t('inviteDeveloperHint')}</p>
                                         </div>
                                         {project && (
                                             <InviteMemberButton
@@ -444,7 +447,7 @@ export default function ProjectDashboardPage() {
                                     {/* Active/Pending Outgoing Invitations */}
                                     <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl overflow-hidden">
                                         <div className="p-4 bg-zinc-950/60 border-b border-zinc-800">
-                                            <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Pending Outgoing Invitations</h3>
+                                            <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t('pendingOutgoingInvitations')}</h3>
                                         </div>
                                         <div className="divide-y divide-zinc-850">
                                             {pendingMembers.length > 0 ? (
@@ -460,7 +463,7 @@ export default function ProjectDashboardPage() {
                                                             </div>
                                                             <div className="min-w-0">
                                                                 <h4 className="font-bold text-white text-sm truncate group-hover:underline">{invite.user.real_name || invite.user.username}</h4>
-                                                                <span className="text-xs text-zinc-550 block truncate">@{invite.user.username} • Invited to be <strong className="text-zinc-400 capitalize">{invite.role}</strong></span>
+                                                                <span className="text-xs text-zinc-550 block truncate">{[formatHandle(invite.user.username), '•', t('invitedToBe')].join(' ')} <strong className="text-zinc-400 capitalize">{invite.role}</strong></span>
                                                             </div>
                                                         </Link>
 
@@ -469,13 +472,13 @@ export default function ProjectDashboardPage() {
                                                             className="flex items-center gap-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 hover:border-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl text-xs font-bold transition-all flex-shrink-0"
                                                         >
                                                             <X className="h-3.5 w-3.5" />
-                                                            <span>Cancel</span>
+                                                            <span>{t('cancel')}</span>
                                                         </button>
                                                     </div>
                                                 ))
                                             ) : (
                                                 <div className="text-center py-10 text-zinc-550 text-xs">
-                                                    No pending invitations found.
+                                                    {t('noPendingInvitationsFound')}
                                                 </div>
                                             )}
                                         </div>

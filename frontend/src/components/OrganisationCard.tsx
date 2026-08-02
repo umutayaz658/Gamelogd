@@ -10,6 +10,8 @@ import { useToast } from '@/context/ToastContext';
 import api from '@/lib/api';
 import { Check, Users, ShieldAlert, Globe, Twitter, Youtube, Plus, CheckSquare } from 'lucide-react';
 
+const ORG_PATH_PREFIX = '/organisations/';
+
 interface OrganisationCardProps {
     organisation: Organisation;
     onFollowToggle?: (slug: string, isFollowing: boolean) => void;
@@ -108,7 +110,7 @@ export default function OrganisationCard({ organisation, onFollowToggle }: Organ
                                 )}
                             </h3>
                             <span className="text-xs text-zinc-550 block font-mono">
-                                /organisations/{organisation.slug}
+                                {[ORG_PATH_PREFIX, organisation.slug].join('')}
                             </span>
                         </Link>
 

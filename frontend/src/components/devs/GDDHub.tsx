@@ -3,17 +3,23 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslation } from '@/lib/useTranslation';
 
-const GDDEditor = dynamic(() => import('./GDDEditor'), {
-    ssr: false,
-    loading: () => (
+function GDDEditorLoadingFallback() {
+    const { t } = useTranslation();
+    return (
         <div className="flex-1 flex items-center justify-center bg-zinc-950">
             <div className="flex flex-col items-center gap-3">
                 <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-zinc-600">Loading editor…</p>
+                <p className="text-xs text-zinc-600">{t('loadingEditor')}</p>
             </div>
         </div>
-    ),
+    );
+}
+
+const GDDEditor = dynamic(() => import('./GDDEditor'), {
+    ssr: false,
+    loading: GDDEditorLoadingFallback,
 });
 import {
     Plus, X, FileText, ChevronRight, Globe, Lock, Download, Clock,
@@ -33,7 +39,14 @@ import {
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import BoardSwitcher from './BoardSwitcher';
 import CategoryManager from './CategoryManager';
-import { cn, getImageUrl } from '@/lib/utils';
+import { cn, getImageUrl, formatHandle } from '@/lib/utils';
+
+const BULLET_DOT = '•';
+const GML_PREFIX = 'GML-';
+const ELLIPSIS = '...';
+const ARROW_UP_RIGHT = '↗';
+const MIDDLE_DOT = '·';
+const SLASH_SEPARATOR = '/';
 
 // Helper to format ISO timestamp as relative time
 function formatRelativeTime(isoString: string): string {
@@ -276,7 +289,7 @@ function renderNode(node: MDNode, idx: number): React.ReactNode {
             <ul key={idx} className="space-y-1 my-3">
                 {node.items.map((item, i) => (
                     <li key={i} className="text-zinc-300 text-sm leading-6 flex gap-2 items-start">
-                        <span className="text-blue-400 mt-1.5 flex-shrink-0">•</span>
+                        <span className="text-blue-400 mt-1.5 flex-shrink-0" aria-hidden="true">{BULLET_DOT}</span>
                         <span>{ri(item)}</span>
                     </li>
                 ))}
@@ -286,7 +299,7 @@ function renderNode(node: MDNode, idx: number): React.ReactNode {
             <ol key={idx} className="space-y-1 my-3 pl-1">
                 {node.items.map((item, i) => (
                     <li key={i} className="text-zinc-300 text-sm leading-6 flex gap-2 items-start">
-                        <span className="text-blue-500 font-bold flex-shrink-0 w-5 text-right">{i + 1}.</span>
+                        <span className="text-blue-500 font-bold flex-shrink-0 w-5 text-right">{[i + 1, '.'].join('')}</span>
                         <span>{ri(item)}</span>
                     </li>
                 ))}
@@ -332,7 +345,7 @@ function renderNode(node: MDNode, idx: number): React.ReactNode {
             return (
                 <span key={idx} title={node.taskTitle}
                     className={cn('inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border', cls)}>
-                    {icon} GML-{node.id}
+                    {[icon, GML_PREFIX + node.id].join(' ')}
                 </span>
             );
         }
@@ -390,6 +403,7 @@ interface CreateDocModalProps {
 }
 
 function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: CreateDocModalProps) {
+    const { t } = useTranslation();
     const { data: workspaceData, setGDDCategories, setGDDDocs } = useWorkspace();
     const categories = workspaceData.gddCategories ?? DEFAULT_GDD_CATEGORIES;
 
@@ -407,7 +421,7 @@ function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: 
             <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
                 <div className="flex items-center justify-between p-5 border-b border-zinc-800">
                     <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-blue-400" /> New GDD Page
+                        <FileText className="w-4 h-4 text-blue-400" /> {t('newGDDPage')}
                     </h2>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-all">
                         <X className="w-4 h-4" />
@@ -422,7 +436,7 @@ function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: 
                 }} className="p-5 space-y-4">
                     <div className="flex gap-3">
                         <div>
-                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Icon</label>
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('iconLabel')}</label>
                             <input
                                 value={emoji}
                                 onChange={(e) => setEmoji(e.target.value)}
@@ -431,7 +445,7 @@ function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: 
                             />
                         </div>
                         <div className="flex-1">
-                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Page Title *</label>
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('pageTitleRequired')}</label>
                             <input
                                 autoFocus
                                 value={title}
@@ -444,13 +458,13 @@ function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: 
                     </div>
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Category</label>
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('category')}</label>
                             <button
                                 type="button"
                                 onClick={() => setShowCategoryManager(true)}
                                 className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors"
                             >
-                                <Settings className="w-3 h-3" /> Manage
+                                <Settings className="w-3 h-3" /> {t('manage')}
                             </button>
                         </div>
                         <div className="grid grid-cols-2 gap-2 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin-dark">
@@ -466,11 +480,11 @@ function CreateDocModal({ onClose, onSubmit, defaultSection = 'introduction' }: 
                     <div className="flex gap-3 pt-1">
                         <button type="button" onClick={onClose}
                             className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">
-                            Cancel
+                            {t('cancel')}
                         </button>
                         <button type="submit" disabled={!title.trim()}
                             className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40">
-                            Create Page
+                            {t('createPage')}
                         </button>
                     </div>
                 </form>
@@ -507,6 +521,7 @@ function CommentPanel({
     onDelete: (id: string) => void;
     currentUser: string;
 }) {
+    const { t } = useTranslation();
     const { hasPermission } = useWorkspace();
     const [text, setText] = useState('');
     const active = comments.filter(c => !c.resolved);
@@ -516,7 +531,7 @@ function CommentPanel({
         <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 p-4 border-b border-zinc-800 flex-shrink-0">
                 <MessageSquare className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Comments</span>
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('comments')}</span>
                 {active.length > 0 && (
                     <span className="ml-auto text-[10px] bg-blue-500/20 text-blue-400 font-bold px-1.5 py-0.5 rounded-full">
                         {active.length}
@@ -528,14 +543,14 @@ function CommentPanel({
                 {active.length === 0 && resolved.length === 0 && (
                     <div className="text-center py-8 text-zinc-600">
                         <StickyNote className="w-7 h-7 mx-auto mb-2 opacity-40" />
-                        <p className="text-xs">No comments yet</p>
+                        <p className="text-xs">{t('noCommentsYetBrief')}</p>
                     </div>
                 )}
 
                 {active.map(comment => (
                     <div key={comment.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-zinc-300">@{comment.author}</span>
+                            <span className="text-xs font-bold text-zinc-300">{formatHandle(comment.author)}</span>
                             <span className="text-[10px] text-zinc-600">
                                 {new Date(comment.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
                             </span>
@@ -547,7 +562,7 @@ function CommentPanel({
                                     onClick={() => onResolve(comment.id)}
                                     className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors"
                                 >
-                                    <Check className="w-3 h-3" /> Resolve
+                                    <Check className="w-3 h-3" /> {t('resolve')}
                                 </button>
                             )}
                             {(comment.author === currentUser || hasPermission('gdd.comment.delete_any')) && (
@@ -566,14 +581,14 @@ function CommentPanel({
                     <details className="group">
                         <summary className="text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400 transition-colors list-none flex items-center gap-1.5 py-1">
                             <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-                            {resolved.length} resolved
+                            {[resolved.length, t('resolvedLower')].join(' ')}
                         </summary>
                         <div className="mt-2 space-y-2">
                             {resolved.map(comment => (
                                 <div key={comment.id} className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 opacity-60">
                                     <div className="flex items-center gap-2 mb-1">
                                         <Check className="w-3 h-3 text-emerald-500" />
-                                        <span className="text-[10px] text-zinc-500">@{comment.author}</span>
+                                        <span className="text-[10px] text-zinc-500">{formatHandle(comment.author)}</span>
                                     </div>
                                     <p className="text-xs text-zinc-600 line-through leading-relaxed">{comment.text}</p>
                                 </div>
@@ -597,7 +612,7 @@ function CommentPanel({
                     disabled={!text.trim()}
                     className="mt-2 w-full py-1.5 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold transition-all disabled:opacity-40"
                 >
-                    Post Comment
+                    {t('postComment')}
                 </button>
             </div>
         </div>
@@ -615,6 +630,7 @@ function VersionHistoryPanel({
     currentContent: string;
     onRestore: (content: string) => void;
 }) {
+    const { t } = useTranslation();
     const [previewRev, setPreviewRev] = useState<string | null>(null);
 
     if (revisions.length === 0) {
@@ -622,12 +638,12 @@ function VersionHistoryPanel({
             <div className="flex flex-col h-full">
                 <div className="flex items-center gap-2 p-4 border-b border-zinc-800 flex-shrink-0">
                     <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                    <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Version History</span>
+                    <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('versionHistory')}</span>
                 </div>
                 <div className="flex-1 flex items-center justify-center text-center text-zinc-600 p-4">
                     <div>
                         <RotateCcw className="w-7 h-7 mx-auto mb-2 opacity-40" />
-                        <p className="text-xs">Versions are saved<br />automatically on each save</p>
+                        <p className="text-xs">{t('versionsSavedAutomaticallyDesc')}</p>
                     </div>
                 </div>
             </div>
@@ -638,17 +654,17 @@ function VersionHistoryPanel({
         <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 p-4 border-b border-zinc-800 flex-shrink-0">
                 <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Version History</span>
-                <span className="ml-auto text-[10px] text-zinc-600">{revisions.length} saved</span>
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('versionHistory')}</span>
+                <span className="ml-auto text-[10px] text-zinc-600">{[revisions.length, t('savedLower')].join(' ')}</span>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin-dark p-3 space-y-2">
                 {/* Current version */}
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3">
                     <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-blue-400">Current</span>
-                        <span className="text-[10px] text-zinc-500">v{revisions.length + 1}</span>
+                        <span className="text-[10px] font-bold text-blue-400">{t('current')}</span>
+                        <span className="text-[10px] text-zinc-500">{['v', revisions.length + 1].join('')}</span>
                     </div>
-                    <p className="text-[11px] text-zinc-500">{currentContent.length} chars</p>
+                    <p className="text-[11px] text-zinc-500">{[currentContent.length, t('charsLower')].join(' ')}</p>
                 </div>
 
                 {revisions.map((rev, i) => (
@@ -660,15 +676,15 @@ function VersionHistoryPanel({
                         onClick={() => setPreviewRev(previewRev === rev.id ? null : rev.id)}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold text-zinc-400">v{revisions.length - i}</span>
+                            <span className="text-[10px] font-bold text-zinc-400">{['v', revisions.length - i].join('')}</span>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onRestore(rev.content); }}
                                 className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-all font-bold"
                             >
-                                <RotateCcw className="w-2.5 h-2.5" /> Restore
+                                <RotateCcw className="w-2.5 h-2.5" /> {t('restore')}
                             </button>
                         </div>
-                        <p className="text-[10px] text-zinc-600">By @{rev.editedBy}</p>
+                        <p className="text-[10px] text-zinc-600">{[t('byPrefix'), formatHandle(rev.editedBy)].join(' ')}</p>
                         <p className="text-[10px] text-zinc-700">
                             {new Date(rev.editedAt).toLocaleDateString('en', {
                                 month: 'short', day: 'numeric',
@@ -678,7 +694,7 @@ function VersionHistoryPanel({
                         {previewRev === rev.id && (
                             <div className="pt-2 border-t border-zinc-800 mt-2">
                                 <p className="text-[10px] text-zinc-500 line-clamp-4 font-mono leading-relaxed">
-                                    {rev.content.slice(0, 200)}...
+                                    {[rev.content.slice(0, 200), ELLIPSIS].join('')}
                                 </p>
                             </div>
                         )}
@@ -707,6 +723,7 @@ function DocEditor({
     onBack: () => void;
     currentUser: string;
 }) {
+    const { t } = useTranslation();
     const [content, setContent] = useState(doc.content);
     const [mode, setMode] = useState<EditorMode>('split');
     const [isPublic, setIsPublic] = useState(doc.isPublic);
@@ -720,16 +737,6 @@ function DocEditor({
     // Word count
     const wordCount = useMemo(() => content.trim().split(/\s+/).filter(Boolean).length, [content]);
     const readingTime = useMemo(() => Math.max(1, Math.ceil(wordCount / 200)), [wordCount]);
-
-    // Auto-save debounce
-    useEffect(() => {
-        if (!isDirty) return;
-        if (saveTimer.current) clearTimeout(saveTimer.current);
-        saveTimer.current = setTimeout(() => {
-            handleSave(false);
-        }, 2000);
-        return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-    }, [content, isDirty]);
 
     const handleSave = useCallback((explicit = true) => {
         const revision: GDDDocRevision = {
@@ -749,6 +756,16 @@ function DocEditor({
         });
         setIsDirty(false);
     }, [doc, content, isPublic, currentUser, onUpdate]);
+
+    // Auto-save debounce
+    useEffect(() => {
+        if (!isDirty) return;
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => {
+            handleSave(false);
+        }, 2000);
+        return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    }, [content, isDirty, handleSave]);
 
     const handleContentChange = (val: string) => {
         setContent(val);
@@ -826,7 +843,7 @@ function DocEditor({
                         {meta.label}
                     </span>
                     {isDirty && (
-                        <span className="text-[10px] text-amber-400 animate-pulse flex-shrink-0">● Unsaved</span>
+                        <span className="text-[10px] text-amber-400 animate-pulse flex-shrink-0">{[BULLET_DOT, t('unsaved')].join(' ')}</span>
                     )}
                 </div>
 
@@ -863,8 +880,8 @@ function DocEditor({
                             <Download className="w-3.5 h-3.5" />
                         </button>
                         <div className="absolute right-0 top-full mt-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden hidden group-hover:block z-10 w-36">
-                            <button onClick={exportMD} className="w-full text-left px-4 py-2.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-all">.md Markdown</button>
-                            <button onClick={() => window.print()} className="w-full text-left px-4 py-2.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-all">Print / PDF</button>
+                            <button onClick={exportMD} className="w-full text-left px-4 py-2.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-all">{t('mdMarkdownExport')}</button>
+                            <button onClick={() => window.print()} className="w-full text-left px-4 py-2.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-all">{t('printPdf')}</button>
                         </div>
                     </div>
 
@@ -878,7 +895,7 @@ function DocEditor({
                                 : 'bg-zinc-800 text-zinc-500 cursor-default'
                         )}
                     >
-                        <Save className="w-3.5 h-3.5" /> Save
+                        <Save className="w-3.5 h-3.5" /> {t('save')}
                     </button>
                 </div>
             </div>
@@ -906,8 +923,8 @@ function DocEditor({
 
                     {/* Stats */}
                     <div className="ml-auto flex items-center gap-3 text-[10px] text-zinc-600 flex-shrink-0 pl-2">
-                        <span>{wordCount} words</span>
-                        <span>{readingTime} min read</span>
+                        <span>{[wordCount, t('wordsLower')].join(' ')}</span>
+                        <span>{[readingTime, t('minReadLower')].join(' ')}</span>
                     </div>
                 </div>
             )}
@@ -940,7 +957,7 @@ function DocEditor({
                                     }}
                                     className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xl shadow-violet-900/40 transition-all"
                                 >
-                                    <Wand2 className="w-3.5 h-3.5" /> Convert to Kanban Task
+                                    <Wand2 className="w-3.5 h-3.5" /> {t('convertToKanbanTask')}
                                 </button>
                             </div>
                         )}
@@ -956,8 +973,8 @@ function DocEditor({
                         {isPublic && (
                             <div className="mb-6 flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2">
                                 <Globe className="w-3.5 h-3.5" />
-                                <span className="font-semibold">Public Wiki View</span>
-                                <span className="text-emerald-600">— visible to everyone</span>
+                                <span className="font-semibold">{t('publicWikiView')}</span>
+                                <span className="text-emerald-600">{t('visibleToEveryoneDash')}</span>
                             </div>
                         )}
                         <GDDMarkdownRenderer content={content} tasks={tasks} />
@@ -974,14 +991,14 @@ function DocEditor({
                                 className={cn('flex-1 py-2 text-[10px] font-bold transition-all flex items-center justify-center gap-1.5',
                                     rightPanel === 'history' ? 'text-zinc-200 border-b-2 border-blue-500' : 'text-zinc-600 hover:text-zinc-400')}
                             >
-                                <Clock className="w-3 h-3" /> History
+                                <Clock className="w-3 h-3" /> {t('history')}
                             </button>
                             <button
                                 onClick={() => setRightPanel('comments')}
                                 className={cn('flex-1 py-2 text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 relative',
                                     rightPanel === 'comments' ? 'text-zinc-200 border-b-2 border-blue-500' : 'text-zinc-600 hover:text-zinc-400')}
                             >
-                                <MessageSquare className="w-3 h-3" /> Comments
+                                <MessageSquare className="w-3 h-3" /> {t('comments')}
                                 {activeComments > 0 && (
                                     <span className="absolute top-1 right-2 w-4 h-4 bg-blue-500 text-white text-[9px] rounded-full flex items-center justify-center">
                                         {activeComments}
@@ -1051,6 +1068,7 @@ function DocumentOutline({
     content: string;
     onSelectPage: (id: string) => void;
 }) {
+    const { t } = useTranslation();
     const outlineItems = useMemo(() => {
         const items: OutlineItem[] = [];
         if (!content) return items;
@@ -1102,9 +1120,9 @@ function DocumentOutline({
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-zinc-650 select-none">
                 <List className="w-8 h-8 mb-2 opacity-30 text-zinc-650" />
-                <p className="text-xs font-semibold text-zinc-500">Empty Outline</p>
+                <p className="text-xs font-semibold text-zinc-500">{t('emptyOutline')}</p>
                 <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed max-w-[180px]">
-                    Add headings (# H1, ## H2) or subpages to see the outline structure.
+                    {t('addHeadingsOutlineDesc')}
                 </p>
             </div>
         );
@@ -1139,7 +1157,7 @@ function DocumentOutline({
                         >
                             <span className="text-sm select-none flex-shrink-0">{item.pageEmoji || '📄'}</span>
                             <span className="truncate flex-1">{item.text}</span>
-                            <span className="text-[9px] text-zinc-600 flex-shrink-0 font-medium">↗</span>
+                            <span className="text-[9px] text-zinc-600 flex-shrink-0 font-medium" aria-hidden="true">{ARROW_UP_RIGHT}</span>
                         </button>
                     );
                 }
@@ -1271,6 +1289,7 @@ function DocTree({
     searchQuery: string;
     onSearchChange: (q: string) => void;
 }) {
+    const { t } = useTranslation();
     const { data: wsData } = useWorkspace();
     const categories = wsData.gddCategories ?? DEFAULT_GDD_CATEGORIES;
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -1310,7 +1329,7 @@ function DocTree({
                     onClick={() => onNew()}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 text-xs font-semibold transition-all"
                 >
-                    <Plus className="w-3.5 h-3.5" /> New Document
+                    <Plus className="w-3.5 h-3.5" /> {t('newDocument')}
                 </button>
             </div>
 
@@ -1396,6 +1415,7 @@ function useGDDToKanban(setTasks: (fn: (prev: Task[]) => Task[]) => void, column
 // ─── Main GDD Hub ─────────────────────────────────────────────────────────────
 
 export default function GDDHub() {
+    const { t } = useTranslation();
     const { data, setGDDDocs, setBalancingTables, setTasks, logActivity, activeWorkspace, activeBoard, hasPermission } = useWorkspace();
     const { user } = useAuth();
     const { gddDocs, balancingTables, dialogueTrees, tasks, columns, gddCategories } = data;
@@ -1518,7 +1538,7 @@ export default function GDDHub() {
         setGDDDocs(prev => prev.map(d => d.id === updated.id ? updated : d));
         logActivity('gdd_edited', `GDD page "${updated.title}" updated.`, '📝');
         setEditingDoc(updated);
-    }, [setGDDDocs, logActivity]);
+    }, [setGDDDocs, logActivity, setEditingDoc]);
 
     const handleDeleteDoc = useCallback((id: string) => {
         setConfirmDeleteId(id);
@@ -1604,7 +1624,7 @@ export default function GDDHub() {
                                     {docComments.length === 0 ? (
                                         <div className="text-center py-10">
                                             <MessageSquare className="w-6 h-6 mx-auto mb-2 text-zinc-700" />
-                                            <p className="text-xs text-zinc-700">No comments yet</p>
+                                            <p className="text-xs text-zinc-700">{t('noCommentsYetBrief')}</p>
                                         </div>
                                     ) : docComments.map(comment => (
                                         <div
@@ -1624,7 +1644,7 @@ export default function GDDHub() {
                                             <div className="flex items-center justify-between mb-1">
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="font-bold text-zinc-300">{comment.author}</span>
-                                                    {comment.resolved && <span className="text-[9px] text-emerald-500 font-bold">Resolved</span>}
+                                                    {comment.resolved && <span className="text-[9px] text-emerald-500 font-bold">{t('resolvedCapitalized')}</span>}
                                                 </div>
                                                 <div className="flex items-center gap-1">
                                                     {!comment.resolved && comment.author === currentUser && editingCommentId !== comment.id && (
@@ -1636,7 +1656,7 @@ export default function GDDHub() {
                                                             }}
                                                             className="text-[10px] text-zinc-500 hover:text-zinc-300 px-1"
                                                         >
-                                                            Edit
+                                                            {t('edit')}
                                                         </button>
                                                     )}
                                                     {hasPermission('gdd.comment.resolve') && (
@@ -1666,7 +1686,7 @@ export default function GDDHub() {
                                                             }}
                                                             className="text-[10px] text-zinc-500 hover:text-red-400 px-1"
                                                         >
-                                                            Delete
+                                                            {t('delete')}
                                                         </button>
                                                     )}
                                                 </div>
@@ -1684,7 +1704,7 @@ export default function GDDHub() {
                                                             onClick={() => setEditingCommentId(null)}
                                                             className="px-2 py-1 rounded bg-zinc-800 text-[10px] text-zinc-400 hover:text-white"
                                                         >
-                                                            Cancel
+                                                            {t('cancel')}
                                                         </button>
                                                         <button
                                                             onClick={() => {
@@ -1698,7 +1718,7 @@ export default function GDDHub() {
                                                             }}
                                                             className="px-2 py-1 rounded bg-blue-600 text-[10px] text-white font-bold"
                                                         >
-                                                            Save
+                                                            {t('save')}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -1758,7 +1778,7 @@ export default function GDDHub() {
                 <div className="px-3 pt-3 pb-2 border-b border-zinc-800 flex-shrink-0">
                     <div className="flex items-center gap-2">
                         <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">GDD Hub</span>
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t('gddHub')}</span>
                     </div>
                 </div>
                 <DocTree
@@ -1780,16 +1800,15 @@ export default function GDDHub() {
                         <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600/20 to-violet-600/20 border border-blue-500/20 flex items-center justify-center mx-auto mb-6">
                             <BookOpen className="w-10 h-10 text-blue-400" />
                         </div>
-                        <h2 className="text-2xl font-black text-white mb-3">Game Design Document Hub</h2>
+                        <h2 className="text-2xl font-black text-white mb-3">{t('gameDesignDocumentHub')}</h2>
                         <p className="text-zinc-500 text-sm leading-relaxed mb-8 max-w-md mx-auto">
-                            Your Notion-style workspace for designing your game. Create design documents,
-                            balancing tables, and link them directly to your Kanban tasks.
+                            {t('gddHubEmptyStateDesc')}
                         </p>
                         <button
                             onClick={() => setShowCreateModal(true)}
                             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/30"
                         >
-                            <Plus className="w-4 h-4" /> Create Your First Document
+                            <Plus className="w-4 h-4" /> {t('createYourFirstDocument')}
                         </button>
 
                         <div className="mt-12 grid grid-cols-3 gap-4 text-left">
@@ -1814,19 +1833,22 @@ export default function GDDHub() {
                                 <div className="flex items-center gap-3">
                                     <BoardSwitcher />
 
-                                    <span className="text-zinc-700 text-lg font-light">/</span>
+                                    <span className="text-zinc-700 text-lg font-light" aria-hidden="true">{SLASH_SEPARATOR}</span>
 
-                                    <h2 className="text-xl font-bold text-white">GDD Hub</h2>
+                                    <h2 className="text-xl font-bold text-white">{t('gddHub')}</h2>
                                 </div>
                                 <p className="text-sm text-zinc-500 mt-0.5">
-                                    {resolvedDocs.filter(d => !d.parentId).length} documents · {resolvedDocs.filter(d => d.isPublic && !d.parentId).length} public
+                                    {[
+                                        resolvedDocs.filter(d => !d.parentId).length, t('documentsLower'), MIDDLE_DOT,
+                                        resolvedDocs.filter(d => d.isPublic && !d.parentId).length, t('publicLower'),
+                                    ].join(' ')}
                                 </p>
                             </div>
                             <button
                                 onClick={() => setShowCreateModal(true)}
                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20"
                             >
-                                <Plus className="w-4 h-4" /> New Document
+                                <Plus className="w-4 h-4" /> {t('newDocument')}
                             </button>
                         </div>
 
@@ -1885,7 +1907,7 @@ export default function GDDHub() {
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">{preview}...</p>
+                                                    <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">{[preview, ELLIPSIS].join('')}</p>
                                                     <div className="flex items-center gap-3 text-[10px] text-zinc-600">
                                                         <span className="flex items-center gap-1">
                                                             <Clock className="w-3 h-3" /> {formatRelativeTime(doc.lastEdited)}

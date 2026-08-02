@@ -194,7 +194,7 @@ export default function NotificationsPage() {
                                 ) : filteredNotifications.length > 0 ? (
                                     filteredNotifications.map((notif) => {
                                         const type = resolveNotificationType(notif.verb, isSelfActor(notif));
-                                        const text = getNotificationText(type, notif.verb, t);
+                                        const text = getNotificationText(type, notif.verb, t) + '.';
                                         const isSystem = isSystemNotification(type);
                                         const isFollowRequest = type === 'follow_request';
                                         const isProcessing = processingRequest === notif.actor.username;
@@ -215,7 +215,7 @@ export default function NotificationsPage() {
                                                     onClick={() => { if (clickTarget) router.push(clickTarget); }}
                                                 >
                                                     <p className="text-zinc-300 flex-1">
-                                                        {text}. <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
+                                                        {text} <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
                                                     </p>
                                                 </div>
                                             );
@@ -247,7 +247,7 @@ export default function NotificationsPage() {
                                                         <Link href={`/${notif.actor.username}`} className="font-bold text-white hover:underline">
                                                             {notif.actor.username}
                                                         </Link>{' '}
-                                                        <span className="text-zinc-400">{text}.</span>{' '}
+                                                        <span className="text-zinc-400">{text}</span>{' '}
                                                         <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
                                                     </p>
 

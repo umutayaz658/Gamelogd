@@ -39,6 +39,7 @@ PERMISSION_CATALOG = {
         ("localisation.suggestion.create", "Suggest translations"),
         ("localisation.suggestion.approve", "Approve translations"),
         ("localisation.glossary.manage", "Manage glossary terms"),
+        ("localisation.language.manage", "Add/remove the project's supported languages"),
     ],
     "team": [
         ("team.view", "View Team & Roles"),
@@ -53,6 +54,16 @@ PERMISSION_CATALOG = {
         ("feedback.mark_resolved", "Mark feedback as resolved"),
         ("feedback.convert_to_task", "Convert feedback to a Kanban task"),
         ("feedback.delete", "Delete feedback"),
+    ],
+    # Deliberately separate from "localisation" above: that category governs whole-blob writes
+    # to the Devs-only Localisation Manager by workspace members. This one governs moderation of
+    # the public, membership-free community translation tab on a project's profile page (see
+    # core.models.CommunityTranslation) — conflating the two would grant internal blob-write
+    # authority to public-feature moderators and vice-versa.
+    "community_translation": [
+        ("community_translation.approve", "Approve community translations"),
+        ("community_translation.reject", "Reject community translations"),
+        ("community_translation.delete", "Delete community translations"),
     ],
     "settings": [
         ("settings.edit", "Edit workspace settings"),
@@ -88,6 +99,7 @@ PERMISSION_HIERARCHY = {
         {"label": "View", "description": "Browse the Localisation Manager.", "keys": ["localisation.view"]},
         {"label": "Suggest", "description": "Suggest translations for existing keys.", "keys": ["localisation.suggestion.create"]},
         {"label": "Manage keys", "description": "Create keys, approve suggestions, and manage the glossary.", "keys": ["localisation.key.create", "localisation.suggestion.approve", "localisation.glossary.manage"]},
+        {"label": "Manage languages", "description": "Add or remove the project's supported target languages.", "keys": ["localisation.language.manage"]},
         {"label": "Delete keys", "description": "Delete translation keys.", "keys": ["localisation.key.delete"]},
     ],
     "team": [
@@ -101,6 +113,10 @@ PERMISSION_HIERARCHY = {
         {"label": "Convert to task", "description": "Convert feedback into a task on the Kanban board (and pull it back).", "keys": ["feedback.convert_to_task"]},
         {"label": "Delete", "description": "Delete any feedback on this project.", "keys": ["feedback.delete"]},
     ],
+    "community_translation": [
+        {"label": "Moderate", "description": "Approve or reject community-submitted translations.", "keys": ["community_translation.approve", "community_translation.reject"]},
+        {"label": "Delete", "description": "Delete any community translation on this project.", "keys": ["community_translation.delete"]},
+    ],
     "settings": [
         {"label": "Edit settings", "description": "Edit workspace settings.", "keys": ["settings.edit"]},
     ],
@@ -113,7 +129,16 @@ TOOL_WRITE_PERMISSIONS = {
     "kanban": ["kanban.task.create", "kanban.task.edit_own", "kanban.task.edit_any", "kanban.column.manage"],
     "gdd": ["gdd.doc.create", "gdd.doc.edit"],
     "assets": ["assets.create"],
-    "localisation": ["localisation.key.create", "localisation.suggestion.create"],
+    # KNOWN GAP (round 2): this check is whole-blob, not field-scoped — anyone with either key
+    # can write the entire board's data (translationKeys AND glossary AND, in principle, any
+    # other field in the same WorkspaceState row), not just their own suggestion. Narrowing this
+    # list would be a regression (a suggestion.create-only member couldn't save their own
+    # suggestion), not a fix; the real fix is a field-scoped WorkspaceState diff/merge write,
+    # deferred to a later round since it touches every Devs tool, not just localisation. The
+    # public community-translation feature (api.views.CommunityTranslationViewSet) deliberately
+    # never goes through this coarse path — it writes to a real model, with the one blob write
+    # it does perform being moderator-gated, single-key, and version-checked.
+    "localisation": ["localisation.key.create", "localisation.suggestion.create", "localisation.language.manage"],
     "members": ["team.invite", "team.role.assign", "team.role.manage", "team.remove"],
     "settings": ["settings.edit"],
 }
@@ -127,7 +152,13 @@ TOOL_VIEW_PERMISSIONS = {
     "settings": ["settings.edit"],
 }
 
-_MEMBER_EXCLUDED_PREFIXES = ("team.", "settings.")
+# community_translation.* is moderation of the PUBLIC translation surface (see the catalog
+# comment above) and localisation.language.manage is project-level configuration — neither
+# belongs in the rank-and-file Member baseline, which would otherwise absorb every new
+# non-delete key automatically. core/migrations/0068 strips these from already-seeded
+# Member roles.
+_MEMBER_EXCLUDED_PREFIXES = ("team.", "settings.", "community_translation.")
+_MEMBER_EXCLUDED_KEYS = {"localisation.language.manage"}
 
 
 def _member_permissions():
@@ -135,6 +166,7 @@ def _member_permissions():
         key for key in ALL_PERMISSION_KEYS
         if not key.endswith(".delete") and not key.endswith(".delete_any")
         and not key.startswith(_MEMBER_EXCLUDED_PREFIXES)
+        and key not in _MEMBER_EXCLUDED_KEYS
     ]
 
 

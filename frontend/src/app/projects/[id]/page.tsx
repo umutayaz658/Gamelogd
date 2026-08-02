@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
 import { Project, Post } from '@/types';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, wrapInParens } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/url';
 import { Users, Layout, Info, Edit2, Plus, Settings, ChevronDown, UserPlus, UserCheck, Bug, Calendar, Globe, Twitter, Youtube, Link2 } from 'lucide-react';
 import Link from 'next/link';
@@ -16,7 +16,11 @@ import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import { useTranslation } from '@/lib/useTranslation';
 import MemberManager from '@/components/team/MemberManager';
 import FeedbackPanel from '@/components/devs/FeedbackPanel';
+import CommunityLocalisationPanel from '@/components/localisation/CommunityLocalisationPanel';
 import { useConfirm } from '@/context/ConfirmContext';
+
+const TWITTER_LABEL = 'Twitter';
+const YOUTUBE_LABEL = 'YouTube';
 
 export default function ProjectDetailPage() {
     const params = useParams();
@@ -28,7 +32,7 @@ export default function ProjectDetailPage() {
 
     const [project, setProject] = useState<Project | null>(null);
     const [devlogs, setDevlogs] = useState<Post[]>([]);
-    const [activeTab, setActiveTab] = useState<'about' | 'devlogs' | 'feedback' | 'participants'>('devlogs');
+    const [activeTab, setActiveTab] = useState<'about' | 'devlogs' | 'feedback' | 'translations' | 'participants'>('devlogs');
     const [loading, setLoading] = useState(true);
 
     // Status Dropdown
@@ -41,7 +45,7 @@ export default function ProjectDetailPage() {
     const [showDevlogModal, setShowDevlogModal] = useState(false);
     const [isInviteActionLoading, setIsInviteActionLoading] = useState(false);
 
-    const fetchProjectData = async () => {
+    const fetchProjectData = useCallback(async () => {
         if (!projectId) return;
         setLoading(true);
         try {
@@ -57,11 +61,11 @@ export default function ProjectDetailPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [projectId]);
 
     useEffect(() => {
         fetchProjectData();
-    }, [projectId]);
+    }, [fetchProjectData]);
 
     const isOwner = user?.id === project?.owner.id;
     const userMember = project?.members?.find(m => m.user.id === user?.id);
@@ -198,7 +202,7 @@ export default function ProjectDetailPage() {
                                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-400">
                                             <span className="flex items-center gap-1">
                                                 <Calendar className="h-3.5 w-3.5" />
-                                                {t('started')}: {new Date(project.created_at).toLocaleDateString()}
+                                                {t('started')} {new Date(project.created_at).toLocaleDateString()}
                                             </span>
                                         </div>
                                     </div>
@@ -213,14 +217,14 @@ export default function ProjectDetailPage() {
                                                 disabled={isInviteActionLoading}
                                                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-emerald-900/20"
                                             >
-                                                Accept Invite
+                                                {t('acceptInvite')}
                                             </button>
                                             <button
                                                 onClick={handleDeclineInvite}
                                                 disabled={isInviteActionLoading}
                                                 className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200"
                                             >
-                                                Decline
+                                                {t('decline')}
                                             </button>
                                         </>
                                     ) : (
@@ -239,7 +243,7 @@ export default function ProjectDetailPage() {
                                                     onClick={() => setShowDevlogModal(true)}
                                                     className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
                                                 >
-                                                    <Plus className="w-4 h-4" /> Log Dev
+                                                    <Plus className="w-4 h-4" /> {t('logDev')}
                                                 </button>
                                             )}
                                             {/* Follow Button */}
@@ -299,19 +303,19 @@ export default function ProjectDetailPage() {
                                     {project.website && (
                                         <a href={sanitizeUrl(project.website)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Globe className="h-4 w-4" />
-                                            <span className="hidden md:inline">Website</span>
+                                            <span className="hidden md:inline">{t('website')}</span>
                                         </a>
                                     )}
                                     {project.twitter && (
                                         <a href={sanitizeUrl(project.twitter)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Twitter className="h-4 w-4" />
-                                            <span className="hidden md:inline">Twitter</span>
+                                            <span className="hidden md:inline">{TWITTER_LABEL}</span>
                                         </a>
                                     )}
                                     {project.youtube && (
                                         <a href={sanitizeUrl(project.youtube)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Youtube className="h-4 w-4" />
-                                            <span className="hidden md:inline">YouTube</span>
+                                            <span className="hidden md:inline">{YOUTUBE_LABEL}</span>
                                         </a>
                                     )}
                                     {(project.extra_links ?? []).map((link, i) => (
@@ -338,7 +342,7 @@ export default function ProjectDetailPage() {
                             >
                                 <div className="flex items-center gap-2">
                                     <Layout className="h-5 w-5" />
-                                    {t('devlogs')} ({devlogs.length})
+                                    {t('devlogs')} {wrapInParens(devlogs.length)}
                                 </div>
                                 {activeTab === 'devlogs' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
@@ -364,9 +368,22 @@ export default function ProjectDetailPage() {
                             >
                                 <div className="flex items-center gap-2">
                                     <Bug className="h-5 w-5" />
-                                    Feedback
+                                    {t('feedback')}
                                 </div>
                                 {activeTab === 'feedback' && (
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('translations')}
+                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'translations' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Globe className="h-5 w-5" />
+                                    {t('localisation')}
+                                </div>
+                                {activeTab === 'translations' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
                                 )}
                             </button>
@@ -492,6 +509,12 @@ export default function ProjectDetailPage() {
                                 </div>
                             ) : activeTab === 'feedback' ? (
                                 <FeedbackPanel
+                                    projectId={project.id}
+                                    organisationId={project.organisation ?? null}
+                                    stickyTopClassName="top-16"
+                                />
+                            ) : activeTab === 'translations' ? (
+                                <CommunityLocalisationPanel
                                     projectId={project.id}
                                     organisationId={project.organisation ?? null}
                                     stickyTopClassName="top-16"

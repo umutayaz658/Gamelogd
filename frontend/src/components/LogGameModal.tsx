@@ -7,6 +7,10 @@ import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 
+const RATING_SCALE_MIN = '0.0';
+const RATING_SCALE_MID = '5.0';
+const RATING_SCALE_MAX = '10.0';
+
 interface Game {
     id: number;
     title: string;
@@ -93,7 +97,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setSelectedGame(initialGame);
             setStep(2);
         }
-    }, [isOpen, initialGame, existingReview]);
+    }, [isOpen, initialGame, existingReview, isReplay, user?.username]);
 
     // Search Logic
     useEffect(() => {
@@ -238,7 +242,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                             className="w-full flex items-center gap-4 p-3 hover:bg-zinc-800 rounded-xl transition-colors text-left group"
                                         >
                                             <div className="h-16 w-12 bg-zinc-800 rounded-lg overflow-hidden flex-shrink-0 shadow-lg">
-                                                {game.cover_image && <img src={getImageUrl(game.cover_image)} className="w-full h-full object-cover" />}
+                                                {game.cover_image && <img src={getImageUrl(game.cover_image)} alt="" className="w-full h-full object-cover" />}
                                             </div>
                                             <div className="min-w-0">
                                                 <div className="font-bold text-base text-zinc-200 group-hover:text-white truncate">{game.title}</div>
@@ -338,16 +342,16 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         />
                                     </div>
                                     <div className="flex justify-between text-[10px] text-zinc-600 mt-1 font-mono">
-                                        <span>0.0</span>
-                                        <span>5.0</span>
-                                        <span>10.0</span>
+                                        <span>{RATING_SCALE_MIN}</span>
+                                        <span>{RATING_SCALE_MID}</span>
+                                        <span>{RATING_SCALE_MAX}</span>
                                     </div>
                                 </div>
 
                                 {/* Playtime & Platform */}
                                 <div className="grid grid-cols-2 gap-4 shrink-0">
                                     <div>
-                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Playtime (Hours)</label>
+                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('playtimeHoursLabel')}</label>
                                         <input
                                             type="number"
                                             min="0"
@@ -365,13 +369,13 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Platform</label>
+                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('platform')}</label>
                                         <select
                                             value={selectedPlatform}
                                             onChange={(e) => setSelectedPlatform(e.target.value)}
                                             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all appearance-none text-sm"
                                         >
-                                            <option value="">Select Platform</option>
+                                            <option value="">{t('selectPlatform')}</option>
                                             {(selectedGame?.platforms && selectedGame.platforms.length > 0
                                                 ? selectedGame.platforms
                                                 : ['PC', 'PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'Mobile']

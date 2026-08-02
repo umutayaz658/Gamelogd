@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Post } from '@/types';
@@ -27,34 +27,50 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
 
     const closedViaPopstate = useRef(false);
 
-    // Reset when changing images or posts
-    useEffect(() => {
+    // Reset zoom/rotation whenever the displayed image changes, and reset currentIndex whenever
+    // the post or the requested initial index changes — pure state updates, done synchronously
+    // during render rather than in an effect. See https://react.dev/learn/you-might-not-need-an-effect
+    const [prevCurrentIndex, setPrevCurrentIndex] = useState(currentIndex);
+    if (currentIndex !== prevCurrentIndex) {
+        setPrevCurrentIndex(currentIndex);
         setZoom(1);
         setRotation(0);
-    }, [currentIndex]);
+    }
 
-    useEffect(() => {
-        if (post) {
-            setCurrentIndex(initialIndex);
-        }
-    }, [post, initialIndex]);
+    const [prevPostForIndex, setPrevPostForIndex] = useState(post);
+    const [prevInitialIndexForIndex, setPrevInitialIndexForIndex] = useState(initialIndex);
+    if (post !== prevPostForIndex || initialIndex !== prevInitialIndexForIndex) {
+        setPrevPostForIndex(post);
+        setPrevInitialIndexForIndex(initialIndex);
+        if (post) setCurrentIndex(initialIndex);
+    }
 
-    // Fetch replies
-    useEffect(() => {
+    // Clearing stale replies and flipping "loading" on right before a fetch starts is a pure
+    // state update, done the same way — the effect below only performs the actual request and
+    // its async callbacks.
+    const repliesFetchKey = `${isOpen}:${post?.id ?? ''}`;
+    const [prevRepliesFetchKey, setPrevRepliesFetchKey] = useState(repliesFetchKey);
+    if (repliesFetchKey !== prevRepliesFetchKey) {
+        setPrevRepliesFetchKey(repliesFetchKey);
         if (isOpen && post?.id) {
             setReplies([]);
             setLoadingReplies(true);
-            api.get('/posts/', { params: { parent: post.id } })
-                .then((res) => {
-                    setReplies(res.data.results || res.data || []);
-                })
-                .catch((err) => {
-                    console.error('Failed to load replies in image modal:', err);
-                })
-                .finally(() => {
-                    setLoadingReplies(false);
-                });
         }
+    }
+
+    // Fetch replies
+    useEffect(() => {
+        if (!(isOpen && post?.id)) return;
+        api.get('/posts/', { params: { parent: post.id } })
+            .then((res) => {
+                setReplies(res.data.results || res.data || []);
+            })
+            .catch((err) => {
+                console.error('Failed to load replies in image modal:', err);
+            })
+            .finally(() => {
+                setLoadingReplies(false);
+            });
     }, [isOpen, post?.id]);
 
     // Sync modal state with browser history / popstate
@@ -81,6 +97,14 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
         };
     }, [isOpen, onClose]);
 
+    const handleNext = useCallback(() => {
+        setCurrentIndex((prev) => (prev + 1) % images.length);
+    }, [images.length]);
+
+    const handlePrev = useCallback(() => {
+        setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
+    }, [images.length]);
+
     // Handle ESC and Arrow keys to close/navigate, unless user is typing in inputs
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -98,17 +122,9 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, currentIndex, images]);
+    }, [isOpen, images, onClose, handleNext, handlePrev]);
 
     if (!isOpen || images.length === 0) return null;
-
-    const handleNext = () => {
-        setCurrentIndex((prev) => (prev + 1) % images.length);
-    };
-
-    const handlePrev = () => {
-        setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
-    };
 
     const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3));
     const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5));
@@ -139,7 +155,7 @@ export default function ImageModal({ isOpen, onClose, images, initialIndex = 0, 
                     onClick={(e) => e.stopPropagation()}
                 >
                     <span className="text-sm font-semibold text-zinc-400 ml-12">
-                        {currentIndex + 1} / {images.length}
+                        {[currentIndex + 1, images.length].join(' / ')}
                     </span>
 
                     <div className="flex items-center gap-4">

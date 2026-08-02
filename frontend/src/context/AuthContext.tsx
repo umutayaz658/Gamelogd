@@ -112,6 +112,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // Cleared after the request above, which needs it to authenticate in header mode.
         Cookies.remove('access_token');
+        // Purge cached Devs workspace boards: they're keyed per-board (not per-user) by
+        // design, so on a shared machine the next signed-in user would otherwise get this
+        // user's Kanban/GDD/asset data rendered instantly from cache.
+        try {
+            for (const key of Object.keys(localStorage)) {
+                if (key.startsWith('workspace__') || key === 'gamelogd_devs_last_workspace') {
+                    localStorage.removeItem(key);
+                }
+            }
+        } catch { /* storage disabled */ }
         setUser(null);
         router.push('/login');
         router.refresh();

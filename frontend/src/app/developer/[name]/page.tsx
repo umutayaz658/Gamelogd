@@ -8,6 +8,16 @@ import { CompanyInfo, CompanyGame } from '@/types';
 import Navbar from '@/components/Navbar';
 import LeftSidebar from '@/components/LeftSidebar';
 import Image from 'next/image';
+import { useTranslation } from '@/lib/useTranslation';
+
+const COMPANY_EMOJI = '🏢';
+const REDIRECT_EMOJI = '🔀';
+const CALENDAR_EMOJI = '🗓️';
+const GLOBE_EMOJI = '🌍';
+const WEBSITE_EMOJI = '🌐';
+const EXTERNAL_LINK_ARROW = '↗';
+const CONTROLLER_EMOJI = '🎮';
+const STAR_SYMBOL = '★';
 
 // Country code mapping (ISO 3166-1 numeric)
 const COUNTRY_MAP: Record<number, string> = {
@@ -31,8 +41,10 @@ const WEBSITE_LABELS: Record<number, string> = {
 };
 
 export default function DeveloperPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const companyName = decodeURIComponent(params.name as string);
+    const companyNotFoundMessage = `${t('couldNotFindInfoFor')} "${companyName}".`;
 
     const [company, setCompany] = useState<CompanyInfo | null>(null);
     const [games, setGames] = useState<CompanyGame[]>([]);
@@ -113,9 +125,9 @@ export default function DeveloperPage() {
                     <div className="grid grid-cols-12 gap-6">
                         <div className="hidden lg:block col-span-3"><LeftSidebar /></div>
                         <div className="col-span-12 lg:col-span-9 text-center mt-20">
-                            <span className="text-5xl block mb-4">🏢</span>
-                            <h2 className="text-xl font-bold text-zinc-300 mb-2">Company not found</h2>
-                            <p className="text-zinc-500">Could not find information for &quot;{companyName}&quot;.</p>
+                            <span className="text-5xl block mb-4" aria-hidden="true">{COMPANY_EMOJI}</span>
+                            <h2 className="text-xl font-bold text-zinc-300 mb-2">{t('companyNotFound')}</h2>
+                            <p className="text-zinc-500">{companyNotFoundMessage}</p>
                         </div>
                     </div>
                 </main>
@@ -160,7 +172,7 @@ export default function DeveloperPage() {
                                                 {company.resolved_from && (
                                                     <div className="flex items-center gap-2 mb-4">
                                                         <span className="text-xs text-zinc-400 bg-zinc-900/80 px-3 py-1.5 rounded-full border border-zinc-700/50 font-medium tracking-wide shadow-sm">
-                                                            🔀 Redirected from {company.resolved_from}
+                                                            {REDIRECT_EMOJI} {t('redirectedFrom')} {company.resolved_from}
                                                         </span>
                                                     </div>
                                                 )}
@@ -172,12 +184,12 @@ export default function DeveloperPage() {
                                                 <div className="flex flex-wrap items-center gap-3 mb-8 text-sm font-medium">
                                                     {foundedYear && (
                                                         <span className="bg-zinc-800/80 text-zinc-300 px-4 py-2 rounded-xl border border-zinc-700/50 flex items-center gap-2 shadow-sm hover:bg-zinc-800 transition-colors">
-                                                            <span className="text-zinc-500">🗓️</span> Founded {foundedYear}
+                                                            <span className="text-zinc-500" aria-hidden="true">{CALENDAR_EMOJI}</span> {t('founded')} {foundedYear}
                                                         </span>
                                                     )}
                                                     {company.country && (
                                                         <span className="bg-zinc-800/80 text-zinc-300 px-4 py-2 rounded-xl border border-zinc-700/50 flex items-center gap-2 shadow-sm hover:bg-zinc-800 transition-colors">
-                                                            <span className="text-zinc-500">🌍</span> Headquartered In: {COUNTRY_MAP[company.country] || `Code ${company.country}`}
+                                                            <span className="text-zinc-500" aria-hidden="true">{GLOBE_EMOJI}</span> {t('headquarteredIn')} {COUNTRY_MAP[company.country] || `${t('countryCode')} ${company.country}`}
                                                         </span>
                                                     )}
                                                     {officialWebsite && (
@@ -187,7 +199,7 @@ export default function DeveloperPage() {
                                                             rel="noopener noreferrer"
                                                             className="bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 px-4 py-2 rounded-xl border border-indigo-500/20 transition-all flex items-center gap-2 shadow-sm"
                                                         >
-                                                            🌐 Official Website <span className="opacity-70 text-xs">↗</span>
+                                                            {WEBSITE_EMOJI} {t('officialWebsite')} <span className="opacity-70 text-xs" aria-hidden="true">{EXTERNAL_LINK_ARROW}</span>
                                                         </a>
                                                     )}
                                                 </div>
@@ -200,7 +212,7 @@ export default function DeveloperPage() {
                                                         </p>
                                                     ) : (
                                                         <p className="text-zinc-500 italic border-l-4 border-zinc-700/50 pl-5 py-2">
-                                                            Açıklama bulunmuyor. (No description available on IGDB for this developer.)
+                                                            {t('noDescriptionAvailableIgdb')}
                                                         </p>
                                                     )}
                                                 </div>
@@ -216,7 +228,7 @@ export default function DeveloperPage() {
                                                                 rel="noopener noreferrer"
                                                                 className="text-xs font-semibold text-zinc-400 hover:text-white bg-zinc-800/40 hover:bg-zinc-700/80 px-3 py-1.5 rounded-lg border border-zinc-700/40 transition-all shadow-sm flex items-center gap-1.5"
                                                             >
-                                                                {WEBSITE_LABELS[w.category] || 'Link'} <span className="opacity-50">↗</span>
+                                                                {WEBSITE_LABELS[w.category] || t('link')} <span className="opacity-50" aria-hidden="true">{EXTERNAL_LINK_ARROW}</span>
                                                             </a>
                                                         ))}
                                                     </div>
@@ -227,14 +239,14 @@ export default function DeveloperPage() {
                                             <div className="shrink-0 w-full md:w-auto">
                                                 <div className="bg-gradient-to-br from-zinc-800/80 to-zinc-900/90 rounded-3xl p-6 md:p-8 border border-zinc-700/50 shadow-2xl flex flex-row md:flex-col items-center justify-between md:justify-center gap-4 md:gap-6 min-w-[200px] hover:border-indigo-500/40 transition-colors">
                                                     <div className="p-4 bg-zinc-900 rounded-full shadow-inner border border-zinc-800/80 flex items-center justify-center">
-                                                        <span className="text-4xl block">🎮</span>
+                                                        <span className="text-4xl block" aria-hidden="true">{CONTROLLER_EMOJI}</span>
                                                     </div>
                                                     <div className="flex flex-col items-end md:items-center">
                                                         <span className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-400 leading-none mb-2">
                                                             {games.length}
                                                         </span>
                                                         <span className="text-[11px] text-zinc-400 uppercase font-bold tracking-[0.2em]">
-                                                            Games Listed
+                                                            {t('gamesListed')}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -248,7 +260,7 @@ export default function DeveloperPage() {
                                     <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-8 gap-4 border-b border-zinc-800 pb-4">
                                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                                             <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                            Games
+                                            {t('games')}
                                         </h2>
                                         
                                         <div className="flex flex-wrap items-center xl:justify-end gap-3">
@@ -292,8 +304,8 @@ export default function DeveloperPage() {
                                                     onChange={(e) => setSortBy(e.target.value as any)}
                                                     className="appearance-none bg-zinc-800/80 border border-zinc-700/50 text-zinc-300 text-sm rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block py-2 pl-3 pr-8 transition-colors outline-none cursor-pointer"
                                                 >
-                                                    <option className="bg-zinc-900 text-zinc-300" value="date">Newest First</option>
-                                                    <option className="bg-zinc-900 text-zinc-300" value="rating">Highest Rated</option>
+                                                    <option className="bg-zinc-900 text-zinc-300" value="date">{t('newestFirst')}</option>
+                                                    <option className="bg-zinc-900 text-zinc-300" value="rating">{t('highestRated')}</option>
                                                 </select>
                                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-zinc-400">
                                                     <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
@@ -314,9 +326,9 @@ export default function DeveloperPage() {
                                         </div>
                                     ) : (
                                         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 border-dashed">
-                                            <span className="text-4xl block mb-3">🎮</span>
-                                            <h3 className="text-lg font-bold text-zinc-300 mb-1">No games found</h3>
-                                            <p className="text-zinc-500">No games match the selected filter.</p>
+                                            <span className="text-4xl block mb-3" aria-hidden="true">{CONTROLLER_EMOJI}</span>
+                                            <h3 className="text-lg font-bold text-zinc-300 mb-1">{t('noGamesFound')}</h3>
+                                            <p className="text-zinc-500">{t('noGamesMatchFilter')}</p>
                                         </div>
                                     )}
                                 </div>
@@ -331,6 +343,7 @@ export default function DeveloperPage() {
 }
 
 function GameCard({ game }: { game: CompanyGame }) {
+    const { t } = useTranslation();
     const year = game.release_date ? new Date(game.release_date).getFullYear() : null;
     const href = game.local_id ? `/games/${game.local_id}` : null;
 
@@ -347,7 +360,7 @@ function GameCard({ game }: { game: CompanyGame }) {
                 />
             ) : (
                 <div className="w-full h-full flex items-center justify-center bg-zinc-800">
-                    <span className="text-zinc-600 font-medium">No Cover</span>
+                    <span className="text-zinc-600 font-medium">{t('noCover')}</span>
                 </div>
             )}
 
@@ -357,7 +370,7 @@ function GameCard({ game }: { game: CompanyGame }) {
             {/* Rating Badge */}
             {game.rating && (
                 <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold text-yellow-400 border border-yellow-500/20 z-10">
-                    ★ {game.rating}
+                    {STAR_SYMBOL} {game.rating}
                 </div>
             )}
 
@@ -365,12 +378,12 @@ function GameCard({ game }: { game: CompanyGame }) {
             <div className="absolute top-2 left-2 flex gap-1 z-10">
                 {game.is_developer && (
                     <span className="bg-emerald-500/20 backdrop-blur-sm text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
-                        DEV
+                        {t('devBadge')}
                     </span>
                 )}
                 {game.is_publisher && (
                     <span className="bg-blue-500/20 backdrop-blur-sm text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-500/30">
-                        PUB
+                        {t('pubBadge')}
                     </span>
                 )}
             </div>

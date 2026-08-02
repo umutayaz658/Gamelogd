@@ -3,6 +3,7 @@
 import { Check, Crown } from 'lucide-react';
 import type { Role } from '@/types';
 import SideDrawer from './SideDrawer';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface RoleSelectDrawerProps {
     isOpen: boolean;
@@ -35,11 +36,12 @@ function RoleRow({ selected, name, description, onClick }: { selected: boolean; 
 }
 
 // Every member always has exactly one role — there is no "no role" state to pick here.
-export default function RoleSelectDrawer({ isOpen, roles, selectedRoleId, onSelect, onClose, title = 'Select a role', onTransferOwnership }: RoleSelectDrawerProps) {
+export default function RoleSelectDrawer({ isOpen, roles, selectedRoleId, onSelect, onClose, title, onTransferOwnership }: RoleSelectDrawerProps) {
+    const { t } = useTranslation();
     const assignableRoles = roles.filter((r) => r.is_default_for !== 'owner');
 
     return (
-        <SideDrawer isOpen={isOpen} title={title} onClose={onClose} widthClassName="max-w-sm">
+        <SideDrawer isOpen={isOpen} title={title ?? t('selectARole')} onClose={onClose} widthClassName="max-w-sm">
             <div className="space-y-2">
                 {onTransferOwnership && (
                     <button
@@ -48,8 +50,8 @@ export default function RoleSelectDrawer({ isOpen, roles, selectedRoleId, onSele
                     >
                         <Crown className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                         <div className="min-w-0">
-                            <p className="text-sm font-bold text-amber-400">Make Owner</p>
-                            <p className="text-xs text-amber-400/70 mt-0.5 leading-relaxed">Transfers organisation ownership to this member — you'll become an Admin. Requires confirmation.</p>
+                            <p className="text-sm font-bold text-amber-400">{t('makeOwner')}</p>
+                            <p className="text-xs text-amber-400/70 mt-0.5 leading-relaxed">{t('transferOwnershipDesc')}</p>
                         </div>
                     </button>
                 )}
@@ -58,12 +60,12 @@ export default function RoleSelectDrawer({ isOpen, roles, selectedRoleId, onSele
                         key={role.id}
                         selected={selectedRoleId === role.id}
                         name={role.name}
-                        description={role.description || `${role.permissions.length} permissions`}
+                        description={role.description || [role.permissions.length, t('permissionsCount')].join(' ')}
                         onClick={() => onSelect(role.id)}
                     />
                 ))}
                 {assignableRoles.length === 0 && !onTransferOwnership && (
-                    <p className="text-sm text-zinc-600 text-center py-8">No roles available yet.</p>
+                    <p className="text-sm text-zinc-600 text-center py-8">{t('noRolesAvailableYet')}</p>
                 )}
             </div>
         </SideDrawer>

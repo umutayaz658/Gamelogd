@@ -12,6 +12,36 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* In-between zinc shades used throughout the app (e.g. text-zinc-550, bg-zinc-850). These are
+   not part of Tailwind's stock palette — without these tokens the classes silently compile to
+   nothing and the elements inherit their parent's color. Values are linear interpolations of
+   the neighbouring stock zinc shades. */
+@theme {
+  --color-zinc-405: #9f9fa8;
+  --color-zinc-550: #62626b;
+  --color-zinc-605: #51515a;
+  --color-zinc-655: #48484f;
+  --color-zinc-850: #202022;
+  --color-zinc-905: #171719;
+  --color-emerald-250: #8bedc4;
+  --color-emerald-350: #51dda8;
+  --color-emerald-405: #32d298;
+  --color-amber-405: #fbbd23;
+  --color-red-650: #cb2121;
+  --animate-fade-in: fade-in 0.4s ease-out both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -71,4 +101,22 @@ body {
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* Thin scrollbar for compact dropdowns/panels (country picker, GIF picker, etc). Used to be
+   injected by CustomCountrySelect's own <style> tag, which meant every other component using
+   this class only got styled scrollbars while a country dropdown happened to be open elsewhere
+   on the page. */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 99px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
 }

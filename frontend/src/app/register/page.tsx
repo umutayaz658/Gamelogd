@@ -9,6 +9,9 @@ import { User, Mail, Lock, ArrowRight, ArrowLeft, Gamepad2, Code2, Briefcase, Ch
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import CustomCountrySelect from '@/components/CustomCountrySelect';
+import { useTranslation } from '@/lib/useTranslation';
+
+const BRAND_NAME = 'Gamelogd';
 
 function CustomGenderSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -81,6 +84,7 @@ function CustomGenderSelect({ value, onChange }: { value: string; onChange: (val
 }
 
 export default function RegisterPage() {
+    const { t } = useTranslation();
     const [currentStep, setCurrentStep] = useState(1);
     const [formData, setFormData] = useState({
         username: '',
@@ -341,9 +345,9 @@ export default function RegisterPage() {
                 {/* Header */}
                 <div className="text-center mb-8 mt-4">
                     <Link href="/" className="inline-block text-3xl font-bold text-white mb-2 hover:text-zinc-200 transition-colors">
-                        Gamelogd
+                        {BRAND_NAME}
                     </Link>
-                    <p className="text-zinc-400">Step {currentStep} of 3: {steps[currentStep - 1].title}</p>
+                    <p className="text-zinc-400">{t('stepLabel')} {currentStep} {t('stepOf3')} {steps[currentStep - 1].title}</p>
                 </div>
 
                 <form onSubmit={handleNext} className="space-y-6" autoComplete="off">
@@ -452,7 +456,7 @@ export default function RegisterPage() {
                             >
                                 {/* Roles */}
                                 <div>
-                                    <label className="block text-zinc-400 text-sm font-bold mb-3 uppercase tracking-wider">Select your Roles</label>
+                                    <label className="block text-zinc-400 text-sm font-bold mb-3 uppercase tracking-wider">{t('selectYourRoles')}</label>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {[
                                             { id: 'gamer', label: 'Gamer', icon: Gamepad2, color: 'text-blue-500' },
@@ -484,14 +488,14 @@ export default function RegisterPage() {
                                 {/* Demographics */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-zinc-400 text-sm font-bold mb-2">Gender</label>
+                                        <label className="block text-zinc-400 text-sm font-bold mb-2">{t('gender')}</label>
                                         <CustomGenderSelect
                                             value={formData.gender}
                                             onChange={(val) => setFormData({ ...formData, gender: val })}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-zinc-400 text-sm font-bold mb-2">Birth Date</label>
+                                        <label className="block text-zinc-400 text-sm font-bold mb-2">{t('birthDate')}</label>
                                         <input
                                             type="text"
                                             placeholder="DD/MM/YYYY"
@@ -515,7 +519,7 @@ export default function RegisterPage() {
                             >
                                 {/* Interests */}
                                 <div>
-                                    <label className="block text-zinc-400 text-sm font-bold mb-3 uppercase tracking-wider">Interests</label>
+                                    <label className="block text-zinc-400 text-sm font-bold mb-3 uppercase tracking-wider">{t('interests')}</label>
                                     <div className="flex flex-wrap gap-2">
                                         {interestsList.map((interest) => (
                                             <button
@@ -535,7 +539,7 @@ export default function RegisterPage() {
 
                                 {/* Platforms */}
                                 <div>
-                                    <label className="block text-zinc-400 text-sm font-bold mb-3 uppercase tracking-wider">Platforms</label>
+                                    <label className="block text-zinc-400 text-sm font-bold mb-3 uppercase tracking-wider">{t('platforms')}</label>
                                     <div className="grid grid-cols-3 gap-4">
                                         {[
                                             { id: 'PC', label: 'PC', icon: Monitor },
@@ -569,7 +573,7 @@ export default function RegisterPage() {
                                 className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                             >
                                 <ArrowLeft className="h-4 w-4" />
-                                Back
+                                {t('back')}
                             </button>
                         )}
                         <button
@@ -580,10 +584,10 @@ export default function RegisterPage() {
                             {isSubmitting ? (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin" />
-                                    Creating Account...
+                                    {t('creatingAccount')}
                                 </>
                             ) : (
-                                currentStep === 3 ? 'Complete Registration' : 'Next Step'
+                                currentStep === 3 ? t('completeRegistration') : t('nextStep')
                             )}
                             {currentStep < 3 && <ArrowRight className="h-4 w-4" />}
                         </button>
@@ -598,9 +602,9 @@ export default function RegisterPage() {
 
                 {/* Footer */}
                 <div className="mt-6 text-center text-sm text-zinc-500">
-                    Already have an account?{' '}
+                    {t('alreadyHaveAccount')}{' '}
                     <Link href="/login" className="text-emerald-500 hover:text-emerald-400 font-medium transition-colors">
-                        Sign in
+                        {t('signIn')}
                     </Link>
                 </div>
             </div>

@@ -9,7 +9,7 @@ import {
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import GifPicker from '@/components/GifPicker';
@@ -471,7 +471,7 @@ export default function MessagesDrawer() {
                                                 
                                                 {/* Group Sender ID badge */}
                                                 {activeChat.is_group && !msg.is_me && (
-                                                    <span className="text-[9px] text-zinc-500 pl-1">@{msg.sender.username}</span>
+                                                    <span className="text-[9px] text-zinc-500 pl-1">{formatHandle(msg.sender.username)}</span>
                                                 )}
 
                                                 {/* flex-row-reverse for the non-own side keeps the bubble the closest item to
@@ -536,14 +536,14 @@ export default function MessagesDrawer() {
                                                                 <div className={`p-1.5 rounded-lg mb-1 text-[10px] border-l-2 border-emerald-400 truncate ${
                                                                     msg.is_me ? 'bg-emerald-950/20 text-emerald-100' : 'bg-zinc-950 text-zinc-400'
                                                                 }`}>
-                                                                    <span className="font-bold">@{msg.reply_to_details.sender_username}</span>
-                                                                    <p className="truncate mt-0.5">{msg.reply_to_details.content || 'Photo/Attachment'}</p>
+                                                                    <span className="font-bold">{formatHandle(msg.reply_to_details.sender_username)}</span>
+                                                                    <p className="truncate mt-0.5">{msg.reply_to_details.content || t('photoAttachment')}</p>
                                                                 </div>
                                                             )}
 
                                                             {/* Content */}
                                                             {msg.is_deleted ? (
-                                                                <span className="italic text-zinc-500">This message was deleted</span>
+                                                                <span className="italic text-zinc-500">{t('thisMessageWasDeleted')}</span>
                                                             ) : (
                                                                 <span>{msg.content}</span>
                                                             )}
@@ -561,7 +561,7 @@ export default function MessagesDrawer() {
                                                                 msg.is_me ? 'text-emerald-250' : 'text-zinc-500'
                                                             }`}>
                                                                 <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-                                                                {msg.is_edited && <span>(edited)</span>}
+                                                                {msg.is_edited && <span>{t('editedLabel')}</span>}
                                                                 {msg.is_me && (
                                                                     msg.is_read 
                                                                         ? <CheckCheck className="h-2.5 w-2.5 text-emerald-350" /> 
@@ -598,8 +598,8 @@ export default function MessagesDrawer() {
                                 {replyingTo && (
                                     <div className="px-3 py-1.5 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between animate-in slide-in-from-bottom-1 duration-150">
                                         <div className="min-w-0">
-                                            <span className="text-[9px] font-bold text-emerald-500">Replying to @{replyingTo.sender.username}</span>
-                                            <p className="text-[10px] text-zinc-400 truncate">{replyingTo.content || 'Attachment'}</p>
+                                            <span className="text-[9px] font-bold text-emerald-500">{[t('replyingTo'), formatHandle(replyingTo.sender.username)].join(' ')}</span>
+                                            <p className="text-[10px] text-zinc-400 truncate">{replyingTo.content || t('attachment')}</p>
                                         </div>
                                         <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white">
                                             <X className="h-3.5 w-3.5" />
@@ -612,23 +612,23 @@ export default function MessagesDrawer() {
                                     <div className="p-4 border-t border-zinc-800 bg-zinc-900 text-center flex flex-col gap-2">
                                         <div className="text-xs font-bold text-zinc-400 mb-1 flex items-center justify-center gap-1.5">
                                             <Shield className="h-4 w-4 text-emerald-500" />
-                                            <span>Group Invitation</span>
+                                            <span>{t('groupInvitation')}</span>
                                         </div>
                                         <p className="text-[10px] text-zinc-500 mb-2 leading-relaxed">
-                                            You have been invited to join this group chat. Accept to see messages and participate.
+                                            {t('groupInviteAcceptHint')}
                                         </p>
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => handleAcceptInvite(activeChat.id)}
                                                 className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all"
                                             >
-                                                Accept
+                                                {t('accept')}
                                             </button>
                                             <button
                                                 onClick={() => handleDeclineInvite(activeChat.id)}
                                                 className="flex-1 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold transition-all"
                                             >
-                                                Decline
+                                                {t('decline')}
                                             </button>
                                             <button
                                                 onClick={() => handleBlockGroup(activeChat.id)}
@@ -704,7 +704,7 @@ export default function MessagesDrawer() {
                                         {showGifPicker && (
                                             <div className="absolute bottom-14 left-0 z-50 w-full p-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl">
                                                 <div className="flex items-center justify-between mb-2 pb-1 border-b border-zinc-800">
-                                                    <span className="text-[10px] font-bold text-zinc-400">Select GIF</span>
+                                                    <span className="text-[10px] font-bold text-zinc-400">{t('selectGif')}</span>
                                                     <button type="button" onClick={() => setShowGifPicker(false)} className="text-zinc-500 hover:text-white">
                                                         <X className="h-3 w-3" />
                                                     </button>
@@ -747,7 +747,7 @@ export default function MessagesDrawer() {
                                                 </div>
                                                 {chat.is_group && (
                                                     <span className="absolute -bottom-1 -right-1 bg-zinc-900 border border-zinc-800 text-[8px] px-1 rounded font-bold text-zinc-500">
-                                                        GP
+                                                        {t('groupBadge')}
                                                     </span>
                                                 )}
                                             </div>
@@ -756,14 +756,14 @@ export default function MessagesDrawer() {
                                                     {getChatName(chat)}
                                                     {chat.is_pending_invite && (
                                                         <span className="bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 text-[8px] px-1.5 py-0.5 rounded-full font-bold">
-                                                            Invite
+                                                            {t('inviteBadge')}
                                                         </span>
                                                     )}
                                                 </div>
                                                 <div className="text-[10px] text-zinc-500 truncate mt-0.5">
                                                     {chat.last_message ? (
                                                         <span>
-                                                            <span className="font-medium text-zinc-400">@{chat.last_message.sender_username}: </span>
+                                                            <span className="font-medium text-zinc-400">{[formatHandle(chat.last_message.sender_username), ''].join(': ')}</span>
                                                             {chat.last_message.content}
                                                         </span>
                                                     ) : (

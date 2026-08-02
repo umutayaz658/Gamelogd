@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, Suspense, useRef } from 'react';
+import { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import Switch from "@/components/Switch";
 import api, { setAccessToken } from "@/lib/api";
-import { getImageUrl } from "@/lib/utils";
+import { getImageUrl, formatHandle } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/context/ToastContext";
@@ -13,6 +13,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import CustomCountrySelect from '@/components/CustomCountrySelect';
+import { useTranslation as useGlobalTranslation } from '@/lib/useTranslation';
 import {
     User, Shield, Gamepad2, Bell, EyeOff, Lock, Trash2, Monitor, Globe,
     FileText, HelpCircle, ChevronRight, ChevronLeft, ExternalLink, MessageCircle, Bug,
@@ -322,7 +323,17 @@ const translations = {
         faqQ5: "What is Game DNA?",
         faqA5: "Game DNA is Gamelogd's custom metric system that analyzes synced playtimes to generate visual distribution charts showing your favorite genres.",
         faqQ6: "How do I apply for developer jobs?",
-        faqA6: "Browse open roles inside the Dev Hub. If your linked skill badges match the role requirements, you can click Apply to share your developer profile."
+        faqA6: "Browse open roles inside the Dev Hub. If your linked skill badges match the role requirements, you can click Apply to share your developer profile.",
+        loadingSettings: "Loading settings...",
+        showBirthDateHint: "Show your birth date on your public profile.",
+        fontSizeSmall: "Small",
+        fontSizeMedium: "Medium",
+        fontSizeLarge: "Large",
+        blockedUsersTitle: "Blocked Users",
+        blockedUsersDesc: "Here is the list of users you have blocked. Blocked users cannot follow you, see your profile details, or send you direct messages.",
+        unblock: "Unblock",
+        noMatchingQuestionsFound: "No matching questions found. Try a different search query.",
+        noBlockedUsersYet: "You haven't blocked any users yet."
     },
     Turkish: {
         settings: "Ayarlar",
@@ -490,7 +501,17 @@ const translations = {
         faqQ5: "Game DNA nedir?",
         faqA5: "Game DNA, en sevdiğiniz oyun türlerini gösteren görsel dağılım şemaları oluşturmak için oyun sürelerinizi analiz eden Gamelogd'a özel bir metrik sistemidir.",
         faqQ6: "Geliştirici iş ilanlarına nasıl başvurabilirim?",
-        faqA6: "Geliştirici Merkezindeki (Dev Hub) aktif rollere göz atın. Profilinizdeki yetenek rozetleri gereksinimlerle eşleşiyorsa Başvur butonuna tıklayarak profilinizi paylaşabilirsiniz."
+        faqA6: "Geliştirici Merkezindeki (Dev Hub) aktif rollere göz atın. Profilinizdeki yetenek rozetleri gereksinimlerle eşleşiyorsa Başvur butonuna tıklayarak profilinizi paylaşabilirsiniz.",
+        loadingSettings: "Ayarlar yükleniyor...",
+        showBirthDateHint: "Doğum tarihinizi herkese açık profilinizde gösterin.",
+        fontSizeSmall: "Küçük",
+        fontSizeMedium: "Orta",
+        fontSizeLarge: "Büyük",
+        blockedUsersTitle: "Engellenen Kullanıcılar",
+        blockedUsersDesc: "Engellediğiniz kullanıcıların listesi burada. Engellenen kullanıcılar sizi takip edemez, profil detaylarınızı göremez veya size direkt mesaj gönderemez.",
+        unblock: "Engeli Kaldır",
+        noMatchingQuestionsFound: "Eşleşen soru bulunamadı. Farklı bir arama sorgusu deneyin.",
+        noBlockedUsersYet: "Henüz hiçbir kullanıcıyı engellemediniz."
     },
     Spanish: {
         settings: "Ajustes",
@@ -642,7 +663,17 @@ const translations = {
         faqQ5: "¿Qué es el DNA del Juego?",
         faqA5: "El DNA del Juego es una métrica personalizada que analiza tus tiempos de juego para generar gráficos visuales de tus géneros favoritos.",
         faqQ6: "¿Cómo postulo a trabajos de desarrollo?",
-        faqA6: "Explora los roles activos en el Dev Hub. Si tus habilidades coinciden con los requisitos, haz clic en Aplicar para compartir tu perfil."
+        faqA6: "Explora los roles activos en el Dev Hub. Si tus habilidades coinciden con los requisitos, haz clic en Aplicar para compartir tu perfil.",
+        loadingSettings: "Cargando ajustes...",
+        showBirthDateHint: "Muestra tu fecha de nacimiento en tu perfil público.",
+        fontSizeSmall: "Pequeño",
+        fontSizeMedium: "Mediano",
+        fontSizeLarge: "Grande",
+        blockedUsersTitle: "Usuarios Bloqueados",
+        blockedUsersDesc: "Aquí está la lista de usuarios que has bloqueado. Los usuarios bloqueados no pueden seguirte, ver los detalles de tu perfil ni enviarte mensajes directos.",
+        unblock: "Desbloquear",
+        noMatchingQuestionsFound: "No se encontraron preguntas coincidentes. Prueba con otra búsqueda.",
+        noBlockedUsersYet: "Aún no has bloqueado a ningún usuario."
     },
     French: {
         settings: "Paramètres",
@@ -794,7 +825,17 @@ const translations = {
         faqQ5: "Qu'est-ce que l'ADN du Jeu ?",
         faqA5: "L'ADN du Jeu analyse vos temps de jeu synchronisés pour générer des graphiques montrant vos genres et mécaniques favoris.",
         faqQ6: "Comment postuler à des offres de développement ?",
-        faqA6: "Parcourez les offres dans le Dev Hub. Si vos compétences correspondent, cliquez sur Postuler pour partager votre profil."
+        faqA6: "Parcourez les offres dans le Dev Hub. Si vos compétences correspondent, cliquez sur Postuler pour partager votre profil.",
+        loadingSettings: "Chargement des paramètres...",
+        showBirthDateHint: "Afficher votre date de naissance sur votre profil public.",
+        fontSizeSmall: "Petit",
+        fontSizeMedium: "Moyen",
+        fontSizeLarge: "Grand",
+        blockedUsersTitle: "Utilisateurs Bloqués",
+        blockedUsersDesc: "Voici la liste des utilisateurs que vous avez bloqués. Les utilisateurs bloqués ne peuvent pas vous suivre, voir les détails de votre profil ni vous envoyer de messages directs.",
+        unblock: "Débloquer",
+        noMatchingQuestionsFound: "Aucune question correspondante trouvée. Essayez une autre recherche.",
+        noBlockedUsersYet: "Vous n'avez encore bloqué aucun utilisateur."
     },
     German: {
         settings: "Einstellungen",
@@ -946,7 +987,17 @@ const translations = {
         faqQ5: "Was ist Game DNA?",
         faqA5: "Game DNA analysiert Ihre Spielzeiten, um visuelle Diagramme zu erstellen, die Ihre bevorzugten Genres und Spielmechaniken zeigen.",
         faqQ6: "Wie bewerbe ich mich auf Entwickler-Jobs?",
-        faqA6: "Durchsuchen Sie offene Stellen im Dev Hub. Wenn Ihre Fähigkeiten passen, klicken Sie auf Bewerben, um Ihr Profil zu teilen."
+        faqA6: "Durchsuchen Sie offene Stellen im Dev Hub. Wenn Ihre Fähigkeiten passen, klicken Sie auf Bewerben, um Ihr Profil zu teilen.",
+        loadingSettings: "Einstellungen werden geladen...",
+        showBirthDateHint: "Zeige dein Geburtsdatum in deinem öffentlichen Profil.",
+        fontSizeSmall: "Klein",
+        fontSizeMedium: "Mittel",
+        fontSizeLarge: "Groß",
+        blockedUsersTitle: "Blockierte Benutzer",
+        blockedUsersDesc: "Hier ist die Liste der von dir blockierten Benutzer. Blockierte Benutzer können dir nicht folgen, deine Profildetails sehen oder dir Direktnachrichten senden.",
+        unblock: "Entsperren",
+        noMatchingQuestionsFound: "Keine passenden Fragen gefunden. Versuche eine andere Suchanfrage.",
+        noBlockedUsersYet: "Du hast noch niemanden blockiert."
     }
 };
 
@@ -984,8 +1035,9 @@ const FAQS_DATA = [
 ];
 
 export default function SettingsPage() {
+    const { t } = useGlobalTranslation();
     return (
-        <Suspense fallback={<div className="p-8 text-center text-zinc-500">Loading settings...</div>}>
+        <Suspense fallback={<div className="p-8 text-center text-zinc-500">{t('loadingSettings')}</div>}>
             <SettingsContent />
         </Suspense>
     );
@@ -1042,7 +1094,15 @@ function SettingsContent() {
     });
 
     const { user, updateUser, logout } = useAuth();
-    
+
+    // Translator helper function
+    const t = useCallback((key: keyof typeof translations.English): string => {
+        const lang = displaySettings.language;
+        const dicts = translations;
+        const activeDict = dicts[lang as keyof typeof dicts] || translations.English;
+        return (activeDict[key as keyof typeof activeDict] as string) || (translations.English[key] as string);
+    }, [displaySettings.language]);
+
     // Blocked Users State & Handlers
     const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
     const [isBlockedLoading, setIsBlockedLoading] = useState(false);
@@ -1100,7 +1160,7 @@ function SettingsContent() {
             setSteamSyncMessage({ type: 'error', text: errorMsg });
             router.replace('/settings?tab=connected', { scroll: false });
         }
-    }, [searchParams, router]);
+    }, [searchParams, router, t]);
 
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
@@ -1174,14 +1234,6 @@ function SettingsContent() {
     const [faqQuery, setFaqQuery] = useState('');
     const [selectedFaqCategory, setSelectedFaqCategory] = useState('All');
     const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(null);
-
-    // Translator helper function
-    const t = (key: keyof typeof translations.English): string => {
-        const lang = displaySettings.language;
-        const dicts = translations;
-        const activeDict = dicts[lang as keyof typeof dicts] || translations.English;
-        return (activeDict[key as keyof typeof activeDict] as string) || (translations.English[key] as string);
-    };
 
     // FAQ specific translations dynamically resolved
     const getFaqTranslations = (faq: typeof FAQS_DATA[0]) => {
@@ -1850,7 +1902,7 @@ function SettingsContent() {
                                         <div className="flex items-center justify-between py-2 border-b border-zinc-800/50">
                                             <div>
                                                 <div className="font-bold text-sm text-zinc-400 uppercase tracking-wider">{t('showBirthDate')}</div>
-                                                <div className="text-xs text-zinc-500">Show your birth date on your public profile.</div>
+                                                <div className="text-xs text-zinc-500">{t('showBirthDateHint')}</div>
                                             </div>
                                             <Switch 
                                                 checked={showBirthDate} 
@@ -2192,9 +2244,9 @@ function SettingsContent() {
                                                 className={`w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer ${activeColor.accentRange}`}
                                             />
                                             <div className="flex justify-between text-xs text-zinc-500 font-medium px-1">
-                                                <span>Small</span>
-                                                <span>Medium</span>
-                                                <span>Large</span>
+                                                <span>{t('fontSizeSmall')}</span>
+                                                <span>{t('fontSizeMedium')}</span>
+                                                <span>{t('fontSizeLarge')}</span>
                                             </div>
                                         </div>
 
@@ -2284,9 +2336,9 @@ function SettingsContent() {
                             {activeTab === 'blocked' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                                     <div>
-                                        <h2 className="text-2xl font-bold mb-2">Blocked Users</h2>
+                                        <h2 className="text-2xl font-bold mb-2">{t('blockedUsersTitle')}</h2>
                                         <p className="text-zinc-400 text-sm">
-                                            Here is the list of users you have blocked. Blocked users cannot follow you, see your profile details, or send you direct messages.
+                                            {t('blockedUsersDesc')}
                                         </p>
                                     </div>
 
@@ -2314,7 +2366,7 @@ function SettingsContent() {
                                                                 {blockedUser.real_name || blockedUser.username}
                                                             </div>
                                                             <div className="text-xs text-zinc-500">
-                                                                @{blockedUser.username}
+                                                                {formatHandle(blockedUser.username)}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2323,14 +2375,14 @@ function SettingsContent() {
                                                         onClick={() => handleUnblock(blockedUser)}
                                                         className="px-3 py-1.5 text-xs font-bold text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 bg-zinc-900 rounded-lg transition-all cursor-pointer"
                                                     >
-                                                        Unblock
+                                                        {t('unblock')}
                                                     </button>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
                                         <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-850/50 rounded-2xl">
-                                            You haven't blocked any users yet.
+                                            {t('noBlockedUsersYet')}
                                         </div>
                                     )}
                                 </div>
@@ -2701,7 +2753,7 @@ function SettingsContent() {
                                 })
                             ) : (
                                 <div className="text-center py-8 text-zinc-500 text-sm">
-                                    No matching questions found. Try a different search query.
+                                    {t('noMatchingQuestionsFound')}
                                 </div>
                             )}
                         </div>
@@ -2744,7 +2796,7 @@ function SettingsContent() {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Email</label>
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('email')}</label>
                                     <input
                                         type="email"
                                         disabled

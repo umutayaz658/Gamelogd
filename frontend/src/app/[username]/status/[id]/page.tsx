@@ -12,8 +12,10 @@ import { Post, Review } from '@/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useFeed } from '@/context/FeedContext';
 import ReviewCard from '@/components/ReviewCard';
+import { useTranslation } from '@/lib/useTranslation';
 
 export default function SinglePostPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const router = useRouter();
     const [post, setPost] = useState<Post | null>(null);
@@ -88,7 +90,7 @@ export default function SinglePostPage() {
                             >
                                 <ArrowLeft className="h-5 w-5 text-zinc-400" />
                             </button>
-                            <h1 className="text-xl font-bold">Post</h1>
+                            <h1 className="text-xl font-bold">{t('post')}</h1>
                         </div>
 
                         {loading ? (
@@ -144,7 +146,7 @@ export default function SinglePostPage() {
                                             ))
                                         ) : (
                                             <div className="py-8 text-center text-zinc-500">
-                                                No replies yet.
+                                                {t('noRepliesYet')}
                                             </div>
                                         )}
                                     </div>
@@ -152,7 +154,7 @@ export default function SinglePostPage() {
                             </div>
                         ) : (
                             <div className="text-center py-10 text-zinc-500">
-                                Post not found.
+                                {t('postNotFound')}
                             </div>
                         )}
                     </div>

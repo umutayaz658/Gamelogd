@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import useSWR from 'swr';
 import api, { fetcher } from '@/lib/api';
 import { useAuth } from './AuthContext';
@@ -40,9 +40,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const unreadMessages = data?.messages ?? 0;
     const unreadNotifications = data?.notifications ?? 0;
 
-    const fetchCounts = async () => {
+    const fetchCounts = useCallback(async () => {
         await mutate();
-    };
+    }, [mutate]);
 
     useEffect(() => {
         if (!user) return;
@@ -121,30 +121,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
-    const markMessagesRead = () => {
-        mutate({ messages: 0, notifications: unreadNotifications }, { revalidate: false });
+    const markMessagesRead = useCallback(() => {
+        mutate((current) => ({ messages: 0, notifications: current?.notifications ?? 0 }), { revalidate: false });
         // Backend update happens when messages are fetched in MessagesPage
-    };
+    }, [mutate]);
 
-    const markNotificationsRead = async () => {
-        mutate({ messages: unreadMessages, notifications: 0 }, { revalidate: false });
+    const markNotificationsRead = useCallback(async () => {
+        mutate((current) => ({ messages: current?.messages ?? 0, notifications: 0 }), { revalidate: false });
         try {
             await api.post('/notifications/mark_all_read/');
         } catch (error) {
             console.error("Failed to mark notifications as read:", error);
         }
-    };
+    }, [mutate]);
+
+    const value = useMemo(() => ({
+        unreadMessages,
+        unreadNotifications,
+        fetchCounts,
+        markMessagesRead,
+        markNotificationsRead,
+        isChatFullscreen,
+        setChatFullscreen
+    }), [unreadMessages, unreadNotifications, fetchCounts, markMessagesRead, markNotificationsRead, isChatFullscreen]);
 
     return (
-        <NotificationContext.Provider value={{
-            unreadMessages,
-            unreadNotifications,
-            fetchCounts,
-            markMessagesRead,
-            markNotificationsRead,
-            isChatFullscreen,
-            setChatFullscreen
-        }}>
+        <NotificationContext.Provider value={value}>
             {children}
         </NotificationContext.Provider>
     );

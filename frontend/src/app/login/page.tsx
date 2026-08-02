@@ -9,11 +9,14 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { User as UserIcon, Loader2 } from 'lucide-react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { useTranslation } from '@/lib/useTranslation';
 
 const GOOGLE_CLIENT_ID = "47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com";
+const BRAND_NAME = 'Gamelogd';
 
 export default function LoginPage() {
     const router = useRouter();
+    const { t } = useTranslation();
     const [formData, setFormData] = useState({
         username: '',
         password: '',
@@ -63,9 +66,9 @@ export default function LoginPage() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <Link href="/" className="inline-block text-3xl font-bold text-white mb-2 hover:text-zinc-200 transition-colors">
-                        Gamelogd
+                        {BRAND_NAME}
                     </Link>
-                    <p className="text-zinc-400">Welcome back, gamer!</p>
+                    <p className="text-zinc-400">{t('welcomeBackGamer')}</p>
                 </div>
 
                 {/* Form */}
@@ -100,7 +103,7 @@ export default function LoginPage() {
 
                     <div className="flex items-center justify-end">
                         <Link href="#" className="text-sm text-zinc-400 hover:text-emerald-500 transition-colors">
-                            Forgot password?
+                            {t('forgotPassword')}
                         </Link>
                     </div>
 
@@ -112,11 +115,11 @@ export default function LoginPage() {
                         {isLoading ? (
                             <>
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                Signing In...
+                                {t('signingIn')}
                             </>
                         ) : (
                             <>
-                                Sign In
+                                {t('signIn')}
                                 <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                             </>
                         )}
@@ -134,7 +137,7 @@ export default function LoginPage() {
                             <div className="w-full border-t border-zinc-800"></div>
                         </div>
                         <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-zinc-900 px-2 text-zinc-500">Or continue with</span>
+                            <span className="bg-zinc-900 px-2 text-zinc-500">{t('orContinueWith')}</span>
                         </div>
                     </div>
 
@@ -182,9 +185,9 @@ export default function LoginPage() {
 
                 {/* Footer */}
                 <div className="mt-8 text-center text-sm text-zinc-400">
-                    Don't have an account?{' '}
+                    {t('dontHaveAccount')}{' '}
                     <Link href="/register" className="text-emerald-500 hover:text-emerald-400 font-medium transition-colors">
-                        Sign up
+                        {t('signUp')}
                     </Link>
                 </div>
             </div>

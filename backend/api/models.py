@@ -171,6 +171,11 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            # The notification list is always "mine, newest first" — one composite index
+            # serves the filter and the sort together (same shape as Post's 0061 indexes).
+            models.Index(fields=['recipient', '-created_at'], name='notif_recip_created_idx'),
+        ]
 
     def __str__(self):
         return f"Notification for {self.recipient}: {self.actor} {self.verb}"
@@ -325,6 +330,11 @@ class Message(models.Model):
 
     class Meta:
         ordering = ['created_at']
+        indexes = [
+            # Every chat open filters by conversation and sorts by created_at — the separate
+            # FK index + created_at index can't serve that in one scan.
+            models.Index(fields=['conversation', 'created_at'], name='msg_conv_created_idx'),
+        ]
 
     def __str__(self):
         return f"Message from {self.sender} in {self.conversation}"

@@ -1,16 +1,23 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
     Plus, ExternalLink, X, Pencil, Trash2, Tag, Link2, StickyNote, ChevronDown, Check, FileText, Settings
 } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { Asset, AssetCategoryItem, DEFAULT_ASSET_CATEGORIES } from './WorkspaceTypes';
-import { cn } from '@/lib/utils';
+import { cn, formatHandle } from '@/lib/utils';
+import { sanitizeUrl } from '@/lib/url';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import BoardSwitcher from './BoardSwitcher';
 import CategoryManager from './CategoryManager';
+import { useTranslation } from '@/lib/useTranslation';
+
+const HASH_PREFIX = '#';
+const MIDDLE_DOT = '·';
+const SLASH_SEPARATOR = '/';
+const PIN_EMOJI = '📌';
 
 const getTextColorOnly = (colorStr: string) => {
     if (!colorStr) return '';
@@ -51,14 +58,17 @@ interface AssetFormModalProps {
 }
 
 function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManageCategories }: AssetFormModalProps) {
+    const { t } = useTranslation();
     const [form, setForm] = useState<FormState>(initial);
 
-    // Auto update selected category if active category is deleted
-    useEffect(() => {
-        if (categories.length > 0 && !categories.some(c => c.id === form.category)) {
-            setForm(f => ({ ...f, category: categories[0].id }));
-        }
-    }, [categories, form.category]);
+    // Auto update selected category if active category is deleted — a pure state adjustment,
+    // done synchronously during render rather than in an effect. The condition is
+    // self-terminating (it's false again as soon as form.category points at categories[0]), so
+    // no separate "did categories change" guard is needed.
+    // See https://react.dev/learn/you-might-not-need-an-effect
+    if (categories.length > 0 && !categories.some(c => c.id === form.category)) {
+        setForm(f => ({ ...f, category: categories[0].id }));
+    }
 
     return (
         <div
@@ -75,7 +85,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                 <form onSubmit={(e) => { e.preventDefault(); onSubmit(form); }} className="p-5 space-y-4">
                     {/* Name */}
                     <div>
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Asset Name *</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('assetNameRequired')}</label>
                         <input
                             autoFocus
                             value={form.name}
@@ -89,14 +99,14 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                     <div>
                         <div className="flex items-center justify-between mb-1.5">
                             <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
-                                <Tag className="w-3 h-3" /> Category
+                                <Tag className="w-3 h-3" /> {t('category')}
                             </label>
                             <button
                                 type="button"
                                 onClick={onManageCategories}
                                 className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
                             >
-                                <Settings className="w-3.5 h-3.5" /> Manage
+                                <Settings className="w-3.5 h-3.5" /> {t('manage')}
                             </button>
                         </div>
                         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1 scrollbar-thin-dark">
@@ -113,7 +123,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                     {/* Link */}
                     <div>
                         <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
-                            <Link2 className="w-3 h-3" /> External Link (Drive, Dropbox, GitHub...) *
+                            <Link2 className="w-3 h-3" /> {t('externalLinkRequired')}
                         </label>
                         <input
                             value={form.link}
@@ -125,7 +135,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                     </div>
                     {/* Tags */}
                     <div>
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Tags (comma separated)</label>
+                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('tagsCommaSeparated')}</label>
                         <input
                             value={form.tags}
                             onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
@@ -136,7 +146,7 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                     {/* Notes */}
                     <div>
                         <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
-                            <StickyNote className="w-3 h-3" /> Notes
+                            <StickyNote className="w-3 h-3" /> {t('notes')}
                         </label>
                         <textarea
                             value={form.notes}
@@ -149,11 +159,11 @@ function AssetFormModal({ title, initial, categories, onSubmit, onClose, onManag
                     <div className="flex gap-3 pt-1">
                         <button type="button" onClick={onClose}
                             className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm font-semibold hover:bg-zinc-800 transition-all">
-                            Cancel
+                            {t('cancel')}
                         </button>
                         <button type="submit" disabled={!form.name.trim() || !form.link.trim()}
                             className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20">
-                            {title.includes('Edit') ? 'Save Changes' : 'Add Asset'}
+                            {title.includes('Edit') ? t('saveChanges') : t('addAsset')}
                         </button>
                     </div>
                 </form>
@@ -169,6 +179,7 @@ interface AssetDetailModalProps {
 }
 
 function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
+    const { t } = useTranslation();
     const catColor = category ? `${getTextColorOnly(category.color)} ${getCategoryBg(category)}` : 'text-zinc-400 bg-zinc-850 border-zinc-800';
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
@@ -186,8 +197,8 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
                     {/* Category and Title */}
                     <div className="space-y-2">
                         <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border", catColor)}>
-                            <span>{category?.emoji || '📌'}</span>
-                            <span>{category?.label || 'Uncategorized'}</span>
+                            <span>{category?.emoji || PIN_EMOJI}</span>
+                            <span>{category?.label || t('uncategorized')}</span>
                         </span>
                         <h2 className="text-xl font-extrabold text-white leading-snug break-words pr-6">{asset.name}</h2>
                     </div>
@@ -199,23 +210,23 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
                             <span className="text-xs text-zinc-405 truncate">{asset.link}</span>
                         </div>
                         <a
-                            href={asset.link}
+                            href={sanitizeUrl(asset.link)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1 transition-all flex-shrink-0"
                         >
-                            Open Link <ExternalLink className="w-3 h-3" />
+                            {t('openLink')} <ExternalLink className="w-3 h-3" />
                         </a>
                     </div>
 
                     {/* Tags */}
                     {asset.tags.length > 0 && (
                         <div className="space-y-1.5">
-                            <h3 className="text-xs font-bold text-zinc-550 uppercase tracking-wider">Tags</h3>
+                            <h3 className="text-xs font-bold text-zinc-550 uppercase tracking-wider">{t('tags')}</h3>
                             <div className="flex flex-wrap gap-1.5">
                                 {asset.tags.map((tag) => (
                                     <span key={tag} className="text-xs bg-zinc-900 border border-zinc-800 text-zinc-400 px-3 py-1 rounded-full font-medium">
-                                        #{tag}
+                                        {[HASH_PREFIX, tag].join('')}
                                     </span>
                                 ))}
                             </div>
@@ -224,20 +235,20 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
 
                     {/* Notes */}
                     <div className="space-y-1.5">
-                        <h3 className="text-xs font-bold text-zinc-550 uppercase tracking-wider">Notes & Description</h3>
+                        <h3 className="text-xs font-bold text-zinc-550 uppercase tracking-wider">{t('notesAndDescription')}</h3>
                         <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-4 min-h-[100px] overflow-y-auto max-h-[250px] scrollbar-thin-dark">
                             {asset.notes ? (
                                 <p className="text-sm text-zinc-350 whitespace-pre-wrap leading-relaxed">{asset.notes}</p>
                             ) : (
-                                <p className="text-xs text-zinc-600 italic">No notes provided for this asset.</p>
+                                <p className="text-xs text-zinc-600 italic">{t('noNotesProvidedForAssetDesc')}</p>
                             )}
                         </div>
                     </div>
 
                     {/* Meta info */}
                     <div className="border-t border-zinc-850 pt-4 flex items-center justify-between text-[11px] text-zinc-500">
-                        <span>Added {asset.addedAt}</span>
-                        <span>By @{asset.addedBy}</span>
+                        <span>{[t('added'), asset.addedAt].join(' ')}</span>
+                        <span>{[t('byPrefix'), formatHandle(asset.addedBy)].join(' ')}</span>
                     </div>
                 </div>
             </div>
@@ -246,6 +257,7 @@ function AssetDetailModal({ asset, category, onClose }: AssetDetailModalProps) {
 }
 
 export default function AssetRegistry() {
+    const { t } = useTranslation();
     const { user } = useAuth();
     const {
         data, setAssets, logActivity, setAssetCategories, hasPermission
@@ -329,16 +341,18 @@ export default function AssetRegistry() {
                 <div>
                     <div className="flex items-center gap-3">
                         <BoardSwitcher />
-                        <span className="text-zinc-655 text-lg font-light">/</span>
-                        <h2 className="text-xl font-bold text-white">Assets</h2>
+                        <span className="text-zinc-655 text-lg font-light" aria-hidden="true">{SLASH_SEPARATOR}</span>
+                        <h2 className="text-xl font-bold text-white">{t('assetRegistry')}</h2>
                     </div>
-                    <p className="text-xs text-zinc-550 mt-1.5">{assets.length} asset{assets.length !== 1 ? 's' : ''} catalogued · External links, no storage costs</p>
+                    <p className="text-xs text-zinc-550 mt-1.5">
+                        {[assets.length, assets.length !== 1 ? t('assetsCataloguedPluralSuffix') : t('assetCataloguedSingularSuffix')].join(' ')}
+                    </p>
                 </div>
                 <button
                     onClick={() => setShowAddModal(true)}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20 cursor-pointer"
                 >
-                    <Plus className="w-4 h-4" /> Add Asset
+                    <Plus className="w-4 h-4" /> {t('addAsset')}
                 </button>
             </div>
 
@@ -365,7 +379,7 @@ export default function AssetRegistry() {
                     >
                         <Tag className="w-4 h-4 text-zinc-555" />
                         <span>
-                            Category: {filterCat === 'all' ? 'All' : (categories.find(c => c.id === filterCat)?.label || 'All')}
+                            {[t('categoryColon'), filterCat === 'all' ? t('all') : (categories.find(c => c.id === filterCat)?.label || t('all'))].join(' ')}
                         </span>
                         <ChevronDown className="w-4 h-4 text-zinc-500 flex-shrink-0" />
                     </button>
@@ -383,7 +397,7 @@ export default function AssetRegistry() {
                                     )}
                                 >
                                     <span className="flex items-center gap-2">
-                                        <FileText className="w-3.5 h-3.5 text-zinc-500" /> All Assets
+                                        <FileText className="w-3.5 h-3.5 text-zinc-500" /> {t('allAssets')}
                                     </span>
                                     {filterCat === 'all' && <Check className="w-3.5 h-3.5" />}
                                 </button>
@@ -416,7 +430,7 @@ export default function AssetRegistry() {
             {filtered.length === 0 ? (
                 <div className="text-center py-24 text-zinc-650 bg-zinc-900/10 border border-zinc-800/80 rounded-2xl">
                     <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 text-zinc-500" />
-                    <p className="text-sm font-semibold">No assets found matching current criteria.</p>
+                    <p className="text-sm font-semibold">{t('noAssetsFoundMatchingCriteriaDesc')}</p>
                 </div>
             ) : (
                 <div className="space-y-8 animate-in fade-in duration-200">
@@ -476,7 +490,7 @@ export default function AssetRegistry() {
                                                     <div className="flex flex-wrap gap-1">
                                                         {asset.tags.map((tag) => (
                                                             <span key={tag} className="text-[10px] bg-zinc-900 border border-zinc-800/60 text-zinc-500 px-2 py-0.5 rounded-full font-medium">
-                                                                #{tag}
+                                                                {[HASH_PREFIX, tag].join('')}
                                                             </span>
                                                         ))}
                                                     </div>
@@ -492,15 +506,17 @@ export default function AssetRegistry() {
 
                                             {/* Footer */}
                                             <div className="flex items-center justify-between pt-3 border-t border-zinc-800/40 mt-1">
-                                                <span className="text-[9px] text-zinc-500">Added {asset.addedAt} by @{asset.addedBy}</span>
+                                                <span className="text-[9px] text-zinc-500">
+                                                    {[t('added'), asset.addedAt, t('byLowerPrefix'), formatHandle(asset.addedBy)].join(' ')}
+                                                </span>
                                                 <a
-                                                    href={asset.link}
+                                                    href={sanitizeUrl(asset.link)}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     onClick={(e) => e.stopPropagation()} // Prevent details modal on link click
                                                     className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-semibold transition-colors flex-shrink-0"
                                                 >
-                                                    Open <ExternalLink className="w-3 h-3" />
+                                                    {t('open')} <ExternalLink className="w-3 h-3" />
                                                 </a>
                                             </div>
                                         </div>
@@ -514,9 +530,9 @@ export default function AssetRegistry() {
                     {uncategorizedAssets.length > 0 && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <span className="text-lg">📌</span>
+                                <span className="text-lg">{PIN_EMOJI}</span>
                                 <h3 className="text-sm font-extrabold text-zinc-400 font-sans">
-                                    Uncategorized
+                                    {t('uncategorized')}
                                 </h3>
                                 <span className="text-[10px] font-bold text-zinc-555 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/80">
                                     {uncategorizedAssets.length}
@@ -560,7 +576,7 @@ export default function AssetRegistry() {
                                                 <div className="flex flex-wrap gap-1">
                                                     {asset.tags.map((tag) => (
                                                         <span key={tag} className="text-[10px] bg-zinc-900 border border-zinc-800/60 text-zinc-500 px-2 py-0.5 rounded-full font-medium">
-                                                            #{tag}
+                                                            {[HASH_PREFIX, tag].join('')}
                                                         </span>
                                                     ))}
                                                 </div>
@@ -574,15 +590,17 @@ export default function AssetRegistry() {
                                         </div>
 
                                         <div className="flex items-center justify-between pt-3 border-t border-zinc-800/40 mt-1">
-                                            <span className="text-[9px] text-zinc-500">Added {asset.addedAt} by @{asset.addedBy}</span>
+                                            <span className="text-[9px] text-zinc-500">
+                                                {[t('added'), asset.addedAt, t('byLowerPrefix'), formatHandle(asset.addedBy)].join(' ')}
+                                            </span>
                                             <a
-                                                href={asset.link}
+                                                href={sanitizeUrl(asset.link)}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 onClick={(e) => e.stopPropagation()}
                                                 className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-semibold transition-colors flex-shrink-0"
                                             >
-                                                Open <ExternalLink className="w-3 h-3" />
+                                                {t('open')} <ExternalLink className="w-3 h-3" />
                                             </a>
                                         </div>
                                     </div>

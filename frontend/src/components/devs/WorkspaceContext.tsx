@@ -19,6 +19,7 @@ import {
     Asset,
     TranslationEntry,
     GlossaryTerm,
+    ProjectLocale,
     ActivityItem,
     ActivityType,
     GDDCategory,
@@ -174,35 +175,21 @@ function buildDefaultData(): WorkspaceData {
             { id: 'a2', name: 'Player Character FBX Model', category: '3d', tags: ['character', 'mesh'], link: 'https://drive.google.com', notes: '', addedAt: '5d ago', addedBy: 'devuser' },
             { id: 'a3', name: 'Main Theme OST v3', category: 'audio', tags: ['music', 'ambient'], link: 'https://drive.google.com', notes: '', addedAt: '2w ago', addedBy: 'devuser' },
         ],
+        // Translations themselves (suggestions/votes/approval) live in the backend
+        // CommunityTranslation model now, shared with the public project page — this seed only
+        // provides the key catalogue (key/namespace/base text) a fresh demo workspace starts with.
         translationKeys: [
-            {
-                id: 'lk1', key: 'mainMenu.play', namespace: 'mainMenu', baseText: 'Play', approved: true,
-                suggestions: {
-                    Turkish: [{ id: 'sg1', author: 'translator1', text: 'Oyna', votes: 5, approved: true }],
-                    Spanish: [{ id: 'sg2', author: 'alejandro99', text: 'Jugar', votes: 3, approved: true }],
-                },
-            },
-            {
-                id: 'lk2', key: 'mainMenu.settings', namespace: 'mainMenu', baseText: 'Settings', approved: true,
-                suggestions: {
-                    Turkish: [{ id: 'sg3', author: 'translator1', text: 'Ayarlar', votes: 4, approved: true }],
-                    French: [{ id: 'sg4', author: 'pierre_fr', text: 'Paramètres', votes: 2, approved: true }],
-                },
-            },
-            {
-                id: 'lk3', key: 'hud.health', namespace: 'hud', baseText: 'Health', approved: false,
-                suggestions: {
-                    Turkish: [{ id: 'sg5', author: 'translator1', text: 'Can', votes: 2, approved: false }],
-                },
-            },
-            {
-                id: 'lk4', key: 'dialogue.merchant.greeting', namespace: 'dialogue', baseText: 'Welcome traveller, what can I sell you?', approved: false,
-                suggestions: {},
-            },
+            { id: 'lk1', key: 'mainMenu.play', namespace: 'mainMenu', baseText: 'Play' },
+            { id: 'lk2', key: 'mainMenu.settings', namespace: 'mainMenu', baseText: 'Settings' },
+            { id: 'lk3', key: 'hud.health', namespace: 'hud', baseText: 'Health' },
+            { id: 'lk4', key: 'dialogue.merchant.greeting', namespace: 'dialogue', baseText: 'Welcome traveller, what can I sell you?' },
         ],
+        // Keyed by locale CODE (tr/es/fr), matching GlossaryTerm.translations' contract and
+        // what glossaryMatch looks up — migration 0066 converted existing blobs from the old
+        // display-name keys for the same reason.
         glossary: [
-            { id: 'gl1', term: 'Mana', translations: { Turkish: 'Mana', Spanish: 'Maná', French: 'Mana' } },
-            { id: 'gl2', term: 'Fireball', translations: { Turkish: 'Alev Topu', Spanish: 'Bola de Fuego' } },
+            { id: 'gl1', term: 'Mana', translations: { tr: 'Mana', es: 'Maná', fr: 'Mana' } },
+            { id: 'gl2', term: 'Fireball', translations: { tr: 'Alev Topu', es: 'Bola de Fuego' } },
         ],
         activities: [
             { id: 'act1', type: 'task_created', text: 'Welcome to your Developer Workspace!', time: 'just now', icon: '🚀' },
@@ -250,6 +237,16 @@ interface WorkspaceContextType {
     setAssets: (assets: Asset[] | ((prev: Asset[]) => Asset[])) => void;
     setTranslationKeys: (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => void;
     setGlossary: (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => void;
+    setTranslationLanguages: (langs: ProjectLocale[] | ((prev: ProjectLocale[]) => ProjectLocale[])) => void;
+    setTranslationSourceLanguage: (lang: ProjectLocale) => void;
+    /** The current board's last-seen WorkspaceState version (or null if unknown) — a snapshot
+     * read, not reactive state, since it's only needed at the moment an action (like a
+     * localisation import) fires, not for rendering. */
+    getBoardVersion: () => number | null;
+    /** Forces the debounced backend save to run now and resolves when it has completed —
+     * for callers that immediately re-read server state derived from the blob (e.g. saving
+     * language settings, then refetching the translation catalog). */
+    flushPendingSave: () => Promise<void>;
     setKanbanCategories: (categories: KanbanCategoryItem[] | ((prev: KanbanCategoryItem[]) => KanbanCategoryItem[])) => void;
     setGDDCategories: (categories: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => void;
     setAssetCategories: (categories: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => void;
@@ -377,21 +374,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const boardParam = searchParams.get('board') ?? persisted.board ?? null;
 
         if (toolParam) _setActiveTool(toolParam);
-        if (wsParam === 'solo') {
+        if (wsParam === 'solo' || !wsParam) {
             _setActiveWorkspace({ type: 'solo' });
             _setActiveBoard(boardParam || 'solo');
-        } else if (boardParam) {
-            _setActiveBoard(boardParam);
         }
+        // wsParam org_*: leave both workspace AND board at their solo defaults until fetchOrgs
+        // resolves the org (it reads the same params). Applying boardParam now would resolve an
+        // org project against the solo key space (workspace__solo_board_project_X instead of
+        // workspace__org_N_board_project_X), rendering a phantom empty board whose first edit
+        // creates a divergent shadow row.
     }, [searchParams]);
 
     // Sync board param dynamically when URL changes
     useEffect(() => {
         const boardParam = searchParams.get('board');
+        const wsParam = searchParams.get('workspace');
+        // Same rule as the mount effect: an org board waits for the org workspace to be active.
+        if (wsParam?.startsWith('org_') && activeWorkspace.type !== 'org') return;
         if (boardParam && boardParam !== activeBoard) {
             _setActiveBoard(boardParam);
         }
-    }, [searchParams, activeBoard]);
+    }, [searchParams, activeBoard, activeWorkspace]);
 
     // ── Fetch organisations ──────────────────────────────────────────────────
     const fetchOrgs = useCallback(async () => {
@@ -413,6 +416,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     _setActiveWorkspace({ type: 'org', org });
                     const boardParam = searchParams.get('board') ?? persisted.board ?? 'org';
                     _setActiveBoard(boardParam);
+                } else {
+                    // The remembered/deep-linked org is gone or the user is no longer a member:
+                    // fall back to the personal workspace explicitly instead of leaving an org
+                    // board to be silently resolved against the solo key space.
+                    _setActiveWorkspace({ type: 'solo' });
+                    _setActiveBoard('solo');
                 }
             }
         } catch (err) {
@@ -422,15 +431,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
     }, [user, searchParams]);
 
-    useEffect(() => { fetchOrgs(); }, [user]);
+    useEffect(() => { fetchOrgs(); }, [fetchOrgs]);
 
     // Fetches the given board's WorkspaceState row from the backend and, if it has real column
     // data, replaces `data` with it. Shared by the load-on-board-change effect below and by
     // refreshWorkspaceData (for callers that mutated the backend row directly, bypassing the
     // setTasks/setColumns mutators — e.g. converting Feedback into a Kanban task).
+    // Monotonic fetch id: a response is only applied if no newer fetch was started since —
+    // without this, switching boards while a GET is in flight lets the older response land
+    // last, putting board A's data (and its version token) under board B, which both renders
+    // the wrong board and silently disables optimistic concurrency for the next save.
+    const fetchSeqRef = useRef(0);
     const fetchWorkspaceDataFromBackend = useCallback((key: string) => {
+        const seq = ++fetchSeqRef.current;
         return api.get(`/workspace-state/${key}/`)
             .then((res) => {
+                if (seq !== fetchSeqRef.current) return;
                 // Remember the version we loaded so the next save can detect a concurrent edit.
                 versionRef.current = { key, version: typeof res.data?.version === 'number' ? res.data.version : null };
                 let backendData = res.data?.data;
@@ -443,6 +459,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 }
             })
             .catch((err) => {
+                if (seq !== fetchSeqRef.current) return;
                 // No row yet (or load failed): we have no known version, so the next save creates
                 // the row unconditionally.
                 versionRef.current = { key, version: null };
@@ -467,10 +484,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             tasks: [], gddDocs: [], balancingTables: [], dialogueTrees: [],
             assets: [], translationKeys: [], glossary: [], activities: [],
         };
-        await api.post('/workspace-state/', { key, data: cleared, tool: 'settings' });
+        // The most destructive write on a shared board must not bypass optimistic concurrency:
+        // send the version we loaded so a teammate's in-flight edit surfaces as a 409 instead
+        // of being wiped along with everything else.
+        const knownVersion = versionRef.current?.key === key ? versionRef.current.version : null;
+        try {
+            const res = await api.post('/workspace-state/', { key, data: cleared, tool: 'settings', base_version: knownVersion });
+            if (typeof res.data?.version === 'number') versionRef.current = { key, version: res.data.version };
+        } catch (err) {
+            const e = err as { response?: { status?: number } };
+            if (e.response?.status === 409) {
+                toast.error('This board was updated by someone else — reload before clearing it.');
+                fetchWorkspaceDataFromBackend(key);
+            } else {
+                toast.error('Failed to clear workspace data.');
+            }
+            return;
+        }
         setData(cleared);
         try { localStorage.setItem(key, JSON.stringify(cleared)); } catch { /* quota */ }
-    }, [activeWorkspace, activeBoard, user, data]);
+    }, [activeWorkspace, activeBoard, user, data, toast, fetchWorkspaceDataFromBackend]);
 
     // ── Load workspace data from localStorage & backend when workspace or board changes ─
     useEffect(() => {
@@ -525,53 +558,79 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     // ── Persist workspace data to localStorage & backend whenever it changes ──
     const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Always points at a flush of the *latest* scheduled persist — lets actions that depend on
+    // the saved blob (e.g. saving language settings, then refetching the catalog that's derived
+    // from it) force the debounced save through and await it.
+    const persistNowRef = useRef<() => Promise<void>>(async () => {});
     useEffect(() => {
-        if (persistTimer.current) clearTimeout(persistTimer.current);
-        persistTimer.current = setTimeout(() => {
+        const doPersist = async () => {
             const key = storageKey(activeWorkspace, activeBoard, user?.id);
-            const tool = lastToolRef.current;
+            const tools = Array.from(pendingToolsRef.current);
+            try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota */ }
+            // Only sync to the backend after a genuine user mutation (a data mutator
+            // registers its tool; the load/hydration path uses setData directly and
+            // registers none). This prevents two data-loss/pollution bugs:
+            //  (H2) clobbering real backend data with freshly seeded/loaded defaults
+            //       before the initial GET for this board resolves, and
+            //  (M4) writing demo/seed data for a brand-new user who changed nothing.
+            if (!user || tools.length === 0) return;
+            pendingToolsRef.current = new Set();
+            // Send the version we loaded (only if it belongs to this board) so the server
+            // can reject the write with 409 when a teammate saved in the meantime, instead
+            // of silently overwriting their change on this shared board.
+            let knownVersion = versionRef.current?.key === key ? versionRef.current.version : null;
             try {
-                localStorage.setItem(key, JSON.stringify(data));
-                // Only sync to the backend after a genuine user mutation (a data mutator
-                // sets lastToolRef; the load/hydration path uses setData directly and
-                // leaves it null). This prevents two data-loss/pollution bugs:
-                //  (H2) clobbering real backend data with freshly seeded/loaded defaults
-                //       before the initial GET for this board resolves, and
-                //  (M4) writing demo/seed data for a brand-new user who changed nothing.
-                if (user && tool) {
-                    lastToolRef.current = null;
-                    // Send the version we loaded (only if it belongs to this board) so the server
-                    // can reject the write with 409 when a teammate saved in the meantime, instead
-                    // of silently overwriting their change on this shared board.
-                    const knownVersion = versionRef.current?.key === key ? versionRef.current.version : null;
-                    api.post('/workspace-state/', { key, data, tool, base_version: knownVersion })
-                        .then((res) => {
-                            if (typeof res.data?.version === 'number') {
-                                versionRef.current = { key, version: res.data.version };
-                            }
-                        })
-                        .catch((err) => {
-                            if (err.response?.status === 409) {
-                                // Someone else saved first. Adopt the server's current board so this
-                                // client stops diverging, rather than clobbering their work. The local
-                                // in-progress change is dropped — surfaced to the user so it isn't silent.
-                                const current = err.response.data?.current;
-                                if (current?.data) {
-                                    const merged = ensureKanbanCategories(current.data);
-                                    setData(merged);
-                                    try { localStorage.setItem(key, JSON.stringify(merged)); } catch {}
-                                }
-                                versionRef.current = { key, version: typeof current?.version === 'number' ? current.version : null };
-                                toast.error('This board was updated by someone else — reloaded the latest version.');
-                            } else {
-                                console.error('Failed to sync workspace state to backend:', err);
-                            }
-                        });
+                // One POST per tool that mutated since the last flush: the backend authorises
+                // each write against that specific tool's permission, so edits from two
+                // different tools coalesced by the debounce can't ride through under a single
+                // tool's permission.
+                for (const tool of tools) {
+                    const res = await api.post('/workspace-state/', { key, data, tool, base_version: knownVersion });
+                    if (typeof res.data?.version === 'number') {
+                        knownVersion = res.data.version;
+                        versionRef.current = { key, version: res.data.version };
+                    }
                 }
-            } catch { /* quota */ }
-        }, 400); // debounce 400ms
+            } catch (err) {
+                const e = err as { response?: { status?: number; data?: { current?: { data?: WorkspaceData; version?: number }; error?: string } } };
+                if (e.response?.status === 409) {
+                    // Someone else saved first. Adopt the server's current board so this
+                    // client stops diverging, rather than clobbering their work. The local
+                    // in-progress change is dropped — surfaced to the user so it isn't silent.
+                    const current = e.response.data?.current;
+                    if (current?.data) {
+                        const merged = ensureKanbanCategories(current.data as WorkspaceData);
+                        setData(merged);
+                        try { localStorage.setItem(key, JSON.stringify(merged)); } catch {}
+                    }
+                    versionRef.current = { key, version: typeof current?.version === 'number' ? current.version : null };
+                    toast.error('This board was updated by someone else — reloaded the latest version.');
+                } else if (e.response?.status === 403) {
+                    // Do NOT swallow this: the UI is still showing the change as saved.
+                    toast.error(e.response.data?.error || 'You do not have permission to save this change — it was not saved.');
+                } else {
+                    console.error('Failed to sync workspace state to backend:', err);
+                    toast.error('Failed to save board changes — check your connection and try again.');
+                }
+            }
+        };
+
+        persistNowRef.current = async () => {
+            if (persistTimer.current) clearTimeout(persistTimer.current);
+            await doPersist();
+        };
+
+        if (persistTimer.current) clearTimeout(persistTimer.current);
+        persistTimer.current = setTimeout(doPersist, 400); // debounce 400ms
         return () => { if (persistTimer.current) clearTimeout(persistTimer.current); };
-    }, [data, activeWorkspace, activeBoard, user]);
+    }, [data, activeWorkspace, activeBoard, user, toast]);
+
+    const flushPendingSave = useCallback(async () => {
+        // One macrotask of delay so a state update made just before this call has re-rendered
+        // and the persist effect has re-armed with the fresh data.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await persistNowRef.current();
+    }, []);
 
     // ── Effective permissions for the current org/project scope ──────────────
     useEffect(() => {
@@ -621,58 +680,77 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }, [activeWorkspace, activeTool, pushURL]);
 
     // ── Data mutators ─────────────────────────────────────────────────────────
-    // lastToolRef tracks which Devs tool the most recent mutation belongs to, so the
-    // debounced persist effect below can tell the backend's coarse per-tool write
-    // permission check (see WorkspaceStateViewSet) which tool this write is for.
-    const lastToolRef = useRef<string | null>(null);
+    // pendingToolsRef accumulates every Devs tool that mutated since the last flush, so the
+    // debounced persist effect above can run the backend's per-tool write permission check
+    // (see WorkspaceStateViewSet) for each of them — a single "last tool wins" tag would let
+    // two tools' edits coalesce into one POST authorised by only one tool's permission.
+    const pendingToolsRef = useRef<Set<string>>(new Set());
 
     const setColumns = (cols: KanbanColumn[]) => {
-        lastToolRef.current = 'kanban';
+        pendingToolsRef.current.add('kanban');
         setData((d) => ({ ...d, columns: cols }));
     };
 
     const setTasks = (tasks: Task[] | ((prev: Task[]) => Task[])) => {
-        lastToolRef.current = 'kanban';
+        pendingToolsRef.current.add('kanban');
         setData((d) => ({ ...d, tasks: typeof tasks === 'function' ? tasks(d.tasks) : tasks }));
     };
 
     const setGDDDocs = (docs: GDDDoc[] | ((prev: GDDDoc[]) => GDDDoc[])) => {
-        lastToolRef.current = 'gdd';
+        pendingToolsRef.current.add('gdd');
         setData((d) => ({ ...d, gddDocs: typeof docs === 'function' ? docs(d.gddDocs) : docs }));
     };
 
     const setBalancingTables = (tables: BalancingTable[] | ((prev: BalancingTable[]) => BalancingTable[])) => {
-        lastToolRef.current = 'gdd';
+        pendingToolsRef.current.add('gdd');
         setData((d) => ({ ...d, balancingTables: typeof tables === 'function' ? tables(d.balancingTables) : tables }));
     };
 
     const setAssets = (assets: Asset[] | ((prev: Asset[]) => Asset[])) => {
-        lastToolRef.current = 'assets';
+        pendingToolsRef.current.add('assets');
         setData((d) => ({ ...d, assets: typeof assets === 'function' ? assets(d.assets) : assets }));
     };
 
     const setTranslationKeys = (keys: TranslationEntry[] | ((prev: TranslationEntry[]) => TranslationEntry[])) => {
-        lastToolRef.current = 'localisation';
+        pendingToolsRef.current.add('localisation');
         setData((d) => ({ ...d, translationKeys: typeof keys === 'function' ? keys(d.translationKeys) : keys }));
     };
 
     const setGlossary = (g: GlossaryTerm[] | ((prev: GlossaryTerm[]) => GlossaryTerm[])) => {
-        lastToolRef.current = 'localisation';
+        pendingToolsRef.current.add('localisation');
         setData((d) => ({ ...d, glossary: typeof g === 'function' ? g(d.glossary) : g }));
     };
 
+    const setTranslationLanguages = (langs: ProjectLocale[] | ((prev: ProjectLocale[]) => ProjectLocale[])) => {
+        pendingToolsRef.current.add('localisation');
+        setData((d) => ({ ...d, translationLanguages: typeof langs === 'function' ? langs(d.translationLanguages ?? []) : langs }));
+    };
+
+    const setTranslationSourceLanguage = (lang: ProjectLocale) => {
+        pendingToolsRef.current.add('localisation');
+        setData((d) => ({ ...d, translationSourceLanguage: lang }));
+    };
+
+    const getBoardVersion = useCallback(() => {
+        // Same board-key guard as the persist path: after a board switch the ref can still
+        // hold the previous board's token, and handing that to a caller (e.g. the localisation
+        // import's base_version) would produce spurious 409s or defeat the conflict check.
+        const key = storageKey(activeWorkspace, activeBoard, user?.id);
+        return versionRef.current?.key === key ? versionRef.current.version : null;
+    }, [activeWorkspace, activeBoard, user]);
+
     const setKanbanCategories = (cats: KanbanCategoryItem[] | ((prev: KanbanCategoryItem[]) => KanbanCategoryItem[])) => {
-        lastToolRef.current = 'kanban';
+        pendingToolsRef.current.add('kanban');
         setData((d) => ({ ...d, kanbanCategories: typeof cats === 'function' ? cats(d.kanbanCategories ?? DEFAULT_KANBAN_CATEGORIES) : cats }));
     };
 
     const setGDDCategories = (cats: GDDCategory[] | ((prev: GDDCategory[]) => GDDCategory[])) => {
-        lastToolRef.current = 'gdd';
+        pendingToolsRef.current.add('gdd');
         setData((d) => ({ ...d, gddCategories: typeof cats === 'function' ? cats(d.gddCategories ?? DEFAULT_GDD_CATEGORIES) : cats }));
     };
 
     const setAssetCategories = (cats: AssetCategoryItem[] | ((prev: AssetCategoryItem[]) => AssetCategoryItem[])) => {
-        lastToolRef.current = 'assets';
+        pendingToolsRef.current.add('assets');
         setData((d) => ({ ...d, assetCategories: typeof cats === 'function' ? cats(d.assetCategories ?? DEFAULT_ASSET_CATEGORIES) : cats }));
     };
 
@@ -717,6 +795,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 setAssets,
                 setTranslationKeys,
                 setGlossary,
+                setTranslationLanguages,
+                setTranslationSourceLanguage,
+                getBoardVersion,
+                flushPendingSave,
                 setKanbanCategories,
                 setGDDCategories,
                 setAssetCategories,

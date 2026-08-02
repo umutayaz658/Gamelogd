@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface ConfirmDeleteModalProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface ConfirmDeleteModalProps {
 }
 
 export default function ConfirmDeleteModal({ isOpen, title, description, onConfirm, onCancel, variant = 'danger', confirmLabel }: ConfirmDeleteModalProps) {
+    const { t } = useTranslation();
     if (!isOpen) return null;
 
     const isWarning = variant === 'warning';
@@ -50,7 +52,7 @@ export default function ConfirmDeleteModal({ isOpen, title, description, onConfi
                         onClick={onCancel}
                         className="px-4 py-2 rounded-xl border border-zinc-800 text-zinc-400 text-xs font-bold hover:bg-zinc-900 transition-all cursor-pointer"
                     >
-                        Cancel
+                        {t('cancel')}
                     </button>
                     <button
                         type="button"
@@ -59,7 +61,7 @@ export default function ConfirmDeleteModal({ isOpen, title, description, onConfi
                             isWarning ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-950/20' : 'bg-red-600 hover:bg-red-500 shadow-red-950/20'
                         }`}
                     >
-                        {confirmLabel ?? 'Delete'}
+                        {confirmLabel ?? t('delete')}
                     </button>
                 </div>
             </div>

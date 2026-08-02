@@ -6,6 +6,7 @@ import { useWorkspace } from './WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn, getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface BoardSwitcherProps {
     /** Feedback is always project-specific — there's no such thing as org-wide feedback — so its
@@ -28,6 +29,7 @@ interface BoardProject {
 export default function BoardSwitcher({ projectsOnly = false }: BoardSwitcherProps) {
     const { activeWorkspace, activeBoard, setActiveBoard } = useWorkspace();
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [projects, setProjects] = useState<BoardProject[]>([]);
     const [showBoardDropdown, setShowBoardDropdown] = useState(false);
 
@@ -110,7 +112,7 @@ export default function BoardSwitcher({ projectsOnly = false }: BoardSwitcherPro
                     />
                     <div className="absolute left-0 top-full mt-2 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden w-64 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
                         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2.5 py-1.5 border-b border-zinc-900/60 mb-1">
-                            Switch Workspace Board
+                            {t('switchWorkspaceBoard')}
                         </p>
 
                         {/* General Board option — hidden for projectsOnly pickers (Feedback has no org-wide scope) */}
@@ -139,7 +141,7 @@ export default function BoardSwitcher({ projectsOnly = false }: BoardSwitcherPro
                                     />
                                 </div>
                                 <span className="truncate">
-                                    {activeWorkspace.type === 'solo' ? 'Personal' : activeWorkspace.org?.name}
+                                    {activeWorkspace.type === 'solo' ? t('personal') : activeWorkspace.org?.name}
                                 </span>
                             </button>
                         )}
@@ -148,7 +150,7 @@ export default function BoardSwitcher({ projectsOnly = false }: BoardSwitcherPro
                         {projects.length > 0 ? (
                             <div className={cn(!projectsOnly && "pt-1.5 border-t border-zinc-900/60 mt-1")}>
                                 <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2.5 py-1">
-                                    Projects
+                                    {t('projects')}
                                 </p>
                                 {projects.map((p) => (
                                     <button
@@ -177,7 +179,7 @@ export default function BoardSwitcher({ projectsOnly = false }: BoardSwitcherPro
                                 ))}
                             </div>
                         ) : projectsOnly ? (
-                            <p className="px-2.5 py-3 text-xs text-zinc-500 text-center">No projects yet</p>
+                            <p className="px-2.5 py-3 text-xs text-zinc-500 text-center">{t('noProjectsYet')}</p>
                         ) : null}
                     </div>
                 </>

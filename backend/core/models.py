@@ -268,9 +268,79 @@ class PlaytestFeedback(models.Model):
 
     class Meta:
         ordering = ['-is_pinned', '-submitted_at']
+        indexes = [
+            # The feedback panel always lists one project's feedback in this exact order.
+            models.Index(fields=['project', '-is_pinned', '-submitted_at'], name='ptf_proj_pin_sub_idx'),
+        ]
 
     def __str__(self):
         return f"Feedback on {self.project.title}"
+
+
+class CommunityTranslation(models.Model):
+    """
+    Public, membership-free translation suggestions for a project's localisation strings,
+    submitted by any logged-in app user — same rationale as PlaytestFeedback above: this needs
+    to be publicly readable/writable by non-members, which the member-scoped WorkspaceState
+    (where the Devs Localisation Manager keeps its own key list) can't support. `key` matches a
+    TranslationEntry.key living in that project's WorkspaceState blob. Approving a row here is a
+    pure status change on this row — both the Devs Localisation Manager and the public project
+    page's Localisation tab read/write this exact model via the same API, so there is no second
+    copy to keep in sync (see api.locale_registry for the per-project language list this
+    `language` field's valid values are validated against).
+
+    `plural_forms` (CLDR-category-keyed, e.g. {"one": "...", "other": "..."}) is populated
+    instead of a flat `text` when the target TranslationEntry.isPlural is true; `text` is always
+    kept populated too (derived server-side from plural_forms) so every existing reader of
+    `.text` — card previews, glossary-lock checks, ordering — keeps working unchanged regardless
+    of whether a row is a plural one. See api.serializers.CommunityTranslationSerializer's
+    payload-shape validation for the authoritative rule.
+    """
+    STATUS_CHOICES = [('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='community_translations')
+    key = models.CharField(max_length=255)
+    namespace = models.CharField(max_length=120, blank=True, default='')
+    # No static `choices=` — the valid set is per-project and dynamic (see
+    # api.locale_registry.resolve_project_locales), enforced in the serializer instead.
+    language = models.CharField(max_length=35)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='community_translations')
+
+    text = models.TextField()
+    plural_forms = models.JSONField(null=True, blank=True, default=None)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_community_translations')
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['project', 'language', 'key'], name='ct_proj_lang_key_idx'),
+            models.Index(fields=['project', 'key', 'language'], name='ct_proj_key_lang_idx'),
+        ]
+        constraints = [
+            # One official translation per (project, key, language) — the DB-level guarantee
+            # behind the "unapprove siblings before approving" logic in the approve action.
+            models.UniqueConstraint(
+                fields=['project', 'key', 'language'],
+                condition=models.Q(status='approved'),
+                name='uniq_approved_ct_per_key_lang',
+            ),
+            # Anti-spam: one live suggestion per user per string. Rejected rows are excluded so a
+            # user whose suggestion was rejected can submit a revised one.
+            models.UniqueConstraint(
+                fields=['project', 'key', 'language', 'author'],
+                condition=~models.Q(status='rejected'),
+                name='uniq_ct_author_per_key_lang',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.language} suggestion for {self.key} on {self.project.title}"
 
 
 class JobPosting(models.Model):
@@ -412,19 +482,24 @@ class Like(models.Model):
     review = models.ForeignKey(Review, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     news = models.ForeignKey('News', on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     playtest_feedback = models.ForeignKey(PlaytestFeedback, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    community_translation = models.ForeignKey(CommunityTranslation, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [['user', 'post'], ['user', 'review'], ['user', 'news'], ['user', 'playtest_feedback']]
+        unique_together = [
+            ['user', 'post'], ['user', 'review'], ['user', 'news'], ['user', 'playtest_feedback'],
+            ['user', 'community_translation'],
+        ]
         constraints = [
             # Exactly one target must be set. The nullable FKs + NULL-permeable unique_together
             # otherwise permit an all-NULL "like" that inflates counts while pointing at nothing.
             models.CheckConstraint(
                 condition=(
-                    models.Q(post__isnull=False, review__isnull=True, news__isnull=True, playtest_feedback__isnull=True)
-                    | models.Q(post__isnull=True, review__isnull=False, news__isnull=True, playtest_feedback__isnull=True)
-                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=False, playtest_feedback__isnull=True)
-                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=True, playtest_feedback__isnull=False)
+                    models.Q(post__isnull=False, review__isnull=True, news__isnull=True, playtest_feedback__isnull=True, community_translation__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=False, news__isnull=True, playtest_feedback__isnull=True, community_translation__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=False, playtest_feedback__isnull=True, community_translation__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=True, playtest_feedback__isnull=False, community_translation__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=True, news__isnull=True, playtest_feedback__isnull=True, community_translation__isnull=False)
                 ),
                 name='like_exactly_one_target',
             ),

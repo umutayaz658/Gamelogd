@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getCountryCallingCode } from 'react-phone-number-input';
 import { ChevronDown, Search, Check } from 'lucide-react';
+import { useTranslation } from '@/lib/useTranslation';
+import { wrapInParens } from '@/lib/utils';
 
 interface CustomCountrySelectProps {
     value?: string;
@@ -16,6 +18,7 @@ interface CustomCountrySelectProps {
  * behave identically.
  */
 export default function CustomCountrySelect({ value, onChange, options }: CustomCountrySelectProps) {
+    const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -61,21 +64,6 @@ export default function CustomCountrySelect({ value, onChange, options }: Custom
             {/* Dropdown Menu */}
             {isOpen && (
                 <div className="absolute top-full left-0 mt-2 w-64 max-h-72 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 flex flex-col">
-                    <style>{`
-                        .custom-scrollbar::-webkit-scrollbar {
-                            width: 5px;
-                        }
-                        .custom-scrollbar::-webkit-scrollbar-track {
-                            background: transparent;
-                        }
-                        .custom-scrollbar::-webkit-scrollbar-thumb {
-                            background: #27272a;
-                            border-radius: 99px;
-                        }
-                        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                            background: #3f3f46;
-                        }
-                    `}</style>
                     {/* Search Box */}
                     <div className="p-2 border-b border-zinc-800 flex items-center gap-2 bg-zinc-950/30">
                         <Search className="h-4 w-4 text-zinc-500 shrink-0" />
@@ -91,7 +79,7 @@ export default function CustomCountrySelect({ value, onChange, options }: Custom
                     {/* Country List */}
                     <div className="overflow-y-auto p-1 flex-1 custom-scrollbar">
                         {filteredOptions.length === 0 ? (
-                            <div className="text-zinc-600 text-xs text-center py-4">No countries found</div>
+                            <div className="text-zinc-600 text-xs text-center py-4">{t('noCountriesFound')}</div>
                         ) : (
                             filteredOptions.map((option) => {
                                 const callingCode = option.value ? getCountryCallingCode(option.value as any) : '';
@@ -112,7 +100,7 @@ export default function CustomCountrySelect({ value, onChange, options }: Custom
                                         <div className="flex items-center gap-2 truncate">
                                             <span className="truncate text-xs">{option.label}</span>
                                             <span className="text-zinc-500 text-[10px] font-bold shrink-0">
-                                                (+{callingCode})
+                                                {wrapInParens(`+${callingCode}`)}
                                             </span>
                                         </div>
                                         {value === option.value && <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}

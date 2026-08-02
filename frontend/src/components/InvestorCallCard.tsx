@@ -1,5 +1,6 @@
 import { HandCoins, ArrowRight, Building2, User, Briefcase } from 'lucide-react';
 import { InvestorCall } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface InvestorCallCardProps {
     call: InvestorCall;
@@ -7,6 +8,7 @@ interface InvestorCallCardProps {
 }
 
 export default function InvestorCallCard({ call, onClick }: InvestorCallCardProps) {
+    const { t } = useTranslation();
     const getTypeStyles = (type: string) => {
         switch (type) {
             case 'publisher':
@@ -57,13 +59,13 @@ export default function InvestorCallCard({ call, onClick }: InvestorCallCardProp
                 {/* Details */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/50">
-                        <div className="text-xs text-zinc-500 mb-1">Looking For</div>
+                        <div className="text-xs text-zinc-500 mb-1">{t('lookingFor')}</div>
                         <div className="text-sm text-zinc-200 font-medium leading-tight line-clamp-3">
                             {call.looking_for}
                         </div>
                     </div>
                     <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/50 h-fit">
-                        <div className="text-xs text-zinc-500 mb-1">Ticket Size</div>
+                        <div className="text-xs text-zinc-500 mb-1">{t('ticketSize')}</div>
                         <div className="text-sm text-emerald-400 font-bold flex items-center gap-1.5">
                             <HandCoins className="h-3.5 w-3.5" />
                             {call.ticket_size}
@@ -76,7 +78,7 @@ export default function InvestorCallCard({ call, onClick }: InvestorCallCardProp
 
                 {/* Action */}
                 <button className="flex items-center justify-between w-full px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-white font-medium text-sm transition-all group/btn mt-auto">
-                    <span>Apply with Project</span>
+                    <span>{t('applyWithProject')}</span>
                     <ArrowRight className="h-4 w-4 text-zinc-500 group-hover/btn:text-white group-hover/btn:translate-x-1 transition-all" />
                 </button>
             </div>

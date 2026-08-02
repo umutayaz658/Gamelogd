@@ -8,6 +8,7 @@ import { Task, TaskPriority, TaskCategory, DEFAULT_KANBAN_CATEGORIES } from './W
 import { cn, getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import CategoryManager from './CategoryManager';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface CreateTaskModalProps {
     isOpen: boolean;
@@ -23,6 +24,7 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] 
 ];
 
 export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'backlog' }: CreateTaskModalProps) {
+    const { t } = useTranslation();
     const { data, setTasks, setKanbanCategories, logActivity, activeWorkspace, activeBoard } = useWorkspace();
     const { user } = useAuth();
     const [title, setTitle] = useState('');
@@ -123,7 +125,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
         >
             <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-3xl shadow-2xl shadow-black/60 animate-in slide-in-from-bottom-4 duration-300">
                 <div className="flex items-center justify-between p-5 border-b border-zinc-800">
-                    <h2 className="text-lg font-bold text-white">Create Task</h2>
+                    <h2 className="text-lg font-bold text-white">{t('createTask')}</h2>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all">
                         <X className="w-4 h-4" />
                     </button>
@@ -135,7 +137,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                         <div className="flex-1 space-y-4 min-w-0">
                             {/* Title */}
                             <div>
-                                <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-1.5 font-sans">Task Title *</label>
+                                <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block mb-1.5 font-sans">{t('taskTitleRequired')}</label>
                                 <input
                                     autoFocus
                                     type="text"
@@ -148,7 +150,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                             </div>
                                               {/* Description */}
                             <div>
-                                <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider block mb-1.5 font-sans">Description</label>
+                                <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider block mb-1.5 font-sans">{t('description')}</label>
                                 <textarea
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
@@ -162,14 +164,14 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                              <div>
                                   <div className="flex items-center justify-between mb-2">
                                       <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider flex items-center gap-1.5 font-sans">
-                                          <Tag className="w-3.5 h-3.5 text-zinc-500" /> Category
+                                          <Tag className="w-3.5 h-3.5 text-zinc-500" /> {t('category')}
                                       </label>
                                       <button
                                           type="button"
                                           onClick={() => setShowCategoryManager(true)}
                                           className="text-[10px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 cursor-pointer transition-all hover:underline"
                                       >
-                                          <Settings className="w-3 h-3" /> Manage
+                                          <Settings className="w-3 h-3" /> {t('manage')}
                                       </button>
                                   </div>
                                  <div className="flex flex-wrap gap-1.5">
@@ -198,7 +200,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                             {/* Priority */}
                             <div>
                                 <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider block mb-2 flex items-center gap-1.5 font-sans">
-                                    <Flag className="w-3.5 h-3.5 text-zinc-500" /> Priority
+                                    <Flag className="w-3.5 h-3.5 text-zinc-500" /> {t('priority')}
                                 </label>
                                 <div className="grid grid-cols-2 gap-1.5">
                                     {PRIORITY_OPTIONS.map(({ value, label, color }) => (
@@ -220,7 +222,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                             {/* Story Points */}
                             <div>
                                 <label className="text-[10px] font-extrabold text-zinc-555 uppercase tracking-wider block mb-2 font-sans">
-                                    Story Points (Complexity)
+                                    {t('storyPointsComplexity')}
                                 </label>
                                 <div className="flex gap-1.5">
                                     {[1, 2, 3, 5, 8].map((pts) => (
@@ -244,7 +246,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                             {/* Assignee */}
                             <div className="relative">
                                 <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5 font-sans">
-                                    <User className="w-3.5 h-3.5 text-zinc-500" /> Assignee
+                                    <User className="w-3.5 h-3.5 text-zinc-500" /> {t('assignee')}
                                 </label>
                                 
                                 <button
@@ -266,7 +268,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                                             </span>
                                         </div>
                                     ) : (
-                                        <span className="text-zinc-500">Unassigned</span>
+                                        <span className="text-zinc-500">{t('unassigned')}</span>
                                     )}
                                     <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
                                 </button>
@@ -301,7 +303,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                                                 )}
                                             >
                                                 <UserPlus className="w-3.5 h-3.5 text-zinc-500" />
-                                                <span>Unassigned</span>
+                                                <span>{t('unassigned')}</span>
                                             </button>
 
                                             {filteredMembers.map((m) => (
@@ -340,7 +342,7 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                             {/* Due Date */}
                             <div>
                                 <label className="text-[10px] font-extrabold text-zinc-550 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5 font-sans">
-                                    <Calendar className="w-3.5 h-3.5 text-zinc-500" /> Due Date
+                                    <Calendar className="w-3.5 h-3.5 text-zinc-500" /> {t('dueDate')}
                                 </label>
                                 <input
                                     type="date"
@@ -360,14 +362,14 @@ export default function CreateTaskModal({ isOpen, onClose, defaultColumnId = 'ba
                             onClick={onClose}
                             className="px-5 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-xs font-bold hover:bg-zinc-800 transition-all cursor-pointer"
                         >
-                            Cancel
+                            {t('cancel')}
                         </button>
                         <button
                             type="submit"
                             disabled={!title.trim()}
                             className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 cursor-pointer"
                         >
-                            Create Task
+                            {t('createTask')}
                         </button>
                     </div>
                 </form>

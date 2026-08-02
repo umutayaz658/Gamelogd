@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '@/lib/api';
 import { User } from '@/types';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 
 interface MentionAutocompleteProps {
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -18,6 +19,7 @@ export default function MentionAutocomplete({
     onChange,
     onKeyDown,
 }: MentionAutocompleteProps) {
+    const { t } = useTranslation();
     const [suggestions, setSuggestions] = useState<User[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [mentionMatch, setMentionMatch] = useState<{ query: string; startIndex: number; endIndex: number } | null>(null);
@@ -85,6 +87,10 @@ export default function MentionAutocomplete({
             isMounted = false;
             clearTimeout(timer);
         };
+        // Deliberately keyed on the query text alone, not the whole mentionMatch object:
+        // cursor movement within the same @query reuses the debounced suggestions instead of
+        // re-fetching on every caret shift.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mentionMatch?.query]);
 
     // Insert selected user mention into text
@@ -150,8 +156,8 @@ export default function MentionAutocomplete({
     const renderSuggestions = () => (
         <div className="absolute bottom-full left-0 mb-2 w-72 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
             <div className="px-3 py-1.5 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase border-b border-zinc-800 flex items-center justify-between">
-                <span>Mentions</span>
-                {isLoading && <span className="text-emerald-500 animate-pulse">Searching...</span>}
+                <span>{t('mentionsLabel')}</span>
+                {isLoading && <span className="text-emerald-500 animate-pulse">{t('searching')}</span>}
             </div>
             <div className="max-h-48 overflow-y-auto divide-y divide-zinc-800/40">
                 {suggestions.map((userItem, idx) => (
@@ -176,7 +182,7 @@ export default function MentionAutocomplete({
                                 {userItem.real_name || userItem.username}
                             </div>
                             <div className="text-[11px] text-zinc-400 truncate">
-                                @{userItem.username}
+                                {formatHandle(userItem.username)}
                             </div>
                         </div>
                     </button>

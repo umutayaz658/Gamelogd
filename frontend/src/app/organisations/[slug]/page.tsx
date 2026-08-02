@@ -8,7 +8,7 @@ import ProjectCard from "@/components/ProjectCard";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
 import { Organisation, OrganisationInvitation, Project, Post } from '@/types';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, wrapInParens } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/url';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
@@ -20,6 +20,9 @@ import Link from 'next/link';
 import MemberManager from '@/components/team/MemberManager';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+
+const TWITTER_LABEL = 'Twitter';
+const YOUTUBE_LABEL = 'YouTube';
 
 export default function OrganisationProfilePage() {
     const { slug } = useParams() as { slug: string };
@@ -225,10 +228,10 @@ export default function OrganisationProfilePage() {
                                             )}
                                         </h1>
                                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-400">
-                                            <span className="font-mono text-zinc-500">/organisations/{organisation.slug}</span>
+                                            <span className="font-mono text-zinc-500">{['/organisations', organisation.slug].join('/')}</span>
                                             <span className="flex items-center gap-1">
                                                 <Calendar className="h-3.5 w-3.5" />
-                                                {t('joined') || 'Katılma'}: {new Date(organisation.created_at).toLocaleDateString()}
+                                                {t('joined')} {new Date(organisation.created_at).toLocaleDateString()}
                                             </span>
                                         </div>
                                     </div>
@@ -243,14 +246,14 @@ export default function OrganisationProfilePage() {
                                                 disabled={isInviteActionLoading}
                                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
                                             >
-                                                Accept Invite
+                                                {t('acceptInvite')}
                                             </button>
                                             <button
                                                 onClick={handleDeclineOrgInvite}
                                                 disabled={isInviteActionLoading}
                                                 className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200"
                                             >
-                                                Decline
+                                                {t('decline')}
                                             </button>
                                         </>
                                     ) : (
@@ -278,12 +281,12 @@ export default function OrganisationProfilePage() {
                                                 {organisation.is_following ? (
                                                     <>
                                                         <CheckSquare className="h-4 w-4" />
-                                                        <span>{t('following') || 'Takip Ediliyor'}</span>
+                                                        <span>{t('following')}</span>
                                                     </>
                                                 ) : (
                                                     <>
                                                         <Plus className="h-4 w-4" />
-                                                        <span>{t('follow') || 'Takip Et'}</span>
+                                                        <span>{t('follow')}</span>
                                                     </>
                                                 )}
                                             </button>
@@ -295,26 +298,26 @@ export default function OrganisationProfilePage() {
                             {/* Bio & Social Links bar */}
                             <div className="px-6 pb-6 border-t border-zinc-800/40 pt-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="max-w-2xl text-zinc-300 text-sm leading-relaxed">
-                                    {organisation.description || t('noBioAvailable' as any) || 'No description provided.'}
+                                    {organisation.description || t('noBioAvailable')}
                                 </div>
 
                                 <div className="flex items-center gap-4 text-zinc-500 border-t md:border-t-0 border-zinc-850 pt-3 md:pt-0">
                                     {organisation.website && (
                                         <a href={sanitizeUrl(organisation.website)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Globe className="h-4 w-4" />
-                                            <span className="hidden md:inline">Website</span>
+                                            <span className="hidden md:inline">{t('website')}</span>
                                         </a>
                                     )}
                                     {organisation.twitter && (
                                         <a href={sanitizeUrl(organisation.twitter)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Twitter className="h-4 w-4" />
-                                            <span className="hidden md:inline">Twitter</span>
+                                            <span className="hidden md:inline">{TWITTER_LABEL}</span>
                                         </a>
                                     )}
                                     {organisation.youtube && (
                                         <a href={sanitizeUrl(organisation.youtube)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors text-sm font-semibold">
                                             <Youtube className="h-4 w-4" />
-                                            <span className="hidden md:inline">YouTube</span>
+                                            <span className="hidden md:inline">{YOUTUBE_LABEL}</span>
                                         </a>
                                     )}
                                     {(organisation.extra_links ?? []).map((link, i) => (
@@ -326,7 +329,7 @@ export default function OrganisationProfilePage() {
                                     <div className="w-px h-4 bg-zinc-800 hidden md:block" />
                                     <span className="flex items-center gap-1 text-zinc-400 font-semibold text-sm">
                                         <Users className="h-4 w-4 text-zinc-550" />
-                                        <strong>{organisation.followers_count}</strong> {t('followers') || 'takipçi'}
+                                        <strong>{organisation.followers_count}</strong> {t('followers')}
                                     </span>
                                 </div>
                             </div>
@@ -342,7 +345,7 @@ export default function OrganisationProfilePage() {
                                     }`}
                             >
                                 <FolderKanban className="h-5 w-5" />
-                                {t('projects') || 'Projeler'} ({projects.length})
+                                {t('projects')} {wrapInParens(projects.length)}
                                 {activeTab === 'projects' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
@@ -356,7 +359,7 @@ export default function OrganisationProfilePage() {
                                     }`}
                             >
                                 <Layout className="h-5 w-5" />
-                                {t('devlogs') || 'Geliştirici Günlükleri'} ({devlogs.length})
+                                {t('devlogs')} {wrapInParens(devlogs.length)}
                                 {activeTab === 'devlogs' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
@@ -370,7 +373,7 @@ export default function OrganisationProfilePage() {
                                     }`}
                             >
                                 <Users2 className="h-5 w-5" />
-                                {t('team' as any) || 'Ekip'} ({organisation.members?.length || 0})
+                                {t('team')} {wrapInParens(organisation.members?.length || 0)}
                                 {activeTab === 'team' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}

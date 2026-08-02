@@ -1,7 +1,7 @@
 import { JobPosting } from '@/types';
 import { Briefcase, Users, MapPin, Zap, ArrowLeft, Send, CheckCircle2, User as UserIcon } from 'lucide-react';
 import Link from 'next/link';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle, wrapInParens } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/lib/useTranslation';
 
@@ -103,7 +103,7 @@ export default function CollabDetailPane({ job, onClose }: CollabDetailPaneProps
                                 ) : (
                                     <span className="flex items-center gap-2">
                                         <Users className="h-4 w-4" />
-                                        {t('indieTeam')} (@{job.recruiter.username})
+                                        {[t('indieTeam'), wrapInParens(formatHandle(job.recruiter.username))].join(' ')}
                                     </span>
                                 )
                             )}

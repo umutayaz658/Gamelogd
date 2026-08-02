@@ -8,13 +8,16 @@ import {
     Heart, Trash2, ChevronDown, Filter, Loader2,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { cn, getImageUrl, getRelativeTime } from '@/lib/utils';
+import { cn, getImageUrl, getRelativeTime, formatHandle } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { PRIORITY_COLOR, type TaskPriority } from './WorkspaceTypes';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import { useToast } from '@/context/ToastContext';
 import type { PlaytestFeedback, FeedbackType, FeedbackStatus } from '@/types';
+
+const SLASH_SEPARATOR = '/';
+const BULLET_DOT = '•';
 
 const TYPE_META: Record<FeedbackType, { label: string; icon: typeof Bug }> = {
     bug: { label: 'Bug', icon: Bug },
@@ -80,7 +83,7 @@ export default function FeedbackPanel({
     onKanbanChanged,
 }: FeedbackPanelProps) {
     const { user } = useAuth();
-    const { language } = useTranslation();
+    const { t, language } = useTranslation();
     const toast = useToast();
 
     const [feedback, setFeedback] = useState<PlaytestFeedback[]>([]);
@@ -229,8 +232,8 @@ export default function FeedbackPanel({
             <div className="space-y-5">
                 <div className="flex items-center gap-3">
                     {headerExtra}
-                    {headerExtra && <span className="text-zinc-700 text-lg font-light">/</span>}
-                    <h2 className="text-xl font-bold text-white">Feedback</h2>
+                    {headerExtra && <span className="text-zinc-700 text-lg font-light" aria-hidden="true">{SLASH_SEPARATOR}</span>}
+                    <h2 className="text-xl font-bold text-white">{t('feedback')}</h2>
                 </div>
                 <div className="text-center py-16 text-zinc-600">
                     <Bug className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -246,10 +249,10 @@ export default function FeedbackPanel({
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
                         {headerExtra}
-                        {headerExtra && <span className="text-zinc-700 text-lg font-light">/</span>}
+                        {headerExtra && <span className="text-zinc-700 text-lg font-light" aria-hidden="true">{SLASH_SEPARATOR}</span>}
                         <div>
-                            <h2 className="text-xl font-bold text-white">Feedback</h2>
-                            <p className="text-xs text-zinc-500 mt-0.5">{feedback.length} item{feedback.length !== 1 ? 's' : ''}</p>
+                            <h2 className="text-xl font-bold text-white">{t('feedback')}</h2>
+                            <p className="text-xs text-zinc-500 mt-0.5">{[feedback.length, feedback.length !== 1 ? t('itemsLower') : t('itemLower')].join(' ')}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -312,7 +315,7 @@ export default function FeedbackPanel({
                                 onClick={() => setShowSubmitModal(true)}
                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20"
                             >
-                                <Plus className="w-4 h-4" /> Submit Feedback
+                                <Plus className="w-4 h-4" /> {t('submitFeedback')}
                             </button>
                         )}
                     </div>
@@ -323,7 +326,7 @@ export default function FeedbackPanel({
                 {!loading && feedback.length === 0 ? (
                     <div className="text-center py-16 text-zinc-600">
                         <Bug className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">No feedback yet.</p>
+                        <p className="text-sm">{t('noFeedbackYet')}</p>
                     </div>
                 ) : (
                     feedback.map((fb) => {
@@ -354,26 +357,26 @@ export default function FeedbackPanel({
                                                 </Link>
                                                 {author && (
                                                     <Link href={profileHref} className="text-zinc-500 text-sm hover:text-zinc-400">
-                                                        @{author.username}
+                                                        {formatHandle(author.username)}
                                                     </Link>
                                                 )}
-                                                <span className="text-zinc-700 text-sm">•</span>
+                                                <span className="text-zinc-700 text-sm" aria-hidden="true">{BULLET_DOT}</span>
                                                 <span className="text-zinc-500 text-sm" title={new Date(fb.submitted_at).toLocaleString()} suppressHydrationWarning>
-                                                    {new Date(fb.submitted_at).toLocaleDateString('en-GB')} • {getRelativeTime(fb.submitted_at, language)}
+                                                    {[new Date(fb.submitted_at).toLocaleDateString('en-GB'), BULLET_DOT, getRelativeTime(fb.submitted_at, language)].join(' ')}
                                                 </span>
                                                 {fb.is_pinned && (
                                                     <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                                                        <Pin className="w-2.5 h-2.5" /> PINNED
+                                                        <Pin className="w-2.5 h-2.5" /> {t('pinnedUppercase')}
                                                     </span>
                                                 )}
                                                 {fb.status === 'in_progress' && (
                                                     <span className="flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded">
-                                                        <Clock className="w-2.5 h-2.5" /> IN PROGRESS
+                                                        <Clock className="w-2.5 h-2.5" /> {t('inProgressUppercase')}
                                                     </span>
                                                 )}
                                                 {fb.status === 'resolved' && (
                                                     <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
-                                                        <CheckCircle2 className="w-2.5 h-2.5" /> RESOLVED
+                                                        <CheckCircle2 className="w-2.5 h-2.5" /> {t('resolvedUppercase')}
                                                     </span>
                                                 )}
                                             </div>
@@ -391,7 +394,7 @@ export default function FeedbackPanel({
                                             <span className={cn('flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg border', PRIORITY_COLOR[fb.priority])}>
                                                 <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[fb.priority])} /> {PRIORITY_LABEL[fb.priority]}
                                             </span>
-                                            {fb.build_version && <span className="text-xs text-zinc-600 font-mono">Build {fb.build_version}</span>}
+                                            {fb.build_version && <span className="text-xs text-zinc-600 font-mono">{[t('buildLabel'), fb.build_version].join(' ')}</span>}
                                         </div>
 
                                         {fb.title && <h3 className="font-bold text-white mt-3 leading-tight">{fb.title}</h3>}
@@ -423,7 +426,7 @@ export default function FeedbackPanel({
                                                             className={cn('flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-semibold border transition-all',
                                                                 fb.status === 'in_progress' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600')}
                                                         >
-                                                            <Clock className="w-3 h-3" /> In Progress
+                                                            <Clock className="w-3 h-3" /> {t('inProgress')}
                                                         </button>
                                                     )}
                                                     {canMarkResolved && (
@@ -432,7 +435,7 @@ export default function FeedbackPanel({
                                                             className={cn('flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-semibold border transition-all',
                                                                 fb.status === 'resolved' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600')}
                                                         >
-                                                            <CheckCircle2 className="w-3 h-3" /> Resolved
+                                                            <CheckCircle2 className="w-3 h-3" /> {t('resolvedCapitalized')}
                                                         </button>
                                                     )}
                                                     {allowConvertToTask && (
@@ -443,11 +446,11 @@ export default function FeedbackPanel({
                                                                     title="Pull back — removes it from the Kanban board"
                                                                     className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-semibold border bg-zinc-800/50 border-zinc-800 text-zinc-500 hover:border-red-500/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
                                                                 >
-                                                                    <ListChecks className="w-3 h-3" /> In Kanban
+                                                                    <ListChecks className="w-3 h-3" /> {t('inKanban')}
                                                                 </button>
                                                             ) : (
                                                                 <span className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-semibold border bg-zinc-800/50 border-zinc-800 text-zinc-500">
-                                                                    <ListChecks className="w-3 h-3" /> In Kanban
+                                                                    <ListChecks className="w-3 h-3" /> {t('inKanban')}
                                                                 </span>
                                                             )
                                                         ) : canConvert && (
@@ -457,14 +460,14 @@ export default function FeedbackPanel({
                                                                     title={`Cannot convert: the "${kanbanFirstColumnStatus.label}" column is full (${kanbanFirstColumnStatus.current}/${kanbanFirstColumnStatus.limit}). Raise its WIP limit or move a task out first.`}
                                                                     className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-semibold border bg-zinc-800/40 border-zinc-800 text-zinc-600 cursor-not-allowed"
                                                                 >
-                                                                    <ListChecks className="w-3 h-3" /> Convert to Task
+                                                                    <ListChecks className="w-3 h-3" /> {t('convertToTask')}
                                                                 </button>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => convertToTask(fb)}
                                                                     className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-semibold border bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600 transition-all"
                                                                 >
-                                                                    <ListChecks className="w-3 h-3" /> Convert to Task
+                                                                    <ListChecks className="w-3 h-3" /> {t('convertToTask')}
                                                                 </button>
                                                             )
                                                         )
@@ -487,12 +490,12 @@ export default function FeedbackPanel({
                 >
                     <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
                         <div className="flex items-center justify-between p-5 border-b border-zinc-800 sticky top-0 bg-zinc-950 z-10">
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2"><Bug className="w-5 h-5 text-blue-400" /> Submit Feedback</h3>
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2"><Bug className="w-5 h-5 text-blue-400" /> {t('submitFeedback')}</h3>
                             <button onClick={() => setShowSubmitModal(false)} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
                         </div>
                         <form onSubmit={handleSubmit} className="p-5 space-y-4">
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Title</label>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('titleLabel')}</label>
                                 <input
                                     value={fbTitle}
                                     onChange={(e) => setFbTitle(e.target.value)}
@@ -501,7 +504,7 @@ export default function FeedbackPanel({
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Type</label>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('typeLabel')}</label>
                                 <div className="flex gap-2 flex-wrap">
                                     {(Object.keys(TYPE_META) as FeedbackType[]).map((tp) => {
                                         const { label, icon: Icon } = TYPE_META[tp];
@@ -520,7 +523,7 @@ export default function FeedbackPanel({
                                 </div>
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Priority</label>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('priority')}</label>
                                 <div className="flex gap-2">
                                     {PRIORITY_ORDER.map((p) => (
                                         <button
@@ -542,7 +545,7 @@ export default function FeedbackPanel({
                                 className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-all font-mono"
                             />
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Description</label>
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">{t('description')}</label>
                                 <textarea
                                     autoFocus
                                     value={fbDesc}
@@ -559,14 +562,14 @@ export default function FeedbackPanel({
                                     onClick={() => setShowSubmitModal(false)}
                                     className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all"
                                 >
-                                    Cancel
+                                    {t('cancel')}
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={submitting}
                                     className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold transition-all flex items-center justify-center gap-2"
                                 >
-                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Submit
+                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {t('submit')}
                                 </button>
                             </div>
                         </form>

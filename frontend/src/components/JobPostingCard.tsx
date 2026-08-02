@@ -1,6 +1,6 @@
 import { JobPosting } from '@/types';
 import { Briefcase, Users, Code2, MapPin, Zap, User as UserIcon } from 'lucide-react';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
 
 interface JobPostingCardProps {
@@ -98,7 +98,7 @@ export default function JobPostingCard({ job, selected, onClick }: JobPostingCar
                         ) : (
                             <>
                                 <Users className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
-                                <span className="truncate">@{job.recruiter.username}</span>
+                                <span className="truncate">{formatHandle(job.recruiter.username)}</span>
                             </>
                         )
                     )}

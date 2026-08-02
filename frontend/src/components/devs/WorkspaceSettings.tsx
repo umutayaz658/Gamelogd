@@ -11,6 +11,10 @@ import { getImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import BoardSwitcher from './BoardSwitcher';
 import type { Project } from '@/types';
+import { useTranslation } from '@/lib/useTranslation';
+
+const SLASH_SEPARATOR = '/';
+const QUOTE_MARK = '"';
 
 function IdentityCard({
     avatarUrl, avatarSeed, title, subtitle, badge, href, linkLabel,
@@ -51,6 +55,7 @@ function IdentityCard({
 type DangerAction = 'clear' | 'delete-org' | 'delete-project' | null;
 
 export default function WorkspaceSettings() {
+    const { t } = useTranslation();
     const { user } = useAuth();
     const {
         activeWorkspace, setActiveWorkspace, setActiveBoard, activeBoard, hasPermission,
@@ -131,9 +136,9 @@ export default function WorkspaceSettings() {
             <div className="space-y-2">
                 <div className="flex items-center gap-3">
                     <BoardSwitcher />
-                    <span className="text-zinc-700 text-lg font-light">/</span>
+                    <span className="text-zinc-700 text-lg font-light" aria-hidden="true">{SLASH_SEPARATOR}</span>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Settings className="w-5 h-5 text-zinc-400" /> Workspace Settings
+                        <Settings className="w-5 h-5 text-zinc-400" /> {t('workspaceSettings')}
                     </h2>
                 </div>
                 <p className="text-sm text-zinc-500">
@@ -181,14 +186,14 @@ export default function WorkspaceSettings() {
             {/* Danger Zone */}
             <section className="bg-red-950/20 border border-red-900/40 rounded-2xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-red-400 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" /> Danger Zone
+                    <AlertTriangle className="w-4 h-4" /> {t('dangerZone')}
                 </h3>
 
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
-                        <p className="text-sm font-semibold text-zinc-300">Clear Workspace Data</p>
+                        <p className="text-sm font-semibold text-zinc-300">{t('clearWorkspaceData')}</p>
                         <p className="text-xs text-zinc-600 mt-0.5">
-                            Permanently deletes this board&apos;s Kanban tasks, GDD docs, assets, and activity history. Columns and categories are kept. This cannot be undone.
+                            {t('clearWorkspaceDataDesc')}
                         </p>
                     </div>
                     {canEdit && (
@@ -196,7 +201,7 @@ export default function WorkspaceSettings() {
                             onClick={() => setConfirmAction('clear')}
                             className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0"
                         >
-                            <Trash2 className="w-4 h-4" /> Clear Data
+                            <Trash2 className="w-4 h-4" /> {t('clearData')}
                         </button>
                     )}
                 </div>
@@ -204,9 +209,9 @@ export default function WorkspaceSettings() {
                 {isOrgRoot && (
                     <div className="flex items-center justify-between gap-4 flex-wrap pt-4 border-t border-red-900/30">
                         <div>
-                            <p className="text-sm font-semibold text-zinc-300">Delete Organisation</p>
+                            <p className="text-sm font-semibold text-zinc-300">{t('deleteOrganisation')}</p>
                             <p className="text-xs text-zinc-600 mt-0.5">
-                                Permanently deletes &quot;{activeWorkspace.org?.name}&quot;, its roles, and removes all members. Its projects are <span className="text-zinc-400 font-semibold">not</span> deleted — they just become independent, still owned by their creators. This cannot be undone.
+                                {[t('permanentlyDeletesQuotePrefix'), activeWorkspace.org?.name, t('deleteOrgQuoteSuffix')].join('')} <span className="text-zinc-400 font-semibold">{t('notLower')}</span> {t('deletedIndependentSuffixDesc')}
                             </p>
                         </div>
                         {isOrgOwner ? (
@@ -214,10 +219,10 @@ export default function WorkspaceSettings() {
                                 onClick={() => setConfirmAction('delete-org')}
                                 className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0"
                             >
-                                <Trash2 className="w-4 h-4" /> Delete
+                                <Trash2 className="w-4 h-4" /> {t('delete')}
                             </button>
                         ) : (
-                            <p className="text-xs text-zinc-600 italic flex-shrink-0">Only the owner can do this.</p>
+                            <p className="text-xs text-zinc-600 italic flex-shrink-0">{t('onlyOwnerCanDoThisDesc')}</p>
                         )}
                     </div>
                 )}
@@ -225,9 +230,9 @@ export default function WorkspaceSettings() {
                 {projectId && (
                     <div className="flex items-center justify-between gap-4 flex-wrap pt-4 border-t border-red-900/30">
                         <div>
-                            <p className="text-sm font-semibold text-zinc-300">Delete Project</p>
+                            <p className="text-sm font-semibold text-zinc-300">{t('deleteProject')}</p>
                             <p className="text-xs text-zinc-600 mt-0.5">
-                                Permanently deletes &quot;{projectDetails?.title}&quot; and all its data — devlogs, feedback, and this board&apos;s Kanban/GDD/assets. This cannot be undone.
+                                {[t('permanentlyDeletesQuotePrefix'), projectDetails?.title, t('deleteProjectQuoteSuffixDesc')].join('')}
                             </p>
                         </div>
                         {isProjectOwner ? (
@@ -235,10 +240,10 @@ export default function WorkspaceSettings() {
                                 onClick={() => setConfirmAction('delete-project')}
                                 className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition-all flex-shrink-0"
                             >
-                                <Trash2 className="w-4 h-4" /> Delete
+                                <Trash2 className="w-4 h-4" /> {t('delete')}
                             </button>
                         ) : (
-                            <p className="text-xs text-zinc-600 italic flex-shrink-0">Only the owner can do this.</p>
+                            <p className="text-xs text-zinc-600 italic flex-shrink-0">{t('onlyOwnerCanDoThisDesc')}</p>
                         )}
                     </div>
                 )}
@@ -263,7 +268,7 @@ export default function WorkspaceSettings() {
                             <button onClick={closeConfirm} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
                         </div>
                         <p className="text-sm text-zinc-400">
-                            Type <span className="font-bold text-white font-mono">&quot;{requiredConfirmText}&quot;</span> to confirm:
+                            {t('typeToConfirmPrefix')} <span className="font-bold text-white font-mono">{[QUOTE_MARK, requiredConfirmText, QUOTE_MARK].join('')}</span> {t('typeToConfirmSuffix')}
                         </p>
                         <input
                             autoFocus
@@ -274,7 +279,7 @@ export default function WorkspaceSettings() {
                         />
                         <div className="flex gap-3">
                             <button onClick={closeConfirm} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all">
-                                Cancel
+                                {t('cancel')}
                             </button>
                             <button
                                 disabled={confirmText !== requiredConfirmText || processing}

@@ -5,7 +5,8 @@ import { useFeed } from '@/context/FeedContext';
 import { Post, Review } from '@/types';
 import { X, Loader2, ImagePlay, Smile, BarChart2, Plus, Trash2, FileImage } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, formatHandle } from '@/lib/utils';
+import { useTranslation } from '@/lib/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from './PostCard';
 import ReviewCard from './ReviewCard';
@@ -15,6 +16,8 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import api from '@/lib/api';
 
 import MentionAutocomplete from '@/components/MentionAutocomplete';
+
+const MIDDLE_DOT = '·';
 
 // Grid display still caps at 4 visible cells (Twitter standard, with a "+N" overlay
 // past that) — this only bounds how many files a single post can attach.
@@ -46,6 +49,7 @@ export default function ReplyModal() {
     const activeItem = rawActiveItem as (Post | Review) | null;
     const { addFeedItem } = useFeed();
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     // Core State
     const [content, setContent] = useState('');
@@ -288,8 +292,8 @@ export default function ReplyModal() {
                             <div className="flex-1 min-w-0">
                                 {mode !== 'quote' && (
                                     <div className="mb-2">
-                                        <span className="text-zinc-500 text-sm">Replying to </span>
-                                        <span className="text-emerald-500 text-sm font-medium">@{activeItem.user.username}</span>
+                                        <span className="text-zinc-500 text-sm">{t('replyingTo')} </span>
+                                        <span className="text-emerald-500 text-sm font-medium">{formatHandle(activeItem.user.username)}</span>
                                     </div>
                                 )}
 
@@ -317,8 +321,8 @@ export default function ReplyModal() {
                                                 className="h-5 w-5 rounded-full object-cover bg-zinc-800"
                                             />
                                             <span className="font-bold text-white text-xs leading-none">{activeItem.user.real_name || activeItem.user.username}</span>
-                                            <span className="text-zinc-500 text-xs leading-none">@{activeItem.user.username.toLowerCase()}</span>
-                                            <span className="text-zinc-650 text-xs leading-none">·</span>
+                                            <span className="text-zinc-500 text-xs leading-none">{formatHandle(activeItem.user.username.toLowerCase())}</span>
+                                            <span className="text-zinc-650 text-xs leading-none" aria-hidden="true">{MIDDLE_DOT}</span>
                                             <span className="text-zinc-500 text-xs leading-none">
                                                 {isReview(activeItem) 
                                                     ? new Date((activeItem as any).timestamp).toLocaleDateString()
@@ -328,8 +332,8 @@ export default function ReplyModal() {
                                         </div>
                                         {isReview(activeItem) ? (
                                             <div>
-                                                <div className="text-emerald-500 text-xs font-bold mb-1">Logged: {(activeItem as any).rating}/10</div>
-                                                <p className="text-zinc-300 text-xs line-clamp-3 leading-relaxed">{activeItem.content || 'No review written.'}</p>
+                                                <div className="text-emerald-500 text-xs font-bold mb-1">{t('logged')} {[(activeItem as any).rating, '/10'].join('')}</div>
+                                                <p className="text-zinc-300 text-xs line-clamp-3 leading-relaxed">{activeItem.content || t('noReviewWritten')}</p>
                                             </div>
                                         ) : (
                                             <div>
@@ -371,7 +375,7 @@ export default function ReplyModal() {
                                 {showPollCreator && (
                                     <div className="mb-4 p-4 bg-zinc-950/50 rounded-xl border border-zinc-800">
                                         <div className="flex items-center justify-between mb-3">
-                                            <span className="text-xs font-bold text-zinc-400">POLL OPTIONS</span>
+                                            <span className="text-xs font-bold text-zinc-400 uppercase">{t('pollOptions')}</span>
                                             <button onClick={togglePollCreator} className="text-zinc-500 hover:text-red-500 transition-colors">
                                                 <X className="h-3 w-3" />
                                             </button>
@@ -400,9 +404,9 @@ export default function ReplyModal() {
                                         {pollOptions.length < 4 && (
                                             <button
                                                 onClick={addPollOption}
-                                                className="mt-2 text-emerald-500 text-xs font-bold hover:underline flex items-center gap-1"
+                                                className="mt-2 text-emerald-500 text-xs font-bold hover:underline flex items-center gap-1 uppercase"
                                             >
-                                                <Plus className="h-3 w-3" /> ADD OPTION
+                                                <Plus className="h-3 w-3" /> {t('addOption')}
                                             </button>
                                         )}
                                     </div>
