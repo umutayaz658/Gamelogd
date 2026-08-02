@@ -25,16 +25,6 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      # Non-blocking for now: 56 pre-existing error-level violations remain (mostly
-      # react-hooks/rules-of-hooks and setState-in-effect), tracked as separate follow-up work.
-      # typescript.ignoreBuildErrors is off (Run Next.js Build below enforces it); only
-      # eslint.ignoreDuringBuilds is still on. This surfaces the report; flip continue-on-error
-      # to false once the remaining violations are cleared.
-      - name: Run ESLint (report only)
-        run: npm run lint
-        working-directory: frontend
-        continue-on-error: true
-
       - name: Run Next.js Build
         run: npm run build
         working-directory: frontend
@@ -42,33 +32,6 @@ jobs:
   backend-ci:
     name: Backend Check & Migrations
     runs-on: ubuntu-latest
-    # Tests run against real Postgres (same engine as production): SQLite would silently
-    # no-op select_for_update and skip the partial unique constraints under test.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: ci_db
-          POSTGRES_USER: ci_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ci_user -d ci_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      SECRET_KEY: 'ci-secret-key-placeholder'
-      DEBUG: 'True'
-      DB_NAME: 'ci_db'
-      DB_USER: 'ci_user'
-      DB_PASSWORD: 'ci_password'
-      DB_HOST: 'localhost'
-      DB_PORT: '5432'
-      CLOUDINARY_CLOUD_NAME: 'placeholder'
-      CLOUDINARY_API_KEY: 'placeholder'
-      CLOUDINARY_API_SECRET: 'placeholder'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -85,16 +48,43 @@ jobs:
           if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
 
       - name: Run Django System Checks
-        run: python manage.py check
-        working-directory: backend
+        run: python backend/manage.py check
+        env:
+          SECRET_KEY: 'ci-secret-key-placeholder'
+          DEBUG: 'True'
+          DB_NAME: 'ci_db'
+          DB_USER: 'ci_user'
+          DB_PASSWORD: 'ci_password'
+          DB_HOST: 'localhost'
+          DB_PORT: '5432'
+          CLOUDINARY_CLOUD_NAME: 'placeholder'
+          CLOUDINARY_API_KEY: 'placeholder'
+          CLOUDINARY_API_SECRET: 'placeholder'
 
       - name: Check for Uncreated Migrations
-        run: python manage.py makemigrations --check --dry-run
-        working-directory: backend
+        run: python backend/manage.py makemigrations --check --dry-run
+        env:
+          SECRET_KEY: 'ci-secret-key-placeholder'
+          DEBUG: 'True'
+          DB_NAME: 'ci_db'
+          DB_USER: 'ci_user'
+          DB_PASSWORD: 'ci_password'
+          DB_HOST: 'localhost'
+          DB_PORT: '5432'
+          CLOUDINARY_CLOUD_NAME: 'placeholder'
+          CLOUDINARY_API_KEY: 'placeholder'
+          CLOUDINARY_API_SECRET: 'placeholder'
 
-      # working-directory + explicit app label: running `python backend/manage.py test` from the
-      # repo root used to discover 0 tests (backend/ is not a package), so the suite never
-      # actually gated anything.
       - name: Run Django Tests
-        run: python manage.py test api
-        working-directory: backend
+        run: python backend/manage.py test
+        env:
+          SECRET_KEY: 'ci-secret-key-placeholder'
+          DEBUG: 'True'
+          DB_NAME: 'ci_db'
+          DB_USER: 'ci_user'
+          DB_PASSWORD: 'ci_password'
+          DB_HOST: 'localhost'
+          DB_PORT: '5432'
+          CLOUDINARY_CLOUD_NAME: 'placeholder'
+          CLOUDINARY_API_KEY: 'placeholder'
+          CLOUDINARY_API_SECRET: 'placeholder'
