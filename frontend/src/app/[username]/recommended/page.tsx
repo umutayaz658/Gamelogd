@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { getImageUrl } from '@/lib/utils';
 
 interface GameItem {
     id: number;
@@ -44,7 +45,7 @@ const GameCard = ({ game, subtitle }: { game: GameItem, subtitle?: string }) => 
     >
         {game.cover_image ? (
             <img
-                src={game.cover_image}
+                src={getImageUrl(game.cover_image)}
                 alt={game.title}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             />
@@ -135,7 +136,7 @@ const DiscoverySection = ({
                     {visible.map(game => (
                         <Link key={game.id} href={`/games/${game.id}`} className="flex items-center gap-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors group">
                             <div className="w-10 h-14 rounded overflow-hidden bg-zinc-800 shrink-0 relative">
-                                {game.cover_image && <img src={game.cover_image} alt="" className="w-full h-full object-cover" />}
+                                {game.cover_image && <img src={getImageUrl(game.cover_image)} alt="" className="w-full h-full object-cover" />}
                             </div>
                             <div>
                                 <h4 className={`text-sm font-semibold ${accentClass} line-clamp-1`}>{game.title}</h4>

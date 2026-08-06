@@ -166,129 +166,133 @@ export default function GameLibraryPage({ params }: { params: Promise<{ username
                             </p>
                         </div>
 
-                        {/* Sticky Filters Bar */}
-                        <div className="sticky top-20 z-30 bg-zinc-950/80 backdrop-blur-md border border-zinc-800 rounded-xl p-4 mb-6 shadow-xl shadow-black/20">
+                        {/* Sticky Filters Bar — the blur/background/border layer lives in a separate
+                            absolutely-positioned child rather than on the sticky element itself.
+                            Chrome/Blink has a known rendering quirk where `position: sticky`
+                            combined directly with `backdrop-filter` on the same element can fail
+                            to stick during scroll; decoupling them (sticky wrapper with no filter,
+                            filter on a non-sticky inset-0 child) sidesteps it entirely. */}
+                        <div className="sticky top-20 z-30 mb-6">
+                            <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md border border-zinc-800 rounded-xl shadow-xl shadow-black/20" aria-hidden="true" />
+                            <div className="relative p-4">
 
-                            {/* Mobile: every filter in one horizontally-scrollable row (no view
-                                toggle — mobile is always list view, see effectiveViewMode) */}
-                            <div className="lg:hidden flex items-center gap-3 overflow-x-auto -mx-1 px-1 no-scrollbar">
-                                <div className="flex-shrink-0">
-                                    <FilterDropdown
-                                        label={t('status')}
-                                        allLabel={t('all')}
-                                        icon={<Filter className="h-4 w-4" />}
-                                        options={[
-                                            { value: 'unplayed', label: t('unplayed') },
-                                            { value: 'plan_to_play', label: t('planToPlay') },
-                                            { value: 'playing', label: t('playing') },
-                                            { value: 'replaying', label: t('replaying') },
-                                            { value: 'completed', label: t('completed') },
-                                            { value: 'dropped', label: t('dropped') }
-                                        ]}
-                                        value={filterStatus === 'all' ? '' : filterStatus}
-                                        onChange={(val) => setFilterStatus(val || 'all')}
-                                    />
-                                </div>
-                                <div className="flex-shrink-0">
-                                    <FilterDropdown
-                                        label={t('platforms')}
-                                        allLabel={t('allPlatforms')}
-                                        icon={<Gamepad2 className="h-4 w-4" />}
-                                        options={[
-                                            { value: 'Steam', label: 'Steam' },
-                                            { value: 'PlayStation', label: 'PlayStation' },
-                                            { value: 'Xbox', label: 'Xbox' },
-                                            { value: 'EA', label: 'EA App' }
-                                        ]}
-                                        value={filterPlatform === 'all' ? '' : filterPlatform}
-                                        onChange={(val) => setFilterPlatform(val || 'all')}
-                                    />
-                                </div>
-                                <div className="flex-shrink-0">
-                                    <FilterDropdown
-                                        label={t('sortBy')}
-                                        icon={<ArrowUpDown className="h-4 w-4" />}
-                                        options={[
-                                            { value: 'playtime', label: t('playtime') },
-                                            { value: 'name', label: t('name') }
-                                        ]}
-                                        value={sortBy}
-                                        onChange={(val) => setSortBy(val)}
-                                        showAllOption={false}
-                                        showSelectionAccent={false}
-                                        align="right"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Desktop: two groups side by side, plus the grid/list view toggle */}
-                            <div className="hidden lg:flex lg:items-center lg:justify-between lg:gap-4">
-                                <div className="flex flex-row flex-wrap items-center gap-3">
-                                    {/* Status Filter */}
-                                    <FilterDropdown
-                                        label={t('status')}
-                                        allLabel={t('all')}
-                                        icon={<Filter className="h-4 w-4" />}
-                                        options={[
-                                            { value: 'unplayed', label: t('unplayed') },
-                                            { value: 'plan_to_play', label: t('planToPlay') },
-                                            { value: 'playing', label: t('playing') },
-                                            { value: 'replaying', label: t('replaying') },
-                                            { value: 'completed', label: t('completed') },
-                                            { value: 'dropped', label: t('dropped') }
-                                        ]}
-                                        value={filterStatus === 'all' ? '' : filterStatus}
-                                        onChange={(val) => setFilterStatus(val || 'all')}
-                                    />
-
-                                    {/* Platform Filter */}
-                                    <FilterDropdown
-                                        label={t('platforms')}
-                                        allLabel={t('allPlatforms')}
-                                        icon={<Gamepad2 className="h-4 w-4" />}
-                                        options={[
-                                            { value: 'Steam', label: 'Steam' },
-                                            { value: 'PlayStation', label: 'PlayStation' },
-                                            { value: 'Xbox', label: 'Xbox' },
-                                            { value: 'EA', label: 'EA App' }
-                                        ]}
-                                        value={filterPlatform === 'all' ? '' : filterPlatform}
-                                        onChange={(val) => setFilterPlatform(val || 'all')}
-                                    />
+                                {/* Mobile: every filter in one horizontally-scrollable row (no view
+                                    toggle — mobile is always list view, see effectiveViewMode) */}
+                                <div className="lg:hidden flex items-center gap-3 overflow-x-auto -mx-1 px-1 no-scrollbar">
+                                    <div className="flex-shrink-0">
+                                        <FilterDropdown
+                                            label={t('status')}
+                                            allLabel={t('all')}
+                                            icon={<Filter className="h-4 w-4" />}
+                                            options={[
+                                                { value: 'unplayed', label: t('unplayed') },
+                                                { value: 'plan_to_play', label: t('planToPlay') },
+                                                { value: 'playing', label: t('playing') },
+                                                { value: 'replaying', label: t('replaying') },
+                                                { value: 'completed', label: t('completed') },
+                                                { value: 'dropped', label: t('dropped') }
+                                            ]}
+                                            value={filterStatus === 'all' ? '' : filterStatus}
+                                            onChange={(val) => setFilterStatus(val || 'all')}
+                                        />
+                                    </div>
+                                    <div className="flex-shrink-0">
+                                        <FilterDropdown
+                                            label={t('platforms')}
+                                            allLabel={t('allPlatforms')}
+                                            icon={<Gamepad2 className="h-4 w-4" />}
+                                            options={[
+                                                { value: 'Steam', label: 'Steam' },
+                                                { value: 'Xbox', label: 'Xbox' }
+                                            ]}
+                                            value={filterPlatform === 'all' ? '' : filterPlatform}
+                                            onChange={(val) => setFilterPlatform(val || 'all')}
+                                        />
+                                    </div>
+                                    <div className="flex-shrink-0">
+                                        <FilterDropdown
+                                            label={t('sortBy')}
+                                            icon={<ArrowUpDown className="h-4 w-4" />}
+                                            options={[
+                                                { value: 'playtime', label: t('playtime') },
+                                                { value: 'name', label: t('name') }
+                                            ]}
+                                            value={sortBy}
+                                            onChange={(val) => setSortBy(val)}
+                                            showAllOption={false}
+                                            showSelectionAccent={false}
+                                            align="right"
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="flex flex-wrap items-center gap-3 justify-end">
-                                    {/* Sort */}
-                                    <FilterDropdown
-                                        label={t('sortBy')}
-                                        icon={<ArrowUpDown className="h-4 w-4" />}
-                                        options={[
-                                            { value: 'playtime', label: t('playtime') },
-                                            { value: 'name', label: t('name') }
-                                        ]}
-                                        value={sortBy}
-                                        onChange={(val) => setSortBy(val)}
-                                        showAllOption={false}
-                                        showSelectionAccent={false}
-                                        align="right"
-                                    />
+                                {/* Desktop: two groups side by side, plus the grid/list view toggle */}
+                                <div className="hidden lg:flex lg:items-center lg:justify-between lg:gap-4">
+                                    <div className="flex flex-row flex-wrap items-center gap-3">
+                                        {/* Status Filter */}
+                                        <FilterDropdown
+                                            label={t('status')}
+                                            allLabel={t('all')}
+                                            icon={<Filter className="h-4 w-4" />}
+                                            options={[
+                                                { value: 'unplayed', label: t('unplayed') },
+                                                { value: 'plan_to_play', label: t('planToPlay') },
+                                                { value: 'playing', label: t('playing') },
+                                                { value: 'replaying', label: t('replaying') },
+                                                { value: 'completed', label: t('completed') },
+                                                { value: 'dropped', label: t('dropped') }
+                                            ]}
+                                            value={filterStatus === 'all' ? '' : filterStatus}
+                                            onChange={(val) => setFilterStatus(val || 'all')}
+                                        />
 
-                                    <div className="h-6 w-px bg-zinc-800" />
+                                        {/* Platform Filter */}
+                                        <FilterDropdown
+                                            label={t('platforms')}
+                                            allLabel={t('allPlatforms')}
+                                            icon={<Gamepad2 className="h-4 w-4" />}
+                                            options={[
+                                                { value: 'Steam', label: 'Steam' },
+                                                { value: 'Xbox', label: 'Xbox' }
+                                            ]}
+                                            value={filterPlatform === 'all' ? '' : filterPlatform}
+                                            onChange={(val) => setFilterPlatform(val || 'all')}
+                                        />
+                                    </div>
 
-                                    {/* View Mode */}
-                                    <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-                                        <button
-                                            onClick={() => setViewMode('grid')}
-                                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-                                        >
-                                            <LayoutGrid className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => setViewMode('list')}
-                                            className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-                                        >
-                                            <List className="h-4 w-4" />
-                                        </button>
+                                    <div className="flex flex-wrap items-center gap-3 justify-end">
+                                        {/* Sort */}
+                                        <FilterDropdown
+                                            label={t('sortBy')}
+                                            icon={<ArrowUpDown className="h-4 w-4" />}
+                                            options={[
+                                                { value: 'playtime', label: t('playtime') },
+                                                { value: 'name', label: t('name') }
+                                            ]}
+                                            value={sortBy}
+                                            onChange={(val) => setSortBy(val)}
+                                            showAllOption={false}
+                                            showSelectionAccent={false}
+                                            align="right"
+                                        />
+
+                                        <div className="h-6 w-px bg-zinc-800" />
+
+                                        {/* View Mode */}
+                                        <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+                                            <button
+                                                onClick={() => setViewMode('grid')}
+                                                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                                            >
+                                                <LayoutGrid className="h-4 w-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => setViewMode('list')}
+                                                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                                            >
+                                                <List className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
