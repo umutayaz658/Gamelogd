@@ -657,36 +657,22 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         from api.services.steam import normalize_genre
         genre_weights = {}
         genre_game_counts = {}
-        platform_weights = {}
-        platform_game_counts = {}
 
         for entry in entries:
-            weight = entry.playtime_forever if entry.playtime_forever > 0 else 120
-            
-            # Genre calculations
+            # No fallback for zero-playtime entries: an unplayed/plan-to-play game hasn't
+            # actually told us anything about the user's genre taste, so it should contribute
+            # nothing rather than a fabricated weight.
+            weight = entry.playtime_forever
+
             for genre in (entry.game.genres or []):
                 normalized = normalize_genre(genre)
                 genre_weights[normalized] = genre_weights.get(normalized, 0) + weight
                 genre_game_counts[normalized] = genre_game_counts.get(normalized, 0) + 1
-                
-            # Platform calculations
-            platforms = [p.strip() for p in entry.platform.split(',') if p.strip()] if entry.platform else []
-            if not platforms:
-                platforms = ['Unknown']
-            import re
-            for plat in platforms:
-                # Sanitize platform name: strip HTML tags, truncate
-                plat = re.sub(r'<[^>]+>', '', plat).strip()[:100]
-                if not plat:
-                    plat = 'Unknown'
-                platform_weights[plat] = platform_weights.get(plat, 0) + weight
-                platform_game_counts[plat] = platform_game_counts.get(plat, 0) + 1
 
         total_genre_weight = sum(genre_weights.values())
-        total_platform_weight = sum(platform_weights.values())
 
         colors = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#6366f1"]
-        
+
         genres_result = []
         if total_genre_weight > 0:
             for i, (genre, weight) in enumerate(sorted(genre_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
@@ -702,24 +688,8 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                     "game_count": genre_game_counts.get(genre, 0)
                 })
 
-        platforms_result = []
-        if total_platform_weight > 0:
-            for i, (plat, weight) in enumerate(sorted(platform_weights.items(), key=lambda x: x[1], reverse=True)[:10]):
-                percentage = round((weight / total_platform_weight) * 100)
-                if percentage == 0:
-                    continue
-                total_hours = round(weight / 60, 1)
-                platforms_result.append({
-                    "name": plat,
-                    "percentage": percentage,
-                    "color": colors[len(platforms_result) % len(colors)],
-                    "total_hours": total_hours,
-                    "game_count": platform_game_counts.get(plat, 0)
-                })
-
         return Response({
-            "genres": genres_result,
-            "platforms": platforms_result
+            "genres": genres_result
         })
 
     @action(detail=True, methods=['get'], url_path='recommended-games')

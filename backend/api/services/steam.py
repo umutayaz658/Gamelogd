@@ -119,12 +119,18 @@ def get_steam_cover_url(appid):
     Falls back to header.jpg which is the most reliable.
     Returns the URL string directly (no download needed).
     """
+    # cdn.akamai.steamstatic.com is Valve's current CDN domain (also the one already allow-listed
+    # in frontend/next.config.ts) — tried first. steamcdn-a.akamaihd.net is the older, less
+    # reliable mirror it superseded, kept only as a fallback for appids the new domain 404s on.
     urls = [
+        f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/library_600x900.jpg",
+        f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/library_600x900_2x.jpg",
+        f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg",
         f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/library_600x900.jpg",
         f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/library_600x900_2x.jpg",
         f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg",
     ]
-    
+
     for url in urls:
         try:
             resp = requests.head(url, timeout=5)
@@ -132,9 +138,10 @@ def get_steam_cover_url(appid):
                 return url
         except Exception:
             continue
-    
-    # Return header.jpg as ultimate fallback (most reliable)
-    return f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg"
+
+    # Return the modern domain's header.jpg as ultimate fallback (most reliable, and the one
+    # actually allow-listed for Next.js image handling on the frontend).
+    return f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"
 
 
 def fetch_steam_library(user_id, steam_id):
@@ -210,10 +217,23 @@ def fetch_steam_library(user_id, steam_id):
                     genres = fetch_steam_genres(appid)
                     time.sleep(0.3)  # Rate limit protection
 
+                    # Resolve an igdb_id where possible — without this, Steam-created Game rows
+                    # never carry an igdb_id, which silently breaks Xbox sync's cross-platform
+                    # dedup (it only matches existing games by igdb_id, see
+                    # xbox.py:_find_or_create_game step 3) and lets the same real title get a
+                    # second Game/LibraryEntry row once it's also synced from Xbox.
+                    from api.services.xbox import _search_igdb_for_game
+                    igdb_id, _igdb_name = _search_igdb_for_game(title)
+                    # igdb_id is unique=True on Game — a fuzzy IGDB match could in principle
+                    # resolve to an id another row already holds; fall back to None rather than
+                    # let that collision crash the sync.
+                    if igdb_id and Game.objects.filter(igdb_id=igdb_id).exists():
+                        igdb_id = None
+
                     game = Game.objects.create(
                         title=title,
                         steam_appid=appid,
-                        igdb_id=None,
+                        igdb_id=igdb_id,
                         genres=genres,
                     )
                     stats['created'] += 1

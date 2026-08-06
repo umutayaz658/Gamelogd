@@ -82,7 +82,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [isPostsLoading, setIsPostsLoading] = useState(true);
 
     // Game DNA
-    const [gameDNA, setGameDNA] = useState<any>({ genres: [], platforms: [] });
+    const [gameDNA, setGameDNA] = useState<any>({ genres: [] });
 
     // Follow State
     const [isFollowing, setIsFollowing] = useState(false);
@@ -361,7 +361,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         const canFetch = !isPrivateProfile || isOwner || profileUser?.is_following;
 
         if (!canFetch) {
-            setGameDNA({ genres: [], platforms: [] });
+            setGameDNA({ genres: [] });
             return;
         }
 
@@ -369,7 +369,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             .then(res => setGameDNA(res.data))
             .catch(err => {
                 console.error("Failed to fetch Game DNA:", err);
-                setGameDNA({ genres: [], platforms: [] });
+                setGameDNA({ genres: [] });
             });
     }, [username, profileUser, currentUser?.username]);
 

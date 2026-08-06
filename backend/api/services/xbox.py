@@ -144,6 +144,46 @@ def _search_igdb_for_game(title):
         return None, None
 
 
+def _ensure_cover(game):
+    """
+    Opportunistically backfills a missing cover for a game that _find_or_create_game matched
+    onto an EXISTING row (rather than creating a new one) — none of the match paths below
+    (Steps 1, 2, 3-dedup, 3b-canonical) otherwise ever populate a cover, so a game whose
+    original (e.g. Steam-side) row never got one stays coverless forever once Xbox also
+    starts matching onto it. Deliberately a lightweight, cover-only IGDB query rather than
+    reusing fetch_game_details (which also re-fetches summary/screenshots/HLTB times and is
+    gated behind a one-shot `details_fetched` flag — looping that per sync would be slow and
+    wasteful for something this narrow). Only applies when the game already has an igdb_id;
+    games with none (e.g. a Steam row whose IGDB search never found a hit) are left as-is.
+    """
+    if game.cover_image or not game.igdb_id:
+        return game
+    from api.services.igdb_service import get_igdb_token, IGDB_CLIENT_ID
+    token = get_igdb_token()
+    if not token:
+        return game
+    try:
+        headers = {'Client-ID': IGDB_CLIENT_ID, 'Authorization': f'Bearer {token}'}
+        resp = requests.post(
+            'https://api.igdb.com/v4/games',
+            headers=headers,
+            data=f"fields cover.url; where id = {game.igdb_id};",
+            timeout=10,
+        )
+        if resp.status_code == 200 and resp.json():
+            cover = resp.json()[0].get('cover')
+            if cover and cover.get('url'):
+                cover_url = cover['url']
+                if cover_url.startswith('//'):
+                    cover_url = f"https:{cover_url}"
+                game.cover_image = cover_url.replace('t_thumb', 't_cover_big')
+                game.save(update_fields=['cover_image'])
+                print(f"  [COVER] Backfilled cover for '{game.title}' (igdb_id={game.igdb_id})")
+    except Exception as e:
+        print(f"  [COVER] Backfill failed for '{game.title}': {e}")
+    return game
+
+
 def _find_or_create_game(cleaned_name, raw_name):
     """
     Smart game matching pipeline:
@@ -158,8 +198,8 @@ def _find_or_create_game(cleaned_name, raw_name):
     game = Game.objects.filter(title__iexact=cleaned_name).first()
     if game:
         print(f"  [MATCH] DB exact: '{raw_name}' -> '{game.title}'")
-        return game
-    
+        return _ensure_cover(game)
+
     # Step 2: Normalized match - compare normalized versions of all titles
     # This catches cases like "Call of Duty®" (DB) vs "Call of Duty" (cleaned)
     generic_normalized = normalize_game_title(cleaned_name)
@@ -167,8 +207,8 @@ def _find_or_create_game(cleaned_name, raw_name):
         game = Game.objects.filter(title__iexact=generic_normalized).first()
         if game:
             print(f"  [MATCH] DB normalized: '{raw_name}' -> '{game.title}'")
-            return game
-    
+            return _ensure_cover(game)
+
     # Also try matching by stripping trademarks from DB titles
     # This is a broader search but covers edge cases
     all_candidates = Game.objects.filter(title__icontains=cleaned_name[:10])  # Narrow initial set
@@ -176,18 +216,36 @@ def _find_or_create_game(cleaned_name, raw_name):
         candidate_normalized = normalize_game_title(candidate.title)
         if candidate_normalized.lower() == generic_normalized.lower():
             print(f"  [MATCH] DB normalized reverse: '{raw_name}' -> '{candidate.title}'")
-            return candidate
+            return _ensure_cover(candidate)
     
     # Step 3: IGDB search
     igdb_id, igdb_name = _search_igdb_for_game(cleaned_name)
-    
+
     if igdb_id:
         # Check if a Game with this igdb_id already exists (cross-platform dedup!)
         existing_game = Game.objects.filter(igdb_id=igdb_id).first()
         if existing_game:
             print(f"  [MATCH] IGDB dedup: '{raw_name}' -> '{existing_game.title}' (igdb_id={igdb_id})")
-            return existing_game
-        
+            return _ensure_cover(existing_game)
+
+        # Step 3b: no row carries this igdb_id yet — this is the common case for games that
+        # were first synced from Steam before Steam-side games started resolving/storing their
+        # own igdb_id, or for any other title-matching gap. Try matching by IGDB's canonical
+        # name (often closer to how Steam actually stored the title than Xbox's raw title was)
+        # before creating a brand-new row and ending up with two Game/LibraryEntry rows for the
+        # same real game across platforms.
+        if igdb_name:
+            canonical_normalized = normalize_game_title(igdb_name)
+            title_match = Game.objects.filter(title__iexact=igdb_name).first()
+            if not title_match:
+                title_match = Game.objects.filter(title__iexact=canonical_normalized).first()
+            if title_match:
+                if not title_match.igdb_id:
+                    title_match.igdb_id = igdb_id
+                    title_match.save(update_fields=['igdb_id'])
+                print(f"  [MATCH] IGDB canonical-name: '{raw_name}' -> '{title_match.title}' (igdb_id={igdb_id})")
+                return _ensure_cover(title_match)
+
         # No existing game with this igdb_id - create one with the IGDB canonical name
         from api.services.igdb_service import fetch_game_details
         canonical_name = igdb_name or cleaned_name
