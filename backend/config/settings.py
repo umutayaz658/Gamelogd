@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'api',
     'django_filters',
     'channels',
+    'axes',
 ]
 
 MIDDLEWARE = [
@@ -57,7 +58,24 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Must be last — axes needs to see the response/exception state every other
+    # middleware has already produced before deciding to enforce a lockout.
+    'axes.middleware.AxesMiddleware',
 ]
+
+# django-axes: locks out repeated failed login attempts. Scoped to the admin site only
+# (AXES_ONLY_ADMIN_SITE) so this never affects the main app's /api/login/ — that already has
+# its own IP-based ScopedRateThrottle (see DEFAULT_THROTTLE_RATES['login']) and shouldn't also
+# start locking out real users who mistype their password a few times.
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',  # must be first
+    'django.contrib.auth.backends.ModelBackend',
+]
+AXES_ONLY_ADMIN_SITE = True
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 1  # hour
+AXES_LOCKOUT_PARAMETERS = [['ip_address', 'username']]
+AXES_RESET_ON_SUCCESS = True
 
 # Never open the API to every origin: it would let any website read authenticated
 # responses cross-origin. Rely on the explicit allow-list below instead.
@@ -277,6 +295,8 @@ REST_FRAMEWORK = {
         'verify_email': '10/min',
         'resend_verification': '3/min',
         'register': '5/min',
+        'report': '20/hour',
+        'message_send': '30/min',
         'anon': '120/min',
         'user': '600/min',
     },

@@ -362,6 +362,24 @@ export default function MessagesDrawer() {
         setIsConfirmOpen(true);
     };
 
+    const handleBlockUser = async (chatId: number) => {
+        setConfirmConfig({
+            title: t('blockUser'),
+            message: t('areYouSureBlockSender'),
+            onConfirm: async () => {
+                try {
+                    await api.post(`/conversations/${chatId}/block-user/`);
+                    setActiveChatId(null);
+                    fetchConversations();
+                } catch (error) {
+                    console.error("Failed to block user:", error);
+                }
+                setIsConfirmOpen(false);
+            }
+        });
+        setIsConfirmOpen(true);
+    };
+
     const handleChatClick = (chatId: number) => {
         setActiveChatId(chatId);
         setConversations(prev => prev.map(c =>
@@ -607,15 +625,17 @@ export default function MessagesDrawer() {
                                     </div>
                                 )}
 
-                                {/* WhatsApp-style Pending Invite Flow */}
+                                {/* WhatsApp-style Pending Invite Flow — same Accept/Decline/Block
+                                    plumbing serves both group invites and 1:1 message requests,
+                                    only the copy and the block target (group vs. sender) differ. */}
                                 {activeChat.my_membership_status === 'pending' ? (
                                     <div className="p-4 border-t border-zinc-800 bg-zinc-900 text-center flex flex-col gap-2">
                                         <div className="text-xs font-bold text-zinc-400 mb-1 flex items-center justify-center gap-1.5">
                                             <Shield className="h-4 w-4 text-emerald-500" />
-                                            <span>{t('groupInvitation')}</span>
+                                            <span>{activeChat.is_group ? t('groupInvitation') : t('messageRequest')}</span>
                                         </div>
                                         <p className="text-[10px] text-zinc-500 mb-2 leading-relaxed">
-                                            {t('groupInviteAcceptHint')}
+                                            {activeChat.is_group ? t('groupInviteAcceptHint') : t('messageRequestAcceptHint')}
                                         </p>
                                         <div className="flex gap-2">
                                             <button
@@ -631,9 +651,9 @@ export default function MessagesDrawer() {
                                                 {t('decline')}
                                             </button>
                                             <button
-                                                onClick={() => handleBlockGroup(activeChat.id)}
+                                                onClick={() => activeChat.is_group ? handleBlockGroup(activeChat.id) : handleBlockUser(activeChat.id)}
                                                 className="p-1.5 bg-red-950/20 border border-red-900/30 text-red-400 hover:bg-red-950/40 rounded-lg"
-                                                title="Block Group invitations"
+                                                title={activeChat.is_group ? t('blockGroupInvitations') : t('blockUser')}
                                             >
                                                 <Ban className="h-3.5 w-3.5" />
                                             </button>

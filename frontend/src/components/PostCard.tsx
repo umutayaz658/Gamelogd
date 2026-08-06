@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check } from 'lucide-react';
 import { Post } from '@/types';
-import { getImageUrl, getRelativeTime, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, getTimeRemaining, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import ImageModal from '@/components/modals/ImageModal';
+import ReportModal from '@/components/modals/ReportModal';
 import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
 import ReviewCard from '@/components/ReviewCard';
 import { useTranslation } from '@/lib/useTranslation';
@@ -17,7 +18,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 
 const DOT_SEPARATOR = '•';
-const ZERO_PERCENT = '0%';
+const PERCENT_SIGN = '%';
 
 // Normalizes a post's various legacy/modern media fields into one ordered array —
 // used for both the main media block and the nested quote/repost embed card.
@@ -161,12 +162,17 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const [showRepostMenu, setShowRepostMenu] = useState(false);
     const repostMenuRef = useRef<HTMLDivElement>(null);
 
+    const [pollUserChoice, setPollUserChoice] = useState<number | null>(post.poll_results?.user_choice ?? null);
+    const [pollCounts, setPollCounts] = useState<number[]>(post.poll_results?.counts ?? []);
+    const [isVoting, setIsVoting] = useState(false);
+
     const [showShareMenu, setShowShareMenu] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const shareMenuRef = useRef<HTMLDivElement>(null);
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const [showReportModal, setShowReportModal] = useState(false);
 
     // Image Modal states
     const [isImageModalOpen, setIsImageModalOpen] = useState(false);
@@ -213,6 +219,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setRepliesCount(post.replies_count || 0);
         setIsReposted(post.is_reposted || false);
         setRepostsCount(post.reposts_count || 0);
+        setPollUserChoice(post.poll_results?.user_choice ?? null);
+        setPollCounts(post.poll_results?.counts ?? []);
     }
 
     // ReplyModal has no direct reference back to every PostCard instance showing this same
@@ -280,6 +288,40 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setShowMenu(false);
     };
 
+    const handleNotInterested = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        try {
+            await api.post(`/posts/${post.id}/not-interested/`);
+            toast.success(t('notInterestedConfirmed'));
+        } catch (error) {
+            console.error('Failed to mark not interested', error);
+        }
+    };
+
+    const handleMuteAuthor = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        try {
+            await api.post(`/users/${post.user.username}/mute/`);
+            toast.success(t('muteUser'));
+        } catch (error) {
+            console.error('Failed to mute user', error);
+        }
+    };
+
+    const handleBlockAuthor = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        if (!(await confirm({ message: t('areYouSureBlock').replace('{username}', post.user.username), confirmText: t('blockUser'), isDanger: true }))) return;
+        try {
+            await api.post(`/users/${post.user.username}/block/`);
+            window.location.reload();
+        } catch (error) {
+            console.error('Failed to block user', error);
+        }
+    };
+
     const handleRepost = async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!user) return router.push('/login');
@@ -303,6 +345,32 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             console.error('Failed to toggle repost', error);
             setIsReposted(isReposted);
             setRepostsCount(repostsCount);
+        }
+    };
+
+    const handleVote = async (e: React.MouseEvent, optionIndex: number) => {
+        e.stopPropagation();
+        if (!user) return router.push('/login');
+        if (isVoting || pollUserChoice !== null || post.poll_results?.is_closed) return;
+
+        setIsVoting(true);
+        const previousChoice = pollUserChoice;
+        const previousCounts = pollCounts;
+        // Optimistic: show this vote counted immediately, reconciled with the server's
+        // authoritative counts below (percentages depend on everyone else's votes too, so this
+        // can't be a pure client-side toggle the way like/bookmark are).
+        setPollUserChoice(optionIndex);
+        setPollCounts(prev => prev.map((c, i) => i === optionIndex ? c + 1 : c));
+        try {
+            const res = await api.post(`/posts/${post.id}/vote/`, { option_index: optionIndex });
+            setPollCounts(res.data.counts);
+            setPollUserChoice(res.data.user_choice);
+        } catch (error) {
+            console.error('Failed to vote', error);
+            setPollUserChoice(previousChoice);
+            setPollCounts(previousCounts);
+        } finally {
+            setIsVoting(false);
         }
     };
 
@@ -470,6 +538,38 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         <LinkIcon className="h-4 w-4" />
                                         {t('copyLink')}
                                     </button>
+                                    {author.type === 'user' && (!user || user.username !== post.user.username) && (
+                                        <>
+                                            <button
+                                                onClick={handleNotInterested}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <EyeOff className="h-4 w-4" />
+                                                {t('notInterested')}
+                                            </button>
+                                            <button
+                                                onClick={handleMuteAuthor}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <VolumeX className="h-4 w-4" />
+                                                {t('muteUser')}
+                                            </button>
+                                            <button
+                                                onClick={handleBlockAuthor}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <Ban className="h-4 w-4" />
+                                                {t('blockUser')}
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); setShowReportModal(true); }}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <Flag className="h-4 w-4" />
+                                                {t('reportPost')}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -633,25 +733,56 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                     </div>
 
                     {/* Render Poll */}
-                    {post.poll_options && post.poll_options.length > 0 && (
-                        <div
-                            className="mb-3 border border-zinc-800 rounded-xl overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {post.poll_options.map((option, idx) => (
-                                <div key={idx} className="relative p-3 bg-zinc-950/50 border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50 transition-colors cursor-pointer group">
-                                    <div className="flex justify-between items-center relative z-10">
-                                        <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">{option}</span>
-                                        <span className="text-xs text-zinc-500">{ZERO_PERCENT}</span>
-                                    </div>
-                                    <div className="absolute left-0 top-0 bottom-0 bg-zinc-800/30 w-0 group-hover:w-full transition-all duration-500"></div>
+                    {post.poll_options && post.poll_options.length > 0 && (() => {
+                        const isClosed = post.poll_results?.is_closed ?? false;
+                        const hasVoted = pollUserChoice !== null;
+                        const showResults = hasVoted || isClosed;
+                        const total = pollCounts.reduce((a, b) => a + b, 0);
+                        const timeRemaining = post.poll_expires_at ? getTimeRemaining(post.poll_expires_at, language) : null;
+                        return (
+                            <div
+                                className="mb-3 border border-zinc-800 rounded-xl overflow-hidden"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {post.poll_options!.map((option, idx) => {
+                                    const count = pollCounts[idx] ?? 0;
+                                    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                                    const isMine = pollUserChoice === idx;
+                                    return (
+                                        <div
+                                            key={idx}
+                                            onClick={(e) => !showResults && handleVote(e, idx)}
+                                            className={`relative p-3 bg-zinc-950/50 border-b border-zinc-800 last:border-0 transition-colors group ${showResults ? '' : 'hover:bg-zinc-800/50 cursor-pointer'}`}
+                                        >
+                                            {showResults && (
+                                                <div
+                                                    className={`absolute left-0 top-0 bottom-0 ${isMine ? 'bg-emerald-500/20' : 'bg-zinc-800/30'} transition-all duration-500`}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            )}
+                                            <div className="flex justify-between items-center relative z-10">
+                                                <span className={`text-sm font-medium flex items-center gap-1.5 ${isMine ? 'text-emerald-400' : 'text-zinc-300'} group-hover:text-white transition-colors`}>
+                                                    {isMine && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+                                                    {option}
+                                                </span>
+                                                {showResults && <span className="text-xs text-zinc-500">{pct}{PERCENT_SIGN}</span>}
+                                            </div>
+                                            {!showResults && (
+                                                <div className="absolute left-0 top-0 bottom-0 bg-zinc-800/30 w-0 group-hover:w-full transition-all duration-500"></div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                <div className="p-2 bg-zinc-900 text-center text-xs text-zinc-500 border-t border-zinc-800">
+                                    {[
+                                        `${formatCount(total)} ${total === 1 ? t('vote') : t('votes')}`,
+                                        DOT_SEPARATOR,
+                                        isClosed ? t('finalResults') : (timeRemaining ?? t('finalResults')),
+                                    ].join(' ')}
                                 </div>
-                            ))}
-                            <div className="p-2 bg-zinc-900 text-center text-xs text-zinc-500 border-t border-zinc-800">
-                                {[t('zeroVotes'), DOT_SEPARATOR, t('finalResults')].join(' ')}
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Render News Quote Card */}
                     {post.news_details && !hideNewsQuote && (
@@ -840,6 +971,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 images={modalImages}
                 initialIndex={modalInitialIndex}
                 post={modalPost}
+            />
+            <ReportModal
+                isOpen={showReportModal}
+                onClose={() => setShowReportModal(false)}
+                targetType="post"
+                targetId={post.id}
             />
         </div>
     );

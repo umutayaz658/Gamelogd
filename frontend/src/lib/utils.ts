@@ -139,6 +139,46 @@ export function getRelativeTime(timestamp: string | Date, lang: string = 'Englis
 }
 
 /**
+ * Twitter-style poll countdown ("5h left" / "5sa kaldı"). Mirrors getRelativeTime's day/hour/
+ * minute bucketing but counts down instead of up, and returns null once the deadline has passed
+ * — the caller (poll UI) shows "Final results" instead in that case rather than a negative time.
+ */
+export function getTimeRemaining(expiresAt: string | Date, lang: string = 'English'): string | null {
+    const diffInSeconds = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
+    if (diffInSeconds <= 0) return null;
+
+    const l = lang.toLowerCase();
+    const isTurkish = l === 'turkish' || l === 'tr';
+    const isSpanish = l === 'spanish' || l === 'es';
+    const isFrench = l === 'french' || l === 'fr';
+    const isGerman = l === 'german' || l === 'de';
+
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+        const n = Math.max(diffInMinutes, 1);
+        if (isTurkish) return `${n}dk kaldı`;
+        if (isSpanish) return `Queda ${n}m`;
+        if (isFrench) return `${n}m restantes`;
+        if (isGerman) return `noch ${n}m`;
+        return `${n}m left`;
+    }
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+        if (isTurkish) return `${diffInHours}sa kaldı`;
+        if (isSpanish) return `Quedan ${diffInHours}h`;
+        if (isFrench) return `${diffInHours}h restantes`;
+        if (isGerman) return `noch ${diffInHours}std`;
+        return `${diffInHours}h left`;
+    }
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (isTurkish) return `${diffInDays}g kaldı`;
+    if (isSpanish) return `Quedan ${diffInDays}d`;
+    if (isFrench) return `${diffInDays}j restants`;
+    if (isGerman) return `noch ${diffInDays}t`;
+    return `${diffInDays}d left`;
+}
+
+/**
  * Compacts large counts the way Twitter does (1234 -> "1.2K", 2500000 -> "2.5M").
  * Numbers under 1000 are shown as-is.
  */

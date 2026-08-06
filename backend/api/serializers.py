@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db.models import Count, OuterRef, Subquery, IntegerField, Q
 from django.db.models.functions import Coalesce
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback, CommunityTranslation
-from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block
+from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block, Report
 
 
 def count_subquery(related_model, fk_name, q_filter=None, **extra_filters):
@@ -90,6 +90,7 @@ def get_request_cache(request):
             'requested_me_ids': set(),
             'blocked_ids': set(),
             'blocked_me_ids': set(),
+            'muted_ids': set(),
             'liked_post_ids': set(),
             'bookmarked_post_ids': set(),
             'reposted_post_ids': set(),
@@ -97,16 +98,18 @@ def get_request_cache(request):
             'bookmarked_review_ids': set(),
             'liked_news_ids': set(),
             'bookmarked_news_ids': set(),
+            'poll_vote_by_post_id': {},
         }
         if request.user.is_authenticated:
-            from api.models import Follow, FollowRequest, Block
-            from core.models import Like, Bookmark, Post
+            from api.models import Follow, FollowRequest, Block, Mute
+            from core.models import Like, Bookmark, Post, PollVote
             cache['following_ids'] = set(Follow.objects.filter(follower=request.user).values_list('following_id', flat=True))
             cache['requested_ids'] = set(FollowRequest.objects.filter(sender=request.user).values_list('receiver_id', flat=True))
             cache['requested_me_ids'] = set(FollowRequest.objects.filter(receiver=request.user).values_list('sender_id', flat=True))
             cache['blocked_ids'] = set(Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True))
             cache['blocked_me_ids'] = set(Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True))
-            
+            cache['muted_ids'] = set(Mute.objects.filter(muter=request.user).values_list('muted_id', flat=True))
+
             cache['liked_post_ids'] = set(Like.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
             cache['bookmarked_post_ids'] = set(Bookmark.objects.filter(user=request.user, post__isnull=False).values_list('post_id', flat=True))
             cache['reposted_post_ids'] = set(Post.objects.filter(DIRECT_REPOST_Q, user=request.user, repost_parent__isnull=False).values_list('repost_parent_id', flat=True))
@@ -114,8 +117,44 @@ def get_request_cache(request):
             cache['bookmarked_review_ids'] = set(Bookmark.objects.filter(user=request.user, review__isnull=False).values_list('review_id', flat=True))
             cache['liked_news_ids'] = set(Like.objects.filter(user=request.user, news__isnull=False).values_list('news_id', flat=True))
             cache['bookmarked_news_ids'] = set(Bookmark.objects.filter(user=request.user, news__isnull=False).values_list('news_id', flat=True))
+            cache['poll_vote_by_post_id'] = dict(PollVote.objects.filter(user=request.user).values_list('post_id', 'option_index'))
         request._user_relations_cache = cache
     return request._user_relations_cache
+
+
+def _compute_poll_results(obj, context):
+    """
+    Shared by PostSerializer and SimplePostSerializer so both surfaces (full posts and
+    quote/reply embeds) compute poll results identically. Returns None for non-poll posts.
+    Privacy note: this always computes real vote data regardless of the post author's privacy
+    settings — callers' to_representation() MUST blank this to None in their private-post
+    redaction branch (mirroring how they already blank poll_options to []), since this function
+    has no notion of "is the viewer authorized to see this."
+    """
+    if not obj.poll_options:
+        return None
+    from core.models import PollVote
+    from django.db.models import Count
+    from django.utils import timezone
+
+    counts = [0] * len(obj.poll_options)
+    for row in PollVote.objects.filter(post=obj).values('option_index').annotate(c=Count('id')):
+        idx = row['option_index']
+        if 0 <= idx < len(counts):
+            counts[idx] = row['c']
+
+    request = context.get('request')
+    cache = get_request_cache(request)
+    user_choice = cache['poll_vote_by_post_id'].get(obj.id) if cache else None
+
+    return {
+        'counts': counts,
+        'total_votes': sum(counts),
+        'user_choice': user_choice,
+        'is_closed': bool(obj.poll_expires_at and timezone.now() >= obj.poll_expires_at),
+        'expires_at': obj.poll_expires_at,
+    }
+
 
 class InterestSerializer(serializers.ModelSerializer):
     class Meta:
@@ -131,7 +170,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'avatar', 'cover_image', 'bio', 'real_name', 'location', 'social_links', 'role',
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
-            'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'steam_id', 'xbox_gamertag', 'date_joined', 'settings', 'dnd_mode',
+            'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'is_muted', 'steam_id', 'xbox_gamertag', 'date_joined', 'settings', 'dnd_mode',
             'reviews_count'
         ]
         # email is read-only here: changing it must go through a verified flow, not a
@@ -219,6 +258,7 @@ class UserSerializer(serializers.ModelSerializer):
     has_requested_me = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
     has_blocked_me = serializers.SerializerMethodField()
+    is_muted = serializers.SerializerMethodField()
 
     def get_followers_count(self, obj):
         if self.parent is not None:
@@ -270,14 +310,36 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.id in cache['blocked_me_ids']
         return False
 
+    def get_is_muted(self, obj):
+        request = self.context.get('request')
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['muted_ids']
+        return False
+
 class NotificationSerializer(serializers.ModelSerializer):
     actor = UserSerializer(read_only=True)
     target_url = serializers.SerializerMethodField()
-    
+    recent_actors = serializers.SerializerMethodField()
+
     class Meta:
         model = Notification
-        fields = ['id', 'recipient', 'actor', 'verb', 'target_type', 'target_id', 'is_read', 'created_at', 'target_url']
+        fields = [
+            'id', 'recipient', 'actor', 'verb', 'notification_type', 'actor_count', 'recent_actors',
+            'target_type', 'target_id', 'is_read', 'created_at', 'target_url',
+        ]
         read_only_fields = ['id', 'recipient', 'actor', 'created_at']
+
+    def get_recent_actors(self, obj):
+        # Bulk-resolved once per list response by the viewset (see NotificationViewSet.list),
+        # not a per-row query — falls back to a single query here only for a lone GET/retrieve.
+        cache = self.context.get('recent_actors_cache')
+        if cache is not None:
+            users = [cache[uid] for uid in obj.recent_actor_ids if uid in cache]
+        else:
+            users = list(User.objects.filter(id__in=obj.recent_actor_ids))
+            users.sort(key=lambda u: obj.recent_actor_ids.index(u.id))
+        return UserSerializer(users, many=True, context=self.context).data
 
     def get_target_url(self, obj):
         try:
@@ -596,10 +658,14 @@ class SimplePostSerializer(serializers.ModelSerializer):
     # serializer) only ever showed the legacy single `media_file` — the multi-image gallery
     # a post actually has was silently dropped, showing just the first image.
     media = PostMediaSerializer(many=True, read_only=True)
+    poll_results = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'poll_expires_at', 'poll_results', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
+
+    def get_poll_results(self, obj):
+        return _compute_poll_results(obj, self.context)
 
     def get_reply_to_username(self, obj):
         if obj.parent:
@@ -639,8 +705,9 @@ class SimplePostSerializer(serializers.ModelSerializer):
             representation['media_type'] = None
             representation['gif_url'] = None
             representation['poll_options'] = []
+            representation['poll_results'] = None
             representation['is_private_restricted'] = True
-            
+
         return representation
 
 
@@ -673,17 +740,24 @@ class PostSerializer(serializers.ModelSerializer):
         required=False
     )
 
+    # Poll Support — poll_duration_minutes is a write-only input (client sends a duration, not an
+    # absolute timestamp, avoiding client-clock-skew issues); create() converts it into the real
+    # poll_expires_at model field. poll_results is the computed read side (counts/percentages/the
+    # requester's own vote) — see _compute_poll_results.
+    poll_duration_minutes = serializers.IntegerField(write_only=True, required=False, min_value=5, max_value=10080)
+    poll_results = serializers.SerializerMethodField()
+
     class Meta:
         model = Post
         fields = [
             'id', 'user', 'author_identity', 'author_details', 'title', 'content', 'image', 'parent', 'review_parent', 'news_parent', 'project_parent',
             'timestamp', 'replies_count', 'likes_count', 'is_liked', 'is_bookmarked', 'bookmarks_count',
             'review_details', 'news_details', 'project_details', 'parent_details', 'reply_to_username',
-            'media_file', 'media_type', 'gif_url', 'poll_options', 'type',
+            'media_file', 'media_type', 'gif_url', 'poll_options', 'poll_duration_minutes', 'poll_expires_at', 'poll_results', 'type',
             'media', 'uploaded_media', 'repost_parent', 'repost_details', 'reposts_count', 'is_reposted',
             'repost_parent_review', 'repost_review_details', 'category', 'trending_score'
         ]
-        read_only_fields = ['id', 'user', 'author_details', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details', 'trending_score']
+        read_only_fields = ['id', 'user', 'author_details', 'timestamp', 'reply_to_username', 'replies_count', 'parent_details', 'news_details', 'project_details', 'type', 'media', 'reposts_count', 'is_reposted', 'repost_review_details', 'trending_score', 'poll_expires_at', 'poll_results']
 
     def validate_uploaded_media(self, files):
         from .uploads import MAX_POST_MEDIA_COUNT, validate_media_file
@@ -693,11 +767,27 @@ class PostSerializer(serializers.ModelSerializer):
             validate_media_file(file, allow_video=True)
         return files
 
+    def validate(self, data):
+        # A poll needs a duration to compute poll_expires_at from — reject rather than silently
+        # defaulting, so a poll never ends up with no real user-chosen length.
+        if data.get('poll_options') and 'poll_duration_minutes' not in data:
+            raise serializers.ValidationError({"poll_duration_minutes": "Poll duration is required when poll_options is set."})
+        return data
+
+    def get_poll_results(self, obj):
+        return _compute_poll_results(obj, self.context)
+
     def create(self, validated_data):
         from .uploads import validate_media_file
         uploaded_media = validated_data.pop('uploaded_media', [])
         # Legacy single-file support (optional, can be inferred from first media item)
         # But frontend might still send media_file for now.
+
+        poll_duration_minutes = validated_data.pop('poll_duration_minutes', None)
+        if validated_data.get('poll_options') and poll_duration_minutes:
+            from django.utils import timezone
+            from datetime import timedelta
+            validated_data['poll_expires_at'] = timezone.now() + timedelta(minutes=poll_duration_minutes)
 
         post = super().create(validated_data)
 
@@ -850,6 +940,8 @@ class PostSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Poll options must be a list of strings.")
             if len(value) < 2:
                 raise serializers.ValidationError("Poll must have at least 2 options.")
+            if len(value) > 4:
+                raise serializers.ValidationError("Poll must have at most 4 options.")
             if any(not isinstance(option, str) or not option.strip() for option in value):
                 raise serializers.ValidationError("Poll options must be non-empty strings.")
         return value
@@ -874,6 +966,7 @@ class PostSerializer(serializers.ModelSerializer):
             representation['media_type'] = None
             representation['gif_url'] = None
             representation['poll_options'] = []
+            representation['poll_results'] = None
             representation['media'] = []
             representation['is_private_restricted'] = True
             
@@ -1556,6 +1649,31 @@ class OrganisationInvitationSerializer(serializers.ModelSerializer):
         }
 
 
+class ReportSerializer(serializers.Serializer):
+    """
+    Plain (non-Model) serializer: `target_type` is a short client-facing string ('post', 'review',
+    'user', 'conversation'), resolved to a real django ContentType in the view rather than trusting
+    a client-supplied app_label/model pair directly.
+    """
+    TARGET_TYPE_MAP_KEYS = ('post', 'review', 'user', 'conversation')
+
+    target_type = serializers.ChoiceField(choices=TARGET_TYPE_MAP_KEYS)
+    target_id = serializers.IntegerField()
+    reason = serializers.ChoiceField(choices=[c[0] for c in Report.REASON_CHOICES])
+    details = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+    def to_representation(self, instance):
+        return {
+            'id': instance.id,
+            'target_type': instance.target_type.model,
+            'target_id': instance.target_id,
+            'reason': instance.reason,
+            'details': instance.details,
+            'status': instance.status,
+            'created_at': instance.created_at,
+        }
+
+
 from core.models import WorkspaceState
 
 class WorkspaceStateSerializer(serializers.ModelSerializer):
@@ -1563,19 +1681,3 @@ class WorkspaceStateSerializer(serializers.ModelSerializer):
         model = WorkspaceState
         fields = ['key', 'data', 'version', 'updated_at']
 
-class BlockedUserSerializer(serializers.ModelSerializer):
-    blocker = UserSerializer(read_only=True)
-    blocked = UserSerializer(read_only=True)
-
-    class Meta:
-        from api.models import BlockedUser
-        model = BlockedUser
-        fields = ['id', 'blocker', 'blocked', 'created_at']
-
-class ConversationReportSerializer(serializers.ModelSerializer):
-    reported_by = UserSerializer(read_only=True)
-
-    class Meta:
-        from api.models import ConversationReport
-        model = ConversationReport
-        fields = ['id', 'conversation', 'reported_by', 'reason', 'created_at']

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2 } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl, getRelativeTime, formatCount, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,7 @@ import { useState, useId, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
+import ReportModal from '@/components/modals/ReportModal';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -47,6 +48,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const [showShareMenu, setShowShareMenu] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const shareMenuRef = useRef<HTMLDivElement>(null);
+    const [showReportModal, setShowReportModal] = useState(false);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -141,6 +143,40 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
         navigator.clipboard.writeText(url);
         setShowMenu(false);
+    };
+
+    const handleNotInterested = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        try {
+            await api.post(`/reviews/${review.id}/not-interested/`);
+            toast.success(t('notInterestedConfirmed'));
+        } catch (error) {
+            console.error('Failed to mark not interested', error);
+        }
+    };
+
+    const handleMuteAuthor = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        try {
+            await api.post(`/users/${review.user.username}/mute/`);
+            toast.success(t('muteUser'));
+        } catch (error) {
+            console.error('Failed to mute user', error);
+        }
+    };
+
+    const handleBlockAuthor = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        if (!(await confirm({ message: t('areYouSureBlock').replace('{username}', review.user.username), confirmText: t('blockUser'), isDanger: true }))) return;
+        try {
+            await api.post(`/users/${review.user.username}/block/`);
+            window.location.reload();
+        } catch (error) {
+            console.error('Failed to block user', error);
+        }
     };
 
     const handleShare = async (e: React.MouseEvent) => {
@@ -243,6 +279,38 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                         <LinkIcon className="h-4 w-4" />
                                         {t('copyLink')}
                                     </button>
+                                    {(!user || user.username !== review.user.username) && (
+                                        <>
+                                            <button
+                                                onClick={handleNotInterested}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <EyeOff className="h-4 w-4" />
+                                                {t('notInterested')}
+                                            </button>
+                                            <button
+                                                onClick={handleMuteAuthor}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <VolumeX className="h-4 w-4" />
+                                                {t('muteUser')}
+                                            </button>
+                                            <button
+                                                onClick={handleBlockAuthor}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-zinc-300 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <Ban className="h-4 w-4" />
+                                                {t('blockUser')}
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); setShowReportModal(true); }}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
+                                            >
+                                                <Flag className="h-4 w-4" />
+                                                {t('reportReview')}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -478,6 +546,12 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                 itemType="review"
                 itemId={review.id}
                 title={`${review.user.username}'s log of ${review.game.title}`}
+            />
+            <ReportModal
+                isOpen={showReportModal}
+                onClose={() => setShowReportModal(false)}
+                targetType="review"
+                targetId={review.id}
             />
         </div>
     );

@@ -1,39 +1,47 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { Loader2 } from 'lucide-react';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 
-import api from "@/lib/api";
-import { getImageUrl, getRelativeTime } from "@/lib/utils";
+import api, { fetcher } from "@/lib/api";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/lib/useTranslation";
 import type { Notification } from "@/types";
+import NotificationRow from "@/components/NotificationRow";
 import {
-    resolveNotificationType,
-    getNotificationText,
-    isSystemNotification,
-    getSystemTargetUrl,
+    getEffectiveType,
     getInviteEndpoints,
-    isInviteType,
     getFilterGroup,
 } from "@/lib/notifications";
 
 export default function NotificationsPage() {
-    const router = useRouter();
-    const { t, language } = useTranslation();
+    const { t } = useTranslation();
     const { user } = useAuth();
-    const [notifications, setNotifications] = useState<Notification[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'mentions' | 'follow_requests'>('all');
     const [processingRequest, setProcessingRequest] = useState<string | null>(null);
 
     const { markNotificationsRead } = useNotifications();
+
+    // Polls like NotificationContext's unread-count SWR entry does, so newly grouped/incoming
+    // notifications (e.g. a fresh like bumping an existing grouped row) show up live while the
+    // page is open instead of only on the next full reload.
+    const { data, mutate } = useSWR<Notification[]>(
+        user ? '/notifications/' : null,
+        fetcher,
+        { refreshInterval: 20000, revalidateOnFocus: true }
+    );
+    const notifications = data ?? [];
+    const isLoading = !data && !!user;
+
+    useEffect(() => {
+        if (data) markNotificationsRead();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data]);
 
     // Read ?filter= URL param on mount
     useEffect(() => {
@@ -44,37 +52,19 @@ export default function NotificationsPage() {
         }
     }, []);
 
-    useEffect(() => {
-        const fetchNotifications = async () => {
-            setIsLoading(true);
-            try {
-                const res = await api.get('/notifications/');
-                setNotifications(res.data);
-                markNotificationsRead();
-            } catch (error) {
-                console.error("Failed to fetch notifications:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchNotifications();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined, type: ReturnType<typeof resolveNotificationType>) => {
+    const handleAcceptInvite = async (e: React.MouseEvent, targetId: number | undefined, type: ReturnType<typeof getEffectiveType>) => {
         e.preventDefault();
         if (!targetId) return;
         try {
             const endpoints = getInviteEndpoints(type, targetId);
             await api.post(endpoints.accept);
-            setNotifications(prev => prev.filter(n => n.target_id !== targetId));
+            mutate(prev => prev?.filter(n => n.target_id !== targetId), { revalidate: false });
         } catch (error) {
             console.error('Failed to accept invite:', error);
         }
     };
 
-    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined, type: ReturnType<typeof resolveNotificationType>) => {
+    const handleDeclineInvite = async (e: React.MouseEvent, targetId: number | undefined, type: ReturnType<typeof getEffectiveType>) => {
         e.preventDefault();
         if (!targetId) return;
         try {
@@ -84,7 +74,7 @@ export default function NotificationsPage() {
             } else {
                 await api.post(endpoints.decline);
             }
-            setNotifications(prev => prev.filter(n => n.target_id !== targetId));
+            mutate(prev => prev?.filter(n => n.target_id !== targetId), { revalidate: false });
         } catch (error) {
             console.error('Failed to decline invite:', error);
         }
@@ -95,7 +85,7 @@ export default function NotificationsPage() {
         setProcessingRequest(username);
         try {
             await api.post(`/users/${username}/approve-request/`);
-            setNotifications(prev => prev.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === username)));
+            mutate(prev => prev?.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === username)), { revalidate: false });
         } catch (error) {
             console.error('Failed to approve follow request:', error);
         } finally {
@@ -108,7 +98,7 @@ export default function NotificationsPage() {
         setProcessingRequest(username);
         try {
             await api.post(`/users/${username}/reject-request/`);
-            setNotifications(prev => prev.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === username)));
+            mutate(prev => prev?.filter(n => !(n.verb.includes('requested to follow') && n.actor.username === username)), { revalidate: false });
         } catch (error) {
             console.error('Failed to reject follow request:', error);
         } finally {
@@ -120,19 +110,15 @@ export default function NotificationsPage() {
 
     const filteredNotifications = notifications.filter(notif => {
         if (filter === 'all') return true;
-        const type = resolveNotificationType(notif.verb, isSelfActor(notif));
+        const type = getEffectiveType(notif.notification_type, notif.verb, isSelfActor(notif));
         const group = getFilterGroup(type);
         if (filter === 'mentions') return group === 'mentions';
         if (filter === 'follow_requests') return group === 'follow_requests';
         return true;
     });
 
-    const formatTime = (dateString: string) => {
-        return getRelativeTime(dateString, language);
-    };
-
     const pendingRequestCount = notifications.filter(
-        n => getFilterGroup(resolveNotificationType(n.verb, isSelfActor(n))) === 'follow_requests'
+        n => getFilterGroup(getEffectiveType(n.notification_type, n.verb, isSelfActor(n))) === 'follow_requests'
     ).length;
 
     return (
@@ -192,108 +178,18 @@ export default function NotificationsPage() {
                                         <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
                                     </div>
                                 ) : filteredNotifications.length > 0 ? (
-                                    filteredNotifications.map((notif) => {
-                                        const type = resolveNotificationType(notif.verb, isSelfActor(notif));
-                                        const text = getNotificationText(type, notif.verb, t) + '.';
-                                        const isSystem = isSystemNotification(type);
-                                        const isFollowRequest = type === 'follow_request';
-                                        const isProcessing = processingRequest === notif.actor.username;
-
-                                        const clickTarget = isSystem
-                                            ? getSystemTargetUrl(type, notif.actor.username, notif.target_url)
-                                            : isFollowRequest
-                                                ? `/${notif.actor.username}`
-                                                : (notif.target_url || `/${notif.actor.username}`);
-
-                                        if (isSystem) {
-                                            return (
-                                                <div
-                                                    key={notif.id}
-                                                    role="link"
-                                                    tabIndex={0}
-                                                    className="p-4 flex gap-4 transition-colors cursor-pointer hover:bg-zinc-800/30"
-                                                    onClick={() => { if (clickTarget) router.push(clickTarget); }}
-                                                >
-                                                    <p className="text-zinc-300 flex-1">
-                                                        {text} <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
-                                                    </p>
-                                                </div>
-                                            );
-                                        }
-
-                                        return (
-                                            <div
-                                                key={notif.id}
-                                                role="link"
-                                                tabIndex={0}
-                                                className="p-4 flex items-start gap-4 transition-colors cursor-pointer hover:bg-zinc-800/30"
-                                                onClick={(e) => {
-                                                    const target = e.target as HTMLElement;
-                                                    if (target.closest('button') || target.closest('a')) return;
-                                                    if (clickTarget) router.push(clickTarget);
-                                                }}
-                                            >
-                                                <Link href={`/${notif.actor.username}`} className="h-11 w-11 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0 hover:ring-2 hover:ring-emerald-500 transition-all">
-                                                    <img
-                                                        src={getImageUrl(notif.actor.avatar, notif.actor.username)}
-                                                        alt={notif.actor.username}
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                </Link>
-
-                                                {/* Content Column */}
-                                                <div className="flex-1">
-                                                    <p>
-                                                        <Link href={`/${notif.actor.username}`} className="font-bold text-white hover:underline">
-                                                            {notif.actor.username}
-                                                        </Link>{' '}
-                                                        <span className="text-zinc-400">{text}</span>{' '}
-                                                        <span className="text-zinc-500 text-sm">{formatTime(notif.created_at)}</span>
-                                                    </p>
-
-                                                    {/* Action Buttons for Project/Organisation/Group Invites */}
-                                                    {isInviteType(type) && (
-                                                        <div className="mt-3 flex gap-2">
-                                                            <button
-                                                                onClick={(e) => handleAcceptInvite(e, notif.target_id, type)}
-                                                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
-                                                            >
-                                                                {t('accept')}
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => handleDeclineInvite(e, notif.target_id, type)}
-                                                                className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors border border-zinc-700"
-                                                            >
-                                                                {t('decline')}
-                                                            </button>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Action Buttons for Follow Requests */}
-                                                    {isFollowRequest && (
-                                                        <div className="mt-3 flex gap-2">
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleApproveFollowRequest(e, notif.actor.username); }}
-                                                                disabled={isProcessing}
-                                                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition-all cursor-pointer"
-                                                            >
-                                                                {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                                                                {t('accept')}
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleRejectFollowRequest(e, notif.actor.username); }}
-                                                                disabled={isProcessing}
-                                                                className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm transition-colors border border-zinc-700 cursor-pointer"
-                                                            >
-                                                                {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                                                                {t('decline')}
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })
+                                    filteredNotifications.map((notif) => (
+                                        <NotificationRow
+                                            key={notif.id}
+                                            notif={notif}
+                                            isSelfActor={isSelfActor(notif)}
+                                            processingRequest={processingRequest}
+                                            onAcceptInvite={handleAcceptInvite}
+                                            onDeclineInvite={handleDeclineInvite}
+                                            onApproveFollowRequest={handleApproveFollowRequest}
+                                            onRejectFollowRequest={handleRejectFollowRequest}
+                                        />
+                                    ))
                                 ) : (
                                     <div className="p-12 text-center text-zinc-500">
                                         <div className="inline-block p-4 rounded-full bg-zinc-800/50 mb-4">

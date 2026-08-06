@@ -297,6 +297,7 @@ function MessagesContent() {
 
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [conversationSearchQuery, setConversationSearchQuery] = useState('');
+    const [inboxTab, setInboxTab] = useState<'all' | 'requests'>('all');
     const [selectedChatId, setSelectedChatId] = useState<number | null>(initialChatId ? parseInt(initialChatId) : null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -1103,9 +1104,14 @@ function MessagesContent() {
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
 
+    // 1:1 message requests only — group invites keep their existing inline badge/flow, this tab
+    // is specifically for the new Area 3 "stranger DM'd you" case so it doesn't get lost in the
+    // regular list.
+    const pendingRequestConversations = conversations.filter(chat => !chat.is_group && chat.is_pending_invite);
+
     // Filters the conversation list by participant display name/username — this is a
     // client-side filter over the already-loaded conversation list, not a message search.
-    const filteredConversations = conversations.filter(chat => {
+    const filteredConversations = (inboxTab === 'requests' ? pendingRequestConversations : conversations).filter(chat => {
         if (!conversationSearchQuery.trim()) return true;
         const query = conversationSearchQuery.toLowerCase();
         return getChatName(chat).toLowerCase().includes(query) ||
@@ -1160,6 +1166,34 @@ function MessagesContent() {
                                 className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 transition-all"
                             />
                             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-zinc-500" />
+                        </div>
+
+                        {/* Message Requests tab — separates 1:1 DM requests from strangers/non-followed
+                            users (Area 3) out of the main list so they don't get missed. */}
+                        <div className="flex gap-2 mt-3">
+                            {([
+                                { key: 'all' as const, label: t('all') },
+                                { key: 'requests' as const, label: t('messageRequest') },
+                            ]).map((tab) => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setInboxTab(tab.key)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${inboxTab === tab.key
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                                        }`}
+                                >
+                                    {tab.label}
+                                    {tab.key === 'requests' && pendingRequestConversations.length > 0 && (
+                                        <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 border ${inboxTab === tab.key
+                                            ? 'bg-white/20 text-white border-white/30'
+                                            : 'bg-zinc-700/50 text-zinc-400 border-zinc-600/50'
+                                            }`}>
+                                            {pendingRequestConversations.length}
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
                         </div>
                     </div>
 

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from core.models import Game, Review, Post
-from api.models import User, Interest, Follow, Notification
+from api.models import User, Interest, Follow, Notification, Report
 
 @admin.register(Interest)
 class InterestAdmin(admin.ModelAdmin):
@@ -63,3 +63,22 @@ class NotificationAdmin(admin.ModelAdmin):
 class ReviewAdmin(admin.ModelAdmin):
     list_display = ('user', 'game', 'rating', 'timestamp')
     list_filter = ('timestamp', 'rating')
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    list_display = ('reporter', 'target_type', 'target_id', 'reason', 'status', 'created_at')
+    list_filter = ('status', 'reason', 'target_type', 'created_at')
+    search_fields = ('reporter__username', 'details')
+    actions = ['mark_reviewed', 'mark_dismissed', 'mark_actioned']
+
+    def mark_reviewed(self, request, queryset):
+        queryset.update(status='reviewed')
+    mark_reviewed.short_description = "Mark selected reports as reviewed"
+
+    def mark_dismissed(self, request, queryset):
+        queryset.update(status='dismissed')
+    mark_dismissed.short_description = "Mark selected reports as dismissed"
+
+    def mark_actioned(self, request, queryset):
+        queryset.update(status='actioned')
+    mark_actioned.short_description = "Mark selected reports as actioned"

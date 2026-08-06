@@ -11,6 +11,8 @@ import {
     Crown,
     Gamepad2,
     Bell,
+    Mail,
+    ClipboardList,
     type LucideIcon,
 } from 'lucide-react';
 import type { TranslationKeys } from './useTranslation';
@@ -33,6 +35,10 @@ export type NotificationType =
     | 'org_ownership_transfer_to_you'
     | 'org_ownership_transfer_confirmation'
     | 'group_invite'
+    | 'group_invite_accepted'
+    | 'message_request'
+    | 'message_request_accepted'
+    | 'playtest_feedback'
     | 'steam_sync_success'
     | 'steam_sync_failed'
     | 'unknown';
@@ -62,6 +68,9 @@ export function resolveNotificationType(verb: string, isSelfActor: boolean): Not
     if (v.includes('followed your project')) return 'project_followed';
     if (v.includes('accepted your invitation to join')) return 'org_invite_accepted';
     if (v.includes('invited you to a group chat')) return 'group_invite';
+    if (v.includes('accepted your group chat invitation')) return 'group_invite_accepted';
+    if (v.includes('sent you a message request')) return 'message_request';
+    if (v.includes('accepted your message request')) return 'message_request_accepted';
     if (v.includes('invited you to join')) return 'org_invite';
     if (v.includes('started following') || v.includes('followed you') || v.includes('following you')) return 'follow';
     if (v.includes('commented on your review')) return 'comment_review';
@@ -70,8 +79,19 @@ export function resolveNotificationType(verb: string, isSelfActor: boolean): Not
     if (v.includes('mentioned')) return 'mention';
     if (v.includes('quoted')) return 'quote';
     if (v.includes('reposted')) return 'repost';
+    if (v.includes('left playtest feedback')) return 'playtest_feedback';
 
     return 'unknown';
+}
+
+// Prefers the backend's authoritative notification_type (set at creation time by
+// api.models.create_notification going forward); falls back to the verb-classification
+// heuristic above only for legacy rows created before that field existed (blank/unknown type).
+export function getEffectiveType(notificationType: string | undefined, verb: string, isSelfActor: boolean): NotificationType {
+    if (notificationType && notificationType in ICONS && notificationType !== 'unknown') {
+        return notificationType as NotificationType;
+    }
+    return resolveNotificationType(verb, isSelfActor);
 }
 
 const ICONS: Record<NotificationType, LucideIcon> = {
@@ -92,6 +112,10 @@ const ICONS: Record<NotificationType, LucideIcon> = {
     org_ownership_transfer_to_you: Crown,
     org_ownership_transfer_confirmation: Crown,
     group_invite: Users,
+    group_invite_accepted: CheckCircle2,
+    message_request: Mail,
+    message_request_accepted: CheckCircle2,
+    playtest_feedback: ClipboardList,
     steam_sync_success: Gamepad2,
     steam_sync_failed: Gamepad2,
     unknown: Bell,
@@ -143,6 +167,16 @@ export function getNotificationText(type: NotificationType, verb: string, t: Tra
             return t('verbFollowedYourProject');
         case 'group_invite':
             return t('verbGroupChatInvite');
+        case 'message_request':
+            return t('verbSentMessageRequest');
+        case 'message_request_accepted':
+            return t('verbAcceptedMessageRequest');
+        case 'group_invite_accepted':
+            return t('verbAcceptedGroupInvite');
+        case 'playtest_feedback': {
+            const projectName = extractAfter(verb, 'left playtest feedback on ');
+            return projectName ? `${t('verbLeftPlaytestFeedback')} ${projectName}` : t('verbLeftPlaytestFeedback');
+        }
         case 'org_invite': {
             const orgName = extractAfter(verb, 'invited you to join ');
             return orgName ? `${t('verbInvitedYouToJoin')} ${orgName}` : t('verbInvitedYouToJoin');

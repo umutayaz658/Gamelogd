@@ -86,6 +86,12 @@ export default function ReplyModal() {
     // Poll State
     const [showPollCreator, setShowPollCreator] = useState(false);
     const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+    // Twitter's real defaults: 1 day / 0 hours / 0 minutes preselected, 7-day max, 5-minute min total.
+    const [pollDurationDays, setPollDurationDays] = useState(1);
+    const [pollDurationHours, setPollDurationHours] = useState(0);
+    const [pollDurationMinutes, setPollDurationMinutes] = useState(0);
+    const pollTotalMinutes = pollDurationDays * 1440 + pollDurationHours * 60 + pollDurationMinutes;
+    const isPollDurationValid = pollTotalMinutes >= 5 && pollTotalMinutes <= 10080;
 
     if (!isOpen || !activeItem) return null;
 
@@ -159,6 +165,9 @@ export default function ReplyModal() {
     const togglePollCreator = () => {
         if (showPollCreator) {
             setPollOptions(['', '']);
+            setPollDurationDays(1);
+            setPollDurationHours(0);
+            setPollDurationMinutes(0);
             setShowPollCreator(false);
         } else {
             setShowPollCreator(true);
@@ -168,7 +177,7 @@ export default function ReplyModal() {
     const handleSubmit = async () => {
         const hasContent = content.trim().length > 0;
         const hasMedia = mediaItems.length > 0 || !!selectedGif;
-        const validPoll = showPollCreator && pollOptions.filter(o => o.trim()).length >= 2;
+        const validPoll = showPollCreator && pollOptions.filter(o => o.trim()).length >= 2 && isPollDurationValid;
 
         if (!hasContent && !hasMedia && !validPoll) return;
 
@@ -202,6 +211,7 @@ export default function ReplyModal() {
             }
             if (showPollCreator && pollOptions.filter(o => o.trim()).length >= 2) {
                 formData.append('poll_options', JSON.stringify(pollOptions.filter(o => o.trim())));
+                formData.append('poll_duration_minutes', String(pollTotalMinutes));
             }
 
             // API Call
@@ -229,6 +239,9 @@ export default function ReplyModal() {
             clearMedia();
             setShowPollCreator(false);
             setPollOptions(['', '']);
+            setPollDurationDays(1);
+            setPollDurationHours(0);
+            setPollDurationMinutes(0);
             closeReplyModal();
         } catch (error) {
             console.error('Failed to reply:', error);
@@ -409,6 +422,49 @@ export default function ReplyModal() {
                                                 <Plus className="h-3 w-3" /> {t('addOption')}
                                             </button>
                                         )}
+
+                                        {/* Poll length — Twitter-style Days/Hours/Minutes selects */}
+                                        <div className="mt-3 pt-3 border-t border-zinc-800">
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide">{t('pollDuration')}</span>
+                                            <div className="flex gap-2 mt-2">
+                                                <div className="flex-1">
+                                                    <label className="block text-[10px] text-zinc-500 mb-1">{t('days')}</label>
+                                                    <select
+                                                        value={pollDurationDays}
+                                                        onChange={(e) => setPollDurationDays(Number(e.target.value))}
+                                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50"
+                                                    >
+                                                        {Array.from({ length: 8 }, (_, i) => i).map(d => (
+                                                            <option key={d} value={d}>{d}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <label className="block text-[10px] text-zinc-500 mb-1">{t('hours')}</label>
+                                                    <select
+                                                        value={pollDurationHours}
+                                                        onChange={(e) => setPollDurationHours(Number(e.target.value))}
+                                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50"
+                                                    >
+                                                        {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <label className="block text-[10px] text-zinc-500 mb-1">{t('minutes')}</label>
+                                                    <select
+                                                        value={pollDurationMinutes}
+                                                        onChange={(e) => setPollDurationMinutes(Number(e.target.value))}
+                                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50"
+                                                    >
+                                                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
@@ -471,7 +527,7 @@ export default function ReplyModal() {
                                         )}
                                         <button
                                             onClick={handleSubmit}
-                                            disabled={(!content.trim() && mediaItems.length === 0 && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350 || isSubmitting}
+                                            disabled={(!content.trim() && mediaItems.length === 0 && !selectedGif && !(showPollCreator && pollOptions.filter(o => o.trim()).length >= 2)) || content.length > 350 || isSubmitting || (showPollCreator && !isPollDurationValid)}
                                             className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-full font-medium text-sm transition-colors flex items-center gap-2"
                                         >
                                             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
