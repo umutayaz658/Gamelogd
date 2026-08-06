@@ -16,6 +16,7 @@ import EditProfileModal from "@/components/EditProfileModal";
 import ImageModal from "@/components/modals/ImageModal";
 import FollowersFollowingModal from "@/components/FollowersFollowingModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import ReportModal from "@/components/modals/ReportModal";
 import { useTranslation } from "@/lib/useTranslation";
 import { useToast } from "@/context/ToastContext";
 
@@ -88,8 +89,10 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
     const [isRequested, setIsRequested] = useState(false);
     const [followersCount, setFollowersCount] = useState(0);
     const [isBlocked, setIsBlocked] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
     const [hasRequestedMe, setHasRequestedMe] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [showReportModal, setShowReportModal] = useState(false);
 
     // Confirm Modal State
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -129,6 +132,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 setIsRequested(res.data.is_requested || false);
                 setFollowersCount(res.data.followers_count || 0);
                 setIsBlocked(res.data.is_blocked || false);
+                setIsMuted(res.data.is_muted || false);
                 setHasRequestedMe(res.data.has_requested_me || false);
             } catch (error) {
                 console.error("Failed to fetch profile:", error);
@@ -151,6 +155,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             setIsRequested(res.data.is_requested || false);
             setFollowersCount(res.data.followers_count || 0);
             setIsBlocked(res.data.is_blocked || false);
+            setIsMuted(res.data.is_muted || false);
             setHasRequestedMe(res.data.has_requested_me || false);
         } catch (error) {
             console.error("Failed to refresh profile counts:", error);
@@ -198,6 +203,25 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
             }
         });
         setIsConfirmModalOpen(true);
+    };
+
+    const handleMuteToggle = async () => {
+        if (!currentUser) {
+            toast.info("Please login to mute users.");
+            return;
+        }
+        try {
+            if (isMuted) {
+                await api.post(`/users/${username}/unmute/`);
+                setIsMuted(false);
+            } else {
+                await api.post(`/users/${username}/mute/`);
+                setIsMuted(true);
+            }
+        } catch (error) {
+            console.error("Failed to toggle mute status:", error);
+            toast.error("Failed to update mute status.");
+        }
     };
 
     // Fetch Steam Status
@@ -749,7 +773,27 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                                         </button>
  
                                                         {isMenuOpen && (
-                                                            <div className="absolute right-0 mt-2 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-1 animate-in fade-in duration-100">
+                                                            <div className="absolute right-0 mt-2 w-40 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-1 animate-in fade-in duration-100">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setIsMenuOpen(false);
+                                                                        handleMuteToggle();
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer"
+                                                                >
+                                                                    {isMuted ? t('unmuteUser') : t('muteUser')}
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setIsMenuOpen(false);
+                                                                        setShowReportModal(true);
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer"
+                                                                >
+                                                                    {t('reportUser')}
+                                                                </button>
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -837,6 +881,26 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                                                                 {t('messageBtn')}
                                                             </button>
                                                         )}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setIsMenuOpen(false);
+                                                                handleMuteToggle();
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer"
+                                                        >
+                                                            {isMuted ? t('unmuteUser') : t('muteUser')}
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setIsMenuOpen(false);
+                                                                setShowReportModal(true);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer"
+                                                        >
+                                                            {t('reportUser')}
+                                                        </button>
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1495,6 +1559,15 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
                 initialTab={followModalTab}
                 onCountChange={refreshProfileCounts}
             />
+
+            {profileUser && (
+                <ReportModal
+                    isOpen={showReportModal}
+                    onClose={() => setShowReportModal(false)}
+                    targetType="user"
+                    targetId={profileUser.id}
+                />
+            )}
 
             {
                 profileUser && (

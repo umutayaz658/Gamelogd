@@ -158,14 +158,57 @@ class FollowRequest(models.Model):
         return f"{self.sender} wants to follow {self.receiver}"
 
 class Notification(models.Model):
+    # Mirrors the NotificationType union in frontend/src/lib/notifications.ts — that file used to
+    # be the only source of truth (derived client-side from `verb` text via string matching); this
+    # field makes it authoritative server-side going forward. 'unknown' covers legacy/unclassified
+    # rows and any verb that doesn't map to a specific type (e.g. the Xbox sync status messages).
+    NOTIFICATION_TYPES = [
+        ('like', 'Like'),
+        ('mention', 'Mention'),
+        ('reply', 'Reply'),
+        ('comment_review', 'Comment on Review'),
+        ('repost', 'Repost'),
+        ('quote', 'Quote'),
+        ('follow', 'Follow'),
+        ('follow_request', 'Follow Request'),
+        ('follow_request_accepted', 'Follow Request Accepted'),
+        ('project_invite', 'Project Invite'),
+        ('project_invite_accepted', 'Project Invite Accepted'),
+        ('project_followed', 'Project Followed'),
+        ('org_invite', 'Organisation Invite'),
+        ('org_invite_accepted', 'Organisation Invite Accepted'),
+        ('org_ownership_transfer_to_you', 'Org Ownership Transfer To You'),
+        ('org_ownership_transfer_confirmation', 'Org Ownership Transfer Confirmation'),
+        ('group_invite', 'Group Chat Invite'),
+        ('group_invite_accepted', 'Group Chat Invite Accepted'),
+        ('message_request', 'Message Request'),
+        ('message_request_accepted', 'Message Request Accepted'),
+        ('playtest_feedback', 'Playtest Feedback'),
+        ('steam_sync_success', 'Steam Sync Success'),
+        ('steam_sync_failed', 'Steam Sync Failed'),
+        ('unknown', 'Unknown'),
+    ]
+
+    # Notification types eligible for Twitter/Instagram-style write-time aggregation: a new like
+    # or follow within the window below bumps the existing row (actor_count/recent_actor_ids)
+    # instead of creating a new one. Deliberately narrow — replies/mentions/invites etc. always
+    # stay one row per event, matching how those platforms only aggregate engagement notifications.
+    GROUPABLE_TYPES = {'like', 'follow'}
+    GROUPING_WINDOW = timedelta(hours=24)
+
     recipient = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
     actor = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='triggered_notifications', on_delete=models.CASCADE)
     verb = models.CharField(max_length=255)
-    
+    notification_type = models.CharField(max_length=40, choices=NOTIFICATION_TYPES, blank=True, db_index=True)
+    # Most-recent-first, capped at 3 — enough for the frontend's stacked-avatar "X, Y and N others"
+    # row without needing a join to a separate actor-list table for a fixed small cap.
+    recent_actor_ids = models.JSONField(default=list, blank=True)
+    actor_count = models.PositiveIntegerField(default=1)
+
     target_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
     target_id = models.PositiveIntegerField(null=True, blank=True)
     target = GenericForeignKey('target_type', 'target_id')
-    
+
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -180,13 +223,65 @@ class Notification(models.Model):
     def __str__(self):
         return f"Notification for {self.recipient}: {self.actor} {self.verb}"
 
+
+def create_notification(recipient, actor, verb, target=None, target_type=None, target_id=None, notification_type=None):
+    """
+    Central entry point for creating a Notification. Every notification-creation call site in the
+    codebase (signals below, plus the ones in views.py) should go through this rather than calling
+    Notification.objects.create() directly, so that mute-suppression and write-time grouping only
+    need to live in one place. Returns None (no-op) if the recipient has muted the actor — mirrors
+    Twitter's mute semantics, where muting someone also silences their notifications.
+
+    Accepts either `target` (a model instance, resolved via the GenericForeignKey) or an explicit
+    `target_type`/`target_id` pair, matching however the call site already had the reference handy.
+
+    For `notification_type` in Notification.GROUPABLE_TYPES, reuses (and "re-opens" — bumps back to
+    unread) an existing unread-or-read notification for the same (recipient, type, target) within
+    the last 24h instead of creating a new row, so ten likes on one post surface as a single grouped
+    notification/unread-count bump rather than ten separate rows.
+    """
+    from api.models import Mute
+    if Mute.objects.filter(muter=recipient, muted=actor).exists():
+        return None
+
+    if target is not None and target_type is None and target_id is None:
+        target_type = ContentType.objects.get_for_model(target)
+        target_id = target.pk
+
+    if notification_type in Notification.GROUPABLE_TYPES:
+        window_start = timezone.now() - Notification.GROUPING_WINDOW
+        existing = Notification.objects.filter(
+            recipient=recipient, notification_type=notification_type,
+            target_type=target_type, target_id=target_id,
+            created_at__gte=window_start,
+        ).order_by('-created_at').first()
+        if existing:
+            if existing.actor_id != actor.id:
+                existing.actor_count += 1
+                existing.recent_actor_ids = ([actor.id] + [i for i in existing.recent_actor_ids if i != actor.id])[:3]
+            existing.actor = actor
+            existing.verb = verb
+            existing.is_read = False
+            existing.created_at = timezone.now()
+            existing.save(update_fields=['actor_count', 'recent_actor_ids', 'actor', 'verb', 'is_read', 'created_at'])
+            return existing
+
+    return Notification.objects.create(
+        recipient=recipient, actor=actor, verb=verb,
+        target_type=target_type, target_id=target_id,
+        notification_type=notification_type or '',
+        recent_actor_ids=[actor.id],
+    )
+
+
 @receiver(post_save, sender=Follow)
 def create_follow_notification(sender, instance, created, **kwargs):
     if created:
-        Notification.objects.create(
+        create_notification(
             recipient=instance.following,
             actor=instance.follower,
-            verb='started following you'
+            verb='started following you',
+            notification_type='follow',
         )
 
 @receiver(post_save, sender='core.Post')
@@ -194,21 +289,23 @@ def create_comment_notification(sender, instance, created, **kwargs):
     if created:
         # 1. Reply to another post (comment on post)
         if instance.parent and instance.parent.user != instance.user:
-            Notification.objects.create(
+            create_notification(
                 recipient=instance.parent.user,
                 actor=instance.user,
                 verb='replied to your post',
-                target=instance
+                target=instance,
+                notification_type='reply',
             )
         # 2. Comment on a review
         elif instance.review_parent and instance.review_parent.user != instance.user:
-            Notification.objects.create(
+            create_notification(
                 recipient=instance.review_parent.user,
                 actor=instance.user,
                 verb='commented on your review',
-                target=instance
+                target=instance,
+                notification_type='comment_review',
             )
-        
+
         # 3. Handle mentions — resolve all usernames in one query and bulk-create the
         # notifications, instead of a User.objects.get() + Notification.objects.create() pair
         # per @mention (an unbounded query loop on a long post with many mentions).
@@ -227,6 +324,10 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 username__iexact=instance.user.username
             ).distinct()
 
+            muted_by_ids = set(Mute.objects.filter(
+                muter__in=mentioned_users, muted=instance.user
+            ).values_list('muter_id', flat=True))
+
             content_type = ContentType.objects.get_for_model(instance)
             Notification.objects.bulk_create([
                 Notification(
@@ -235,8 +336,10 @@ def create_comment_notification(sender, instance, created, **kwargs):
                     verb='mentioned you in a post',
                     target_type=content_type,
                     target_id=instance.id,
+                    notification_type='mention',
+                    recent_actor_ids=[instance.user.id],
                 )
-                for u in mentioned_users
+                for u in mentioned_users if u.id not in muted_by_ids
             ])
 
 @receiver(post_save, sender='core.Like')
@@ -244,19 +347,21 @@ def create_like_notification(sender, instance, created, **kwargs):
     if created:
         # 1. Like on a post
         if instance.post and instance.post.user != instance.user:
-            Notification.objects.create(
+            create_notification(
                 recipient=instance.post.user,
                 actor=instance.user,
                 verb='liked your post',
-                target=instance.post
+                target=instance.post,
+                notification_type='like',
             )
         # 2. Like on a review
         elif instance.review and instance.review.user != instance.user:
-            Notification.objects.create(
+            create_notification(
                 recipient=instance.review.user,
                 actor=instance.user,
                 verb='liked your review',
-                target=instance.review
+                target=instance.review,
+                notification_type='like',
             )
 
 class Conversation(models.Model):
@@ -295,12 +400,24 @@ class ConversationMember(models.Model):
 @receiver(post_save, sender=ConversationMember)
 def create_group_invite_notification(sender, instance, created, **kwargs):
     if created and instance.status == 'pending' and instance.invited_by:
-        Notification.objects.create(
-            recipient=instance.user,
-            actor=instance.invited_by,
-            verb='invited you to a group chat',
-            target=instance.conversation
-        )
+        if instance.conversation.is_group:
+            create_notification(
+                recipient=instance.user,
+                actor=instance.invited_by,
+                verb='invited you to a group chat',
+                target=instance.conversation,
+                notification_type='group_invite',
+            )
+        else:
+            # 1:1 DM request (Area 3 — start_chat sets the recipient's membership to 'pending'
+            # instead of force-accepting it when no follow relationship exists between the two).
+            create_notification(
+                recipient=instance.user,
+                actor=instance.invited_by,
+                verb='sent you a message request',
+                target=instance.conversation,
+                notification_type='message_request',
+            )
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, related_name='messages', on_delete=models.CASCADE)
@@ -350,26 +467,6 @@ class MessageReaction(models.Model):
 
     def __str__(self):
         return f"{self.user.username} reacted {self.emoji} to message {self.message.id}"
-
-class BlockedUser(models.Model):
-    blocker = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blocked_chat_users')
-    blocked = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blocked_by_chat')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('blocker', 'blocked')
-
-    def __str__(self):
-        return f"{self.blocker.username} blocked {self.blocked.username}"
-
-class ConversationReport(models.Model):
-    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='reports')
-    reported_by = models.ForeignKey(django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='conversation_reports')
-    reason = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Report on Conversation {self.conversation.id} by {self.reported_by.username}"
 
 class SupportTicket(models.Model):
     TICKET_TYPE_CHOICES = [
@@ -476,6 +573,68 @@ class Block(models.Model):
 
     def __str__(self):
         return f"{self.blocker} blocked {self.blocked}"
+
+
+class Mute(models.Model):
+    """
+    Content-only suppression, distinct from Block: a muted user's posts/reviews/notifications are
+    hidden from the muter's feeds, but (unlike Block) Follow/FollowRequest are left untouched and
+    the muted user can still message/view/follow the muter, matching Twitter's mute semantics.
+    """
+    muter = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='muting_users', on_delete=models.CASCADE)
+    muted = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='muted_by_users', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('muter', 'muted')
+
+    def __str__(self):
+        return f"{self.muter} muted {self.muted}"
+
+
+class Report(models.Model):
+    """
+    Generic report against any content type (post, review, user, conversation, ...). Uses a
+    GenericForeignKey (same pattern as Notification.target above) since the reportable-type set
+    is expected to grow, unlike the fixed few target types Like/Bookmark cover.
+    """
+    REASON_CHOICES = [
+        ('spam', 'Spam'),
+        ('harassment', 'Harassment or bullying'),
+        ('hate_speech', 'Hate speech'),
+        ('nudity', 'Nudity or sexual content'),
+        ('violence', 'Violence or dangerous content'),
+        ('misinformation', 'Misinformation'),
+        ('self_harm', 'Self-harm'),
+        ('impersonation', 'Impersonation'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('reviewed', 'Reviewed'),
+        ('dismissed', 'Dismissed'),
+        ('actioned', 'Actioned'),
+    ]
+
+    reporter = models.ForeignKey(django_settings.AUTH_USER_MODEL, related_name='reports_filed', on_delete=models.CASCADE)
+
+    target_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    target_id = models.PositiveIntegerField()
+    target = GenericForeignKey('target_type', 'target_id')
+
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES)
+    details = models.TextField(blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['target_type', 'target_id'], name='report_target_idx')]
+        constraints = [
+            models.UniqueConstraint(fields=['reporter', 'target_type', 'target_id'], name='unique_report_per_reporter_target'),
+        ]
+
+    def __str__(self):
+        return f"Report by {self.reporter} on {self.target_type}:{self.target_id} ({self.reason})"
 
 
 @receiver(post_save, sender=Notification)

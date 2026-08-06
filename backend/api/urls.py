@@ -16,10 +16,11 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'conversations', ConversationViewSet, basename='conversation')
 router.register(r'messages', MessageViewSet, basename='message')
 router.register(r'library', LibraryViewSet, basename='library')
-from .views import NewsViewSet, LikeViewSet, BookmarkViewSet, ProjectViewSet, JobPostingViewSet, ProjectMemberViewSet, OrganisationViewSet, OrganisationMemberViewSet, OrganisationInvitationViewSet
+from .views import NewsViewSet, LikeViewSet, BookmarkViewSet, ReportViewSet, ProjectViewSet, JobPostingViewSet, ProjectMemberViewSet, OrganisationViewSet, OrganisationMemberViewSet, OrganisationInvitationViewSet
 router.register(r'news', NewsViewSet, basename='news')
 router.register(r'likes', LikeViewSet, basename='like')
 router.register(r'bookmarks', BookmarkViewSet, basename='bookmark')
+router.register(r'reports', ReportViewSet, basename='report')
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'project-members', ProjectMemberViewSet, basename='project-member')
 router.register(r'job-postings', JobPostingViewSet, basename='job-posting')

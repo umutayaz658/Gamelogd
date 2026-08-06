@@ -412,9 +412,12 @@ class Post(models.Model):
     media_type = models.CharField(max_length=20, choices=[('image', 'Image'), ('video', 'Video')], null=True, blank=True)
     gif_url = models.URLField(max_length=500, null=True, blank=True)
     
-    # Poll Support
+    # Poll Support — poll_expires_at is the absolute close time (computed server-side at creation
+    # from a client-supplied duration), not a stored duration, so "time remaining"/"is closed" is
+    # always a single timezone.now() comparison. NULL means "never expires" (pre-dates this field).
     poll_options = models.JSONField(null=True, blank=True, default=list)
-    
+    poll_expires_at = models.DateTimeField(null=True, blank=True)
+
     # Reply Support
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     review_parent = models.ForeignKey('Review', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
@@ -521,6 +524,54 @@ class Bookmark(models.Model):
     def __str__(self):
         return f"{self.user} bookmarked something"
 
+
+class PollVote(models.Model):
+    """
+    One user's vote on one poll Post. `option_index` is a position into Post.poll_options (a
+    flat list of strings) rather than a separate PollOption row — poll_options is never mutated
+    after creation (no edit-poll feature), so the index stays a stable reference for the post's
+    lifetime, and this avoids restructuring the existing plain-string-list field.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='poll_votes')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='poll_votes')
+    option_index = models.PositiveSmallIntegerField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'post'], name='unique_poll_vote_per_user_per_post'),
+        ]
+
+    def __str__(self):
+        return f"{self.user} voted option {self.option_index} on post {self.post_id}"
+
+
+class NotInterested(models.Model):
+    """
+    'Not interested in this post/review' signal (Twitter/Instagram-style). Only suppresses the
+    target from algorithmic feeds (FeedViewSet.for_you/following) — the content stays visible on
+    the author's own profile or the game's review page, unlike Block/Mute which also gate direct
+    interaction.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='not_interested')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, null=True, blank=True, related_name='not_interested_marks')
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, null=True, blank=True, related_name='not_interested_marks')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['user', 'post'], ['user', 'review']]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(post__isnull=False, review__isnull=True)
+                    | models.Q(post__isnull=True, review__isnull=False)
+                ),
+                name='not_interested_exactly_one_target',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} not interested in something"
 
 
 class NewsSource(models.Model):

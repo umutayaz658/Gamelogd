@@ -9,6 +9,9 @@ export interface User {
     location?: string;
     role?: 'gamer' | 'dev' | 'investor';
     is_following?: boolean;
+    is_blocked?: boolean;
+    has_blocked_me?: boolean;
+    is_muted?: boolean;
     followers_count?: number;
     following_count?: number;
     date_joined?: string;
@@ -290,6 +293,14 @@ export interface Post {
     media_type?: 'image' | 'video' | null;
     gif_url?: string | null;
     poll_options?: string[] | null;
+    poll_expires_at?: string | null;
+    poll_results?: {
+        counts: number[];
+        total_votes: number;
+        user_choice: number | null;
+        is_closed: boolean;
+        expires_at: string | null;
+    } | null;
     timestamp: string;
     author_identity?: 'user' | 'organisation' | 'project';
     author_details?: {
@@ -366,6 +377,9 @@ export interface Notification {
     id: number;
     actor: User;
     verb: string;
+    notification_type?: string;
+    actor_count?: number;
+    recent_actors?: User[];
     target_type?: string;
     target_id?: number;
     is_read: boolean;

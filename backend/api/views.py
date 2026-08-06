@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from core.models import Game, Review, Post, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation
-from api.models import User, Notification, SupportTicket, Interest, PendingRegistration, PendingEmailChange
+from api.models import User, Notification, SupportTicket, Interest, PendingRegistration, PendingEmailChange, create_notification
 from .serializers import UserSerializer, GameSerializer, ReviewSerializer, PostSerializer, RegisterSerializer, SupportTicketSerializer, OrganisationSerializer, OrganisationMemberSerializer, OrganisationInvitationSerializer
 from .pagination import LargeResultsSetPagination, StandardResultsSetPagination
 from rest_framework.authtoken.views import ObtainAuthToken
@@ -27,6 +27,36 @@ from api.permissions import IsOwnerOrReadOnly, ProjectAccessPermission, Organisa
 from api.authentication import set_auth_cookie, clear_auth_cookie
 
 from rest_framework.throttling import ScopedRateThrottle
+
+
+def get_hidden_user_ids(user):
+    """
+    IDs of users who should be hidden from `user`'s feeds/lists/interactions: anyone `user` has
+    blocked, anyone who has blocked `user`, and anyone `user` has muted. A single set covers both
+    the "exclude these ids from a queryset" and "is target_id in the hidden set" (block-check)
+    use cases that were previously duplicated across the file as ad-hoc Block.objects.filter() pairs.
+    """
+    from api.models import Block, Mute
+    blocked_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
+    blocker_ids = set(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+    muted_ids = set(Mute.objects.filter(muter=user).values_list('muted_id', flat=True))
+    return blocked_ids | blocker_ids | muted_ids
+
+
+def _message_requires_request(sender, target_user):
+    """
+    Instagram/Twitter-style DM gating: a 1:1 conversation starts as a "message request" (recipient
+    membership stays 'pending' until they accept) whenever neither party already follows the other,
+    OR the recipient has turned off `settings['directMessages']` — soft-routed into the same pending
+    flow rather than a hard 403, so there's one consistent code path/UI for both triggers.
+    """
+    from api.models import Follow
+    if not target_user.settings.get('directMessages', True):
+        return True
+    follows_either_way = Follow.objects.filter(
+        Q(follower=sender, following=target_user) | Q(follower=target_user, following=sender)
+    ).exists()
+    return not follows_either_way
 
 
 class CustomAuthToken(ObtainAuthToken):
@@ -152,10 +182,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         request = self.request
         if request and request.user.is_authenticated:
             if self.action == 'list':
-                from api.models import Block
-                blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
-                blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
-                queryset = queryset.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
+                queryset = queryset.exclude(id__in=get_hidden_user_ids(request.user))
         return queryset
 
     def _check_private_access(self, target_user, request):
@@ -175,12 +202,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "You cannot follow yourself."}, status=status.HTTP_400_BAD_REQUEST)
         
         # Check block restrictions
-        from api.models import Block
-        if Block.objects.filter(blocker=request.user, blocked=target_user).exists() or \
-           Block.objects.filter(blocker=target_user, blocked=request.user).exists():
+        if target_user.id in get_hidden_user_ids(request.user):
             return Response({"error": "Cannot follow this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
         
-        from api.models import Follow, FollowRequest, Notification
+        from api.models import Follow, FollowRequest
         # If target user has a private profile
         if target_user.settings.get('privateProfile', False):
             if Follow.objects.filter(follower=request.user, following=target_user).exists():
@@ -191,10 +216,11 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                 return Response({"message": "Follow request already pending.", "status": "pending", "is_following": False, "is_requested": True}, status=status.HTTP_200_OK)
             
             # Send Notification for follow request
-            Notification.objects.create(
+            create_notification(
                 recipient=target_user,
                 actor=request.user,
-                verb='requested to follow you'
+                verb='requested to follow you',
+                notification_type='follow_request',
             )
             return Response({"message": "Follow request sent.", "status": "pending", "is_following": False, "is_requested": True}, status=status.HTTP_201_CREATED)
         
@@ -213,10 +239,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         
         followers = User.objects.filter(id__in=user.followers.values_list('follower_id', flat=True)).order_by('username')
         if request.user.is_authenticated:
-            from api.models import Block
-            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
-            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
-            followers = followers.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
+            followers = followers.exclude(id__in=get_hidden_user_ids(request.user))
         
         search_query = request.query_params.get('search', '')
         if search_query:
@@ -234,10 +257,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         
         following = User.objects.filter(id__in=user.following.values_list('following_id', flat=True)).order_by('username')
         if request.user.is_authenticated:
-            from api.models import Block
-            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
-            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
-            following = following.exclude(id__in=blocked_ids).exclude(id__in=blocker_ids)
+            following = following.exclude(id__in=get_hidden_user_ids(request.user))
         
         search_query = request.query_params.get('search', '')
         if search_query:
@@ -317,8 +337,8 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         from django.http import HttpResponseRedirect
         from django.conf import settings
         from api.services.oauth import verify_steam_openid_response
-        from api.models import User as UserModel, Notification
-        
+        from api.models import User as UserModel
+
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
         state = request.GET.get('state')
         
@@ -343,17 +363,19 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                 stats = fetch_steam_library(user.id, steam_id)
                 synced = stats.get('synced', 0)
                 total = stats.get('total', 0)
-                Notification.objects.create(
+                create_notification(
                     recipient=user,
                     actor=user,
-                    verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.'
+                    verb=f'Your Steam library sync is complete! {synced}/{total} games synced successfully.',
+                    notification_type='steam_sync_success',
                 )
             except Exception as e:
                 logger.exception("Background Steam sync failed for user %s", user.id)
-                Notification.objects.create(
+                create_notification(
                     recipient=user,
                     actor=user,
-                    verb='Steam library sync failed. Please check your privacy settings.'
+                    verb='Steam library sync failed. Please check your privacy settings.',
+                    notification_type='steam_sync_failed',
                 )
         threading.Thread(target=run_sync, daemon=False).start()
         
@@ -382,8 +404,8 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         from django.http import HttpResponseRedirect
         from django.conf import settings
         from api.services.oauth import process_xbox_oauth_flow
-        from api.models import User as UserModel, Notification
-        
+        from api.models import User as UserModel
+
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
         code = request.GET.get('code')
         state = request.GET.get('state')
@@ -410,7 +432,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         user.xbox_gamertag = gamertag
         user.save()
         
-        Notification.objects.create(
+        create_notification(
             recipient=user,
             actor=user,
             verb=f'Started syncing Xbox Live library for {gamertag}...'
@@ -421,14 +443,14 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             from api.services.xbox import sync_xbox_library
             try:
                 sync_xbox_library(user, xuid, xsts_token, user_hash)
-                Notification.objects.create(
+                create_notification(
                     recipient=user,
                     actor=user,
                     verb=f'Your Xbox Live library for {gamertag} has been synced successfully.'
                 )
             except Exception as e:
                 logger.exception("Background Xbox sync failed for user %s", user.id)
-                Notification.objects.create(
+                create_notification(
                     recipient=user,
                     actor=user,
                     verb='Xbox library sync failed. Please check your Xbox Live privacy settings.'
@@ -898,10 +920,11 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         Notification.objects.filter(recipient=request.user, actor=sender, verb='requested to follow you').delete()
         
         # Notify the sender that their request was approved
-        Notification.objects.create(
+        create_notification(
             recipient=sender,
             actor=request.user,
-            verb='accepted your follow request'
+            verb='accepted your follow request',
+            notification_type='follow_request_accepted',
         )
         
         return Response({"message": f"Approved follow request from {sender.username}."}, status=status.HTTP_200_OK)
@@ -969,6 +992,37 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(blocked_users_list, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def mute(self, request, username=None):
+        # Unlike block(), mute is content-suppression only — no Follow/FollowRequest cleanup,
+        # since the muted user can still follow, view, and message the muter (Twitter semantics).
+        target_user = self.get_object()
+        if request.user == target_user:
+            return Response({"error": "You cannot mute yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from api.models import Mute
+        mute_instance, created = Mute.objects.get_or_create(muter=request.user, muted=target_user)
+        if not created:
+            return Response({"message": "You have already muted this user."}, status=status.HTTP_200_OK)
+        return Response({"message": f"Muted {target_user.username} successfully."}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unmute(self, request, username=None):
+        target_user = self.get_object()
+        from api.models import Mute
+        deleted_count, _ = Mute.objects.filter(muter=request.user, muted=target_user).delete()
+        if deleted_count == 0:
+            return Response({"error": "You have not muted this user."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": f"Unmuted {target_user.username} successfully."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='muted-users', permission_classes=[permissions.IsAuthenticated])
+    def muted_users(self, request):
+        from api.models import Mute
+        muted_relations = Mute.objects.filter(muter=request.user).select_related('muted')
+        muted_users_list = [relation.muted for relation in muted_relations]
+        serializer = self.get_serializer(muted_users_list, many=True)
+        return Response(serializer.data)
+
 from api.models import Notification
 from .serializers import NotificationSerializer
 
@@ -977,7 +1031,23 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(recipient=self.request.user).order_by('-created_at')
+        return Notification.objects.filter(recipient=self.request.user).select_related('actor').order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        # Bulk-resolve every recent_actor_ids id referenced on the current page in one query,
+        # instead of NotificationSerializer.get_recent_actors firing a query per row.
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        items = page if page is not None else queryset
+        actor_ids = set()
+        for notif in items:
+            actor_ids.update(notif.recent_actor_ids)
+        context = self.get_serializer_context()
+        context['recent_actors_cache'] = {u.id: u for u in User.objects.filter(id__in=actor_ids)}
+        serializer = self.get_serializer(items, many=True, context=context)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
@@ -1427,11 +1497,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
         request = self.request
         from django.db.models import Q
         if request and request.user.is_authenticated:
-            from api.models import Block
-            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
-            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
-            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
-            
+            queryset = queryset.exclude(user_id__in=get_hidden_user_ids(request.user))
+
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
                 is_private=True
@@ -1463,6 +1530,13 @@ class ReviewViewSet(viewsets.ModelViewSet):
             queryset = queryset.order_by('likes_count', '-timestamp')
             
         return queryset
+
+    @action(detail=True, methods=['post'], url_path='not-interested', permission_classes=[permissions.IsAuthenticated])
+    def not_interested(self, request, pk=None):
+        review = self.get_object()
+        from core.models import NotInterested
+        NotInterested.objects.get_or_create(user=request.user, review=review)
+        return Response({"status": "success"}, status=status.HTTP_201_CREATED)
 
     def _sync_library_status(self, review, playtime_hours=None, platform=None):
         """Sync LibraryEntry status based on review is_completed flag, and ensure logged games are in the library."""
@@ -1555,11 +1629,8 @@ class PostViewSet(viewsets.ModelViewSet):
         request = self.request
         from django.db.models import Q
         if request and request.user.is_authenticated:
-            from api.models import Block
-            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
-            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
-            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
-            
+            queryset = queryset.exclude(user_id__in=get_hidden_user_ids(request.user))
+
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
                 is_private=True
@@ -1696,9 +1767,7 @@ class PostViewSet(viewsets.ModelViewSet):
             target_author = review_parent.user
             
         if target_author:
-            from api.models import Block
-            if Block.objects.filter(blocker=self.request.user, blocked=target_author).exists() or \
-               Block.objects.filter(blocker=target_author, blocked=self.request.user).exists():
+            if target_author.id in get_hidden_user_ids(self.request.user):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("Cannot interact with this post due to block restrictions.")
                 
@@ -1723,15 +1792,15 @@ class PostViewSet(viewsets.ModelViewSet):
 
         # Quote post notification
         if post.repost_parent and post.repost_parent.user != self.request.user:
-            from api.models import Notification
             from django.contrib.contenttypes.models import ContentType
             content_type = ContentType.objects.get_for_model(Post)
-            Notification.objects.create(
+            create_notification(
                 recipient=post.repost_parent.user,
                 actor=self.request.user,
                 verb='quoted your post',
                 target_type=content_type,
-                target_id=post.id
+                target_id=post.id,
+                notification_type='quote',
             )
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -1758,18 +1827,60 @@ class PostViewSet(viewsets.ModelViewSet):
 
         # Trigger notification
         if original_post.user != user:
-            from api.models import Notification
             from django.contrib.contenttypes.models import ContentType
             content_type = ContentType.objects.get_for_model(Post)
-            Notification.objects.create(
+            create_notification(
                 recipient=original_post.user,
                 actor=user,
                 verb='reposted your post',
                 target_type=content_type,
-                target_id=repost_post.id
+                target_id=repost_post.id,
+                notification_type='repost',
             )
 
         return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='not-interested', permission_classes=[permissions.IsAuthenticated])
+    def not_interested(self, request, pk=None):
+        post = self.get_object()
+        from core.models import NotInterested
+        NotInterested.objects.get_or_create(user=request.user, post=post)
+        return Response({"status": "success"}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def vote(self, request, pk=None):
+        from core.models import PollVote
+        from django.utils import timezone
+        from django.db import IntegrityError
+
+        post = self.get_object()
+
+        if not post.poll_options:
+            return Response({"error": "This post does not have a poll."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if post.poll_expires_at and timezone.now() >= post.poll_expires_at:
+            return Response({"error": "This poll has closed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            option_index = int(request.data.get('option_index'))
+        except (TypeError, ValueError):
+            return Response({"error": "option_index must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (0 <= option_index < len(post.poll_options)):
+            return Response({"error": "Invalid option_index."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if PollVote.objects.filter(user=request.user, post=post).exists():
+            return Response({"error": "You have already voted on this poll."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            PollVote.objects.create(user=request.user, post=post, option_index=option_index)
+        except IntegrityError:
+            # Race: two concurrent vote requests from the same user both passed the exists()
+            # check above before either committed.
+            return Response({"error": "You have already voted on this poll."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(post)
+        return Response(serializer.data['poll_results'], status=status.HTTP_201_CREATED)
 
 from api.models import Conversation, Message, ConversationMember
 from .serializers import ConversationSerializer, MessageSerializer
@@ -1777,6 +1888,16 @@ from .serializers import ConversationSerializer, MessageSerializer
 class ConversationViewSet(viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_throttles(self):
+        # Only start_chat is scoped — now that a stranger can freely initiate a message request
+        # to anyone, cold-DM spam becomes materially more possible than when every DM required an
+        # existing follow relationship. Every other action (list/create-group/etc.) stays unthrottled
+        # beyond the default UserRateThrottle backstop.
+        if self.action == 'start_chat':
+            self.throttle_scope = 'message_send'
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         from api.models import ConversationMember
@@ -1831,9 +1952,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({"error": "Cannot chat with yourself"}, status=400)
 
         # Check block relationships
-        from api.models import Block
-        if Block.objects.filter(blocker=request.user, blocked=target_user).exists() or \
-           Block.objects.filter(blocker=target_user, blocked=request.user).exists():
+        if target_user.id in get_hidden_user_ids(request.user):
             return Response({"error": "Cannot message this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
 
         # Check if conversation exists (complex query for exact participants)
@@ -1846,14 +1965,35 @@ class ConversationViewSet(viewsets.ModelViewSet):
             conversation.participants.add(request.user, target_user)
             conversation.save()
             
-        # Ensure memberships exist and are accepted
-        member1, _ = ConversationMember.objects.get_or_create(conversation=conversation, user=request.user)
-        member2, _ = ConversationMember.objects.get_or_create(conversation=conversation, user=target_user)
-        member1.status = 'accepted'
-        member1.save()
-        member2.status = 'accepted'
-        member2.save()
-        
+        # The requester's own membership is always accepted immediately — they can freely send
+        # the opening message. The recipient's membership only stays 'pending' (a "message
+        # request", mirroring the group-invite flow above) when neither party already follows
+        # the other, or the recipient has disabled directMessages. An already-'accepted' existing
+        # thread is never downgraded back to pending.
+        member1, _ = ConversationMember.objects.get_or_create(conversation=conversation, user=request.user, defaults={'status': 'accepted'})
+        if member1.status != 'accepted':
+            member1.status = 'accepted'
+            member1.save()
+
+        member2 = ConversationMember.objects.filter(conversation=conversation, user=target_user).first()
+        if member2 is None:
+            # Created directly with the final status (rather than get_or_create + a follow-up
+            # save) so a 'pending' row fires create_group_invite_notification's post_save signal
+            # (which only triggers on `created=True`) — matching how add_members creates new
+            # pending group invites, see views.py ~2057-2062.
+            requires_request = _message_requires_request(request.user, target_user)
+            member2 = ConversationMember.objects.create(
+                conversation=conversation,
+                user=target_user,
+                status='pending' if requires_request else 'accepted',
+                invited_by=request.user if requires_request else None,
+            )
+        elif member2.status != 'accepted':
+            requires_request = _message_requires_request(request.user, target_user)
+            member2.status = 'pending' if requires_request else 'accepted'
+            member2.invited_by = request.user if requires_request else None
+            member2.save()
+
         serializer = self.get_serializer(conversation)
         return Response(serializer.data)
 
@@ -2071,6 +2211,27 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if request.user not in conversation.participants.all():
             conversation.participants.add(request.user)
             conversation.save()
+
+        # Neither accept nor decline notified the inviter before — the post_save signal only ever
+        # fires on the pending row's *creation*, never on this status transition.
+        if member.invited_by and member.invited_by_id != request.user.id:
+            if conversation.is_group:
+                create_notification(
+                    recipient=member.invited_by,
+                    actor=request.user,
+                    verb='accepted your group chat invitation',
+                    target=conversation,
+                    notification_type='group_invite_accepted',
+                )
+            else:
+                create_notification(
+                    recipient=member.invited_by,
+                    actor=request.user,
+                    verb='accepted your message request',
+                    target=conversation,
+                    notification_type='message_request_accepted',
+                )
+
         return Response({"status": "success", "message": "Joined the conversation"})
 
     @action(detail=True, methods=['post'], url_path='decline-invite')
@@ -2115,9 +2276,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
         other_user = conversation.participants.exclude(id=request.user.id).first()
         if not other_user:
             return Response({"error": "No other user found"}, status=400)
-        
-        from api.models import BlockedUser
-        blocked_user, created = BlockedUser.objects.get_or_create(blocker=request.user, blocked=other_user)
+
+        # Uses the real, site-wide Block model (same one enforced by start_chat/perform_create
+        # and the profile-page block action) instead of the old chat-only BlockedUser model,
+        # which was never actually checked anywhere and so had no real effect.
+        from api.models import Block
+        Block.objects.get_or_create(blocker=request.user, blocked=other_user)
         return Response({"status": "success", "message": f"Blocked user {other_user.username}"})
 
     @action(detail=True, methods=['post'], url_path='unblock-user')
@@ -2128,9 +2292,9 @@ class ConversationViewSet(viewsets.ModelViewSet):
         other_user = conversation.participants.exclude(id=request.user.id).first()
         if not other_user:
             return Response({"error": "No other user found"}, status=400)
-        
-        from api.models import BlockedUser
-        BlockedUser.objects.filter(blocker=request.user, blocked=other_user).delete()
+
+        from api.models import Block
+        Block.objects.filter(blocker=request.user, blocked=other_user).delete()
         return Response({"status": "success", "message": f"Unblocked user {other_user.username}"})
 
     @action(detail=True, methods=['post'], url_path='report')
@@ -2139,9 +2303,16 @@ class ConversationViewSet(viewsets.ModelViewSet):
         reason = request.data.get('reason')
         if not reason:
             return Response({"error": "Reason is required"}, status=400)
-        
-        from api.models import ConversationReport
-        ConversationReport.objects.create(conversation=conversation, reported_by=request.user, reason=reason)
+
+        from api.models import Report
+        from django.contrib.contenttypes.models import ContentType
+        reason_key = reason if reason in dict(Report.REASON_CHOICES) else 'other'
+        Report.objects.update_or_create(
+            reporter=request.user,
+            target_type=ContentType.objects.get_for_model(Conversation),
+            target_id=conversation.id,
+            defaults={'reason': reason_key, 'details': reason if reason_key == 'other' else ''},
+        )
         return Response({"status": "success", "message": "Conversation reported"})
 
     @action(detail=True, methods=['get'], url_path='media')
@@ -2217,6 +2388,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_throttles(self):
+        if self.action == 'create':
+            self.throttle_scope = 'message_send'
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         user = self.request.user
@@ -2320,13 +2497,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             
         # Check if conversation is a 1-on-1 direct message and has a block relationship
         if not conversation.is_group:
-            other_participants = conversation.participants.exclude(id=self.request.user.id)
-            from api.models import Block
-            from django.db.models import Q
-            if Block.objects.filter(
-                Q(blocker=self.request.user, blocked__in=other_participants) |
-                Q(blocker__in=other_participants, blocked=self.request.user)
-            ).exists():
+            other_participant_ids = set(conversation.participants.exclude(id=self.request.user.id).values_list('id', flat=True))
+            if other_participant_ids & get_hidden_user_ids(self.request.user):
                 raise permissions.PermissionDenied("You cannot send messages to this conversation due to block restrictions.")
         
         # File validations
@@ -2486,11 +2658,8 @@ class LibraryViewSet(viewsets.ModelViewSet):
         request = self.request
         from django.db.models import Q
         if request and request.user.is_authenticated:
-            from api.models import Block
-            blocked_ids = Block.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
-            blocker_ids = Block.objects.filter(blocked=request.user).values_list('blocker_id', flat=True)
-            queryset = queryset.exclude(user_id__in=blocked_ids).exclude(user_id__in=blocker_ids)
-            
+            queryset = queryset.exclude(user_id__in=get_hidden_user_ids(request.user))
+
             following_ids = list(request.user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
                 is_private=True
@@ -2624,9 +2793,7 @@ class LikeViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin, vie
                 target_author = contribution.author
 
         if target_author:
-            from api.models import Block
-            if Block.objects.filter(blocker=user, blocked=target_author).exists() or \
-               Block.objects.filter(blocker=target_author, blocked=user).exists():
+            if target_author.id in get_hidden_user_ids(user):
                 return Response({"error": "Cannot like content from this user due to block restrictions."}, status=status.HTTP_403_FORBIDDEN)
 
         existing = Like.objects.filter(user=user, post_id=post_id, review_id=review_id, news_id=news_id, playtest_feedback_id=playtest_feedback_id, community_translation_id=community_translation_id).first()
@@ -2668,6 +2835,58 @@ class BookmarkViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin,
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+from .serializers import ReportSerializer
+from api.models import Report
+
+class ReportViewSet(viewsets.GenericViewSet, viewsets.mixins.CreateModelMixin):
+    serializer_class = ReportSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'report'
+
+    # Maps the short client-facing target_type string to the (app_label, model) ContentType
+    # lookup, rather than trusting a client-supplied app_label/model pair directly.
+    TARGET_MODEL_MAP = {
+        'post': ('core', 'post'),
+        'review': ('core', 'review'),
+        'user': ('api', 'user'),
+        'conversation': ('api', 'conversation'),
+    }
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        from django.contrib.contenttypes.models import ContentType
+        app_label, model_name = self.TARGET_MODEL_MAP[data['target_type']]
+        content_type = ContentType.objects.get(app_label=app_label, model=model_name)
+        model_class = content_type.model_class()
+
+        target_obj = model_class.objects.filter(id=data['target_id']).first()
+        if not target_obj:
+            return Response({"error": "Target not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Reject self-reports where ownership is well-defined (post/review/user). Conversations
+        # have no single owner (just a participants M2M), so no self-report check applies there.
+        if data['target_type'] == 'user':
+            target_author = target_obj
+        elif data['target_type'] == 'conversation':
+            target_author = None
+        else:
+            target_author = getattr(target_obj, 'user', None)
+        if target_author and target_author.id == request.user.id:
+            return Response({"error": "You cannot report your own content."}, status=status.HTTP_400_BAD_REQUEST)
+
+        report, created = Report.objects.update_or_create(
+            reporter=request.user,
+            target_type=content_type,
+            target_id=data['target_id'],
+            defaults={'reason': data['reason'], 'details': data.get('details', '')},
+        )
+        output = self.get_serializer(report)
+        return Response(output.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 from core.models import Project, JobPosting, ProjectMember
 from .serializers import ProjectSerializer, JobPostingSerializer, ProjectMemberSerializer
@@ -2721,13 +2940,13 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
             raise ValidationError("User is already a member or has a pending invite.")
 
         member = serializer.save(status='pending')
-        
-        from api.models import Notification
-        Notification.objects.create(
+
+        create_notification(
             recipient=target_user,
             actor=user,
             verb='invited you to join the project',
-            target=member
+            target=member,
+            notification_type='project_invite',
         )
 
     def perform_update(self, serializer):
@@ -2777,11 +2996,12 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
             target_id=instance.id,
         ).delete()
 
-        Notification.objects.create(
+        create_notification(
             recipient=instance.project.owner,
             actor=request.user,
             verb='accepted your invite to join the project',
-            target=instance
+            target=instance,
+            notification_type='project_invite_accepted',
         )
 
         return Response({'status': 'active'}, status=status.HTTP_200_OK)
@@ -2890,15 +3110,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
         
         # Trigger notification to project owner
         if project.owner != request.user:
-            from api.models import Notification
             from django.contrib.contenttypes.models import ContentType
             content_type = ContentType.objects.get_for_model(project.__class__)
-            Notification.objects.create(
+            create_notification(
                 recipient=project.owner,
                 actor=request.user,
                 verb='followed your project',
                 target_type=content_type,
-                target_id=project.id
+                target_id=project.id,
+                notification_type='project_followed',
             )
             
         return Response({"message": f"Now following {project.title}"}, status=status.HTTP_201_CREATED)
@@ -3339,17 +3559,21 @@ class FeedViewSet(viewsets.ViewSet):
         time_limit = timezone.now() - timedelta(days=30)
         
         exclude_ids = set()
+        not_interested_post_ids = set()
+        not_interested_review_ids = set()
         if user.is_authenticated:
-            from api.models import Block
-            exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
-            exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
-            
+            exclude_ids = set(get_hidden_user_ids(user))
+
             # Exclude private profiles the user does not follow, unless it's their own profile
             following_ids = list(user.following.values_list('following_id', flat=True))
             private_ids = User.objects.filter(
                 is_private=True
             ).exclude(id__in=following_ids).exclude(id=user.id).values_list('id', flat=True)
             exclude_ids.update(private_ids)
+
+            from core.models import NotInterested
+            not_interested_post_ids = set(NotInterested.objects.filter(user=user, post__isnull=False).values_list('post_id', flat=True))
+            not_interested_review_ids = set(NotInterested.objects.filter(user=user, review__isnull=False).values_list('review_id', flat=True))
         else:
             private_ids = User.objects.filter(
                 is_private=True
@@ -3394,6 +3618,8 @@ class FeedViewSet(viewsets.ViewSet):
         )
         if exclude_ids:
             posts = posts.exclude(user_id__in=exclude_ids)
+        if not_interested_post_ids:
+            posts = posts.exclude(id__in=not_interested_post_ids)
         posts = posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80]
         posts = list(posts)
 
@@ -3405,11 +3631,15 @@ class FeedViewSet(viewsets.ViewSet):
             )
             if exclude_ids:
                 posts = posts.exclude(user_id__in=exclude_ids)
+            if not_interested_post_ids:
+                posts = posts.exclude(id__in=not_interested_post_ids)
             posts = list(posts.select_related('user').prefetch_related(*post_prefetch).annotate(**post_anns).order_by('-timestamp')[:80])
 
         reviews = Review.objects.filter(timestamp__gte=time_limit)
         if exclude_ids:
             reviews = reviews.exclude(user_id__in=exclude_ids)
+        if not_interested_review_ids:
+            reviews = reviews.exclude(id__in=not_interested_review_ids)
         reviews = reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80]
         reviews = list(reviews)
 
@@ -3417,6 +3647,8 @@ class FeedViewSet(viewsets.ViewSet):
             reviews = Review.objects.all()
             if exclude_ids:
                 reviews = reviews.exclude(user_id__in=exclude_ids)
+            if not_interested_review_ids:
+                reviews = reviews.exclude(id__in=not_interested_review_ids)
             reviews = list(reviews.select_related('user', 'game').prefetch_related(*review_prefetch).annotate(**review_anns).order_by('-timestamp')[:80])
 
         followed_users_ids = set()
@@ -3517,14 +3749,16 @@ class FeedViewSet(viewsets.ViewSet):
         if not user.is_authenticated:
             return Response([])
 
-        from api.models import Block
-        exclude_ids = set(Block.objects.filter(blocker=user).values_list('blocked_id', flat=True))
-        exclude_ids.update(Block.objects.filter(blocked=user).values_list('blocker_id', flat=True))
+        exclude_ids = set(get_hidden_user_ids(user))
+
+        from core.models import NotInterested
+        not_interested_post_ids = set(NotInterested.objects.filter(user=user, post__isnull=False).values_list('post_id', flat=True))
+        not_interested_review_ids = set(NotInterested.objects.filter(user=user, review__isnull=False).values_list('review_id', flat=True))
 
         followed_users_ids = user.following.values_list('following_id', flat=True)
         if exclude_ids:
             followed_users_ids = [uid for uid in followed_users_ids if uid not in exclude_ids]
-        
+
         # Annotate engagement counts so the serializers below read them instead of firing a
         # per-item .count() (see for_you / count_subquery).
         from .serializers import count_subquery, DIRECT_REPOST_Q
@@ -3533,14 +3767,14 @@ class FeedViewSet(viewsets.ViewSet):
             parent__isnull=True,
             review_parent__isnull=True,
             news_parent__isnull=True
-        ).select_related('user').prefetch_related('user__interests', 'media').annotate(
+        ).exclude(id__in=not_interested_post_ids).select_related('user').prefetch_related('user__interests', 'media').annotate(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
             reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         ).order_by('-timestamp')[:50]
 
-        reviews = Review.objects.filter(user_id__in=followed_users_ids).select_related('user', 'game').prefetch_related('user__interests').annotate(
+        reviews = Review.objects.filter(user_id__in=followed_users_ids).exclude(id__in=not_interested_review_ids).select_related('user', 'game').prefetch_related('user__interests').annotate(
             likes_count_ann=count_subquery(Like, 'review'),
             replies_count_ann=count_subquery(Post, 'review_parent'),
             reposts_count_ann=count_subquery(Post, 'repost_parent_review'),
@@ -3704,14 +3938,17 @@ class OrganisationViewSet(viewsets.ModelViewSet):
         )
 
         from django.contrib.contenttypes.models import ContentType
+        from api.models import Mute
         content_type = ContentType.objects.get_for_model(invitation.__class__)
-        Notification.objects.get_or_create(
-            recipient=target_user,
-            actor=request.user,
-            verb=f'invited you to join {organisation.name}',
-            target_type=content_type,
-            target_id=invitation.id
-        )
+        if not Mute.objects.filter(muter=target_user, muted=request.user).exists():
+            Notification.objects.get_or_create(
+                recipient=target_user,
+                actor=request.user,
+                verb=f'invited you to join {organisation.name}',
+                target_type=content_type,
+                target_id=invitation.id,
+                defaults={'notification_type': 'org_invite', 'recent_actor_ids': [request.user.id]},
+            )
 
         return Response(OrganisationInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
 
@@ -3743,19 +3980,21 @@ class OrganisationViewSet(viewsets.ModelViewSet):
 
             from django.contrib.contenttypes.models import ContentType
             org_content_type = ContentType.objects.get_for_model(organisation.__class__)
-            Notification.objects.create(
+            create_notification(
                 recipient=new_owner_membership.user,
                 actor=request.user,
                 verb=f'transferred ownership of {organisation.name} to you',
                 target_type=org_content_type,
-                target_id=organisation.id
+                target_id=organisation.id,
+                notification_type='org_ownership_transfer_to_you',
             )
-            Notification.objects.create(
+            create_notification(
                 recipient=request.user,
                 actor=request.user,
                 verb=f'transferred ownership of {organisation.name} to {new_owner_membership.user.username}',
                 target_type=org_content_type,
-                target_id=organisation.id
+                target_id=organisation.id,
+                notification_type='org_ownership_transfer_confirmation',
             )
 
         return Response({"message": f"Ownership transferred to @{new_owner_membership.user.username}."}, status=status.HTTP_200_OK)
@@ -3943,11 +4182,12 @@ class OrganisationInvitationViewSet(viewsets.ModelViewSet):
                 recipient=invitation.user, target_type=content_type, target_id=invitation.id
             ).delete()
 
-            Notification.objects.create(
+            create_notification(
                 recipient=invitation.invited_by,
                 actor=request.user,
                 verb=f'accepted your invitation to join {invitation.organisation.name}',
                 target=invitation,
+                notification_type='org_invite_accepted',
             )
 
         return Response({"message": f"Successfully joined {invitation.organisation.name}."}, status=status.HTTP_200_OK)
@@ -4534,7 +4774,15 @@ class PlaytestFeedbackViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from django.utils import timezone
-        serializer.save(author=self.request.user, submitted_at=timezone.now())
+        feedback = serializer.save(author=self.request.user, submitted_at=timezone.now())
+        if feedback.project.owner_id and feedback.project.owner_id != self.request.user.id:
+            create_notification(
+                recipient=feedback.project.owner,
+                actor=self.request.user,
+                verb=f'left playtest feedback on {feedback.project.title}',
+                target=feedback,
+                notification_type='playtest_feedback',
+            )
 
     def destroy(self, request, *args, **kwargs):
         # Deliberately bypasses self.get_object()'s automatic IsOwnerOrReadOnly check (which would

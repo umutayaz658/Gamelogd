@@ -20,7 +20,10 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # Deliberately not at the predictable '/admin/' path — cuts down the constant bot/scanner
+    # traffic every internet-facing Django admin gets at that URL. Not a real security boundary
+    # by itself (that's what the auth + django-axes lockout below is for), just noise reduction.
+    path('panel-590a093927f4/', admin.site.urls),
     path('api/', include('api.urls')),
 ]
 
