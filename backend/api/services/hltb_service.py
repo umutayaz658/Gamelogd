@@ -12,7 +12,7 @@ def fetch_hltb_times(game_title: str) -> dict:
         future = executor.submit(HowLongToBeat().search, game_title)
         
         try:
-            results = future.result(timeout=3)
+            results = future.result(timeout=10)
         except concurrent.futures.TimeoutError:
             print(f"HLTB timeout for {game_title}")
             results = None

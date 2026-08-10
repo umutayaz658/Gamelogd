@@ -19,11 +19,15 @@ interface FilterDropdownProps {
     // has no "All" state) so they stay neutral like an unselected filter
     // instead of permanently looking "active".
     showSelectionAccent?: boolean;
+    // When true, the popover is sized to match the trigger button's width instead
+    // of the default fixed w-56 — for call sites where the menu should visually
+    // "belong" to its button rather than being its own independent size.
+    matchTriggerWidth?: boolean;
 }
 
-export default function FilterDropdown({ label, icon, options, value, onChange, showAllOption = true, allLabel, align = 'left', showSelectionAccent = true }: FilterDropdownProps) {
+export default function FilterDropdown({ label, icon, options, value, onChange, showAllOption = true, allLabel, align = 'left', showSelectionAccent = true, matchTriggerWidth = false }: FilterDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
-    const [position, setPosition] = useState<{ top: number; left?: number; right?: number } | null>(null);
+    const [position, setPosition] = useState<{ top: number; left?: number; right?: number; width?: number } | null>(null);
     const [mounted, setMounted] = useState(false);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -41,8 +45,8 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
         const rect = buttonRef.current.getBoundingClientRect();
         setPosition(
             align === 'right'
-                ? { top: rect.bottom + 8, right: window.innerWidth - rect.right }
-                : { top: rect.bottom + 8, left: rect.left }
+                ? { top: rect.bottom + 8, right: window.innerWidth - rect.right, width: rect.width }
+                : { top: rect.bottom + 8, left: rect.left, width: rect.width }
         );
     };
 
@@ -99,8 +103,16 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
             {mounted && isOpen && position && createPortal(
                 <div
                     ref={menuRef}
-                    style={{ position: 'fixed', top: position.top, left: position.left, right: position.right }}
-                    className="w-56 max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150"
+                    style={{
+                        position: 'fixed',
+                        top: position.top,
+                        left: position.left,
+                        right: position.right,
+                        // min-width (not width) so the menu "belongs" to its trigger without
+                        // ever clipping an option label wider than a short trigger like "All".
+                        minWidth: matchTriggerWidth ? position.width : undefined,
+                    }}
+                    className={`${matchTriggerWidth ? 'w-max' : 'w-56'} max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150`}
                 >
                     <div className="p-1">
                         {showAllOption && (

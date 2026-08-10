@@ -8,6 +8,7 @@ from django.conf import settings as django_settings
 from django.utils import timezone
 from datetime import timedelta
 import random
+import re
 
 
 class Interest(models.Model):
@@ -16,6 +17,33 @@ class Interest(models.Model):
 
     def __str__(self):
         return self.name
+
+
+def extract_hashtags(content):
+    """Pulls #tags out of post content — lowercased, deduped, capped at 20 (mirrors the
+    @mention cap in create_comment_notification below). Shared by the post-save sync
+    signal and the one-off backfill_post_hashtags command so both stay in sync."""
+    tags = {tag.lower()[:100] for tag in re.findall(r'#([a-zA-Z0-9_]+)', content or '')}
+    return list(tags)[:20]
+
+
+class PostHashtag(models.Model):
+    """One row per (post, hashtag) pair, kept in sync with Post.content by a post_save
+    signal (see sync_post_hashtags below). Backs the Explore trending-hashtags endpoint
+    with a small, indexed table instead of scanning Post.content live on every request."""
+    post = models.ForeignKey('core.Post', on_delete=models.CASCADE, related_name='hashtags')
+    tag = models.CharField(max_length=100, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'tag')
+        indexes = [
+            models.Index(fields=['created_at'], name='posthashtag_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"#{self.tag} on post {self.post_id}"
+
 
 def default_user_settings():
     return {
@@ -341,6 +369,22 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 )
                 for u in mentioned_users if u.id not in muted_by_ids
             ])
+
+@receiver(post_save, sender='core.Post')
+def sync_post_hashtags(sender, instance, created, **kwargs):
+    # Separate from create_comment_notification above: that one is deliberately gated
+    # `if created` (notifications shouldn't refire on every edit), but hashtags must stay
+    # in sync across edits too since Post.content is editable via PATCH after creation.
+    update_fields = kwargs.get('update_fields')
+    if update_fields is not None and 'content' not in update_fields:
+        # This save didn't touch content (e.g. a trending_score or category-only update)
+        # — hashtags can't have changed, skip the resync.
+        return
+
+    tags = extract_hashtags(instance.content)
+    PostHashtag.objects.filter(post=instance).delete()
+    if tags:
+        PostHashtag.objects.bulk_create([PostHashtag(post=instance, tag=t) for t in tags])
 
 @receiver(post_save, sender='core.Like')
 def create_like_notification(sender, instance, created, **kwargs):

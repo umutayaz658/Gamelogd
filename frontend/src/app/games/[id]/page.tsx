@@ -9,7 +9,7 @@ import Navbar from '@/components/Navbar';
 import LeftSidebar from '@/components/LeftSidebar';
 import ReviewCard from '@/components/ReviewCard';
 import SimilarGames from '@/components/SimilarGames';
-import { getMediaUrl } from '@/lib/utils';
+import { getMediaUrl, getRatingTextClass } from '@/lib/utils';
 import Image from 'next/image';
 import { useLogModal } from '@/context/LogModalContext';
 import { useAuth } from '@/context/AuthContext';
@@ -19,32 +19,45 @@ const ERROR_CODE_404 = '404';
 const STAR_SYMBOL = '★';
 const NO_LOGS_EMOJI = '🎮';
 
+// In-memory cache so navigating back to a previously-viewed game (e.g. from a review's
+// detail page) can render instantly instead of flashing a loading spinner that collapses
+// the page height and defeats the browser's scroll-position restoration.
+const gameDetailCache = new Map<string, GameDetail>();
+const gameReviewsCache = new Map<string, Review[]>();
+
 export default function GameDetailPage() {
     const { t } = useTranslation();
     const params = useParams();
     const gameId = params.id as string;
     const { openLogModal } = useLogModal();
 
-    const [game, setGame] = useState<GameDetail | null>(null);
-    const [reviews, setReviews] = useState<Review[]>([]);
+    const [game, setGame] = useState<GameDetail | null>(() => gameDetailCache.get(gameId) ?? null);
+    const [reviews, setReviews] = useState<Review[]>(() => gameReviewsCache.get(gameId) ?? []);
     const [myReview, setMyReview] = useState<Review | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !gameDetailCache.has(gameId));
     const [reviewsLoading, setReviewsLoading] = useState(false);
     const { user } = useAuth();
-    
+
     // Filtering state
     const [order, setOrder] = useState('-likes_count'); // '-likes_count', '-timestamp', '-rating', 'rating'
 
     const carouselRef = useRef<HTMLDivElement>(null);
+    const scrollRafRef = useRef<number | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
 
     const [notFound, setNotFound] = useState(false);
+
+    // Mobile-only: description show-more/less (mirrors [username]/page.tsx's bio pattern)
+    const [isDescExpanded, setIsDescExpanded] = useState(false);
+    const [shouldShowDescShowMore, setShouldShowDescShowMore] = useState(false);
+    const descRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const fetchGame = async () => {
             try {
                 const response = await api.get(`/games/${gameId}/details/`);
                 setGame(response.data);
+                gameDetailCache.set(gameId, response.data);
             } catch (err: any) {
                 console.error("Failed to fetch game details:", err);
                 if (err.response?.status === 404) {
@@ -62,10 +75,16 @@ export default function GameDetailPage() {
 
     useEffect(() => {
         const fetchReviews = async () => {
-            setReviewsLoading(true);
+            // Only show the loading spinner when there's nothing cached to render yet —
+            // a cached back-navigation should refresh silently in the background.
+            if (!gameReviewsCache.has(gameId)) {
+                setReviewsLoading(true);
+            }
             try {
                 const response = await api.get(`/reviews/?game_id=${gameId}&ordering=${order}`);
-                setReviews(response.data.results || response.data);
+                const data = response.data.results || response.data;
+                setReviews(data);
+                gameReviewsCache.set(gameId, data);
             } catch (err) {
                 console.error("Failed to fetch reviews:", err);
             } finally {
@@ -81,6 +100,14 @@ export default function GameDetailPage() {
     useEffect(() => {
         const fetchMyReview = async () => {
             if (!user || !gameId) return;
+
+            // Avoid a redundant request when the user's review is already in the loaded list.
+            const alreadyLoaded = reviews.find(r => r.user?.username === user.username);
+            if (alreadyLoaded) {
+                setMyReview(alreadyLoaded);
+                return;
+            }
+
             try {
                 const response = await api.get(`/reviews/?game_id=${gameId}&username=${user.username}`);
                 const data = response.data.results || response.data;
@@ -95,28 +122,56 @@ export default function GameDetailPage() {
         };
 
         fetchMyReview();
-    }, [gameId, user]);
+    }, [gameId, user, reviews]);
+
+    useEffect(() => {
+        return () => {
+            if (scrollRafRef.current !== null) {
+                cancelAnimationFrame(scrollRafRef.current);
+            }
+        };
+    }, []);
+
+    // Mobile-only description clamp: check whether it overflows 5 lines, mirrors
+    // [username]/page.tsx's bio show-more/less overflow-detection pattern.
+    useEffect(() => {
+        const checkDescOverflow = () => {
+            if (descRef.current && !isDescExpanded) {
+                setShouldShowDescShowMore(descRef.current.scrollHeight > descRef.current.clientHeight);
+            }
+        };
+        const timer = setTimeout(checkDescOverflow, 50);
+        window.addEventListener('resize', checkDescOverflow);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('resize', checkDescOverflow);
+        };
+    }, [game?.summary, game?.description, isDescExpanded]);
 
     const handleScroll = () => {
-        if (!carouselRef.current || !game?.screenshots) return;
-        const container = carouselRef.current;
-        const scrollCenter = container.scrollLeft + container.offsetWidth / 2;
-        
-        let closestIndex = 0;
-        let minDistance = Infinity;
+        if (scrollRafRef.current !== null) return;
+        scrollRafRef.current = requestAnimationFrame(() => {
+            scrollRafRef.current = null;
+            if (!carouselRef.current || !game?.screenshots) return;
+            const container = carouselRef.current;
+            const scrollCenter = container.scrollLeft + container.offsetWidth / 2;
 
-        Array.from(container.children).forEach((child: any, index) => {
-            const childCenter = child.offsetLeft + child.offsetWidth / 2;
-            const distance = Math.abs(scrollCenter - childCenter);
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestIndex = index;
+            let closestIndex = 0;
+            let minDistance = Infinity;
+
+            Array.from(container.children).forEach((child: any, index) => {
+                const childCenter = child.offsetLeft + child.offsetWidth / 2;
+                const distance = Math.abs(scrollCenter - childCenter);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestIndex = index;
+                }
+            });
+
+            if (closestIndex !== activeIndex) {
+                setActiveIndex(closestIndex);
             }
         });
-
-        if (closestIndex !== activeIndex) {
-            setActiveIndex(closestIndex);
-        }
     };
 
     const scrollToScreenshot = (index: number) => {
@@ -169,8 +224,18 @@ export default function GameDetailPage() {
     const coverUrl = getMediaUrl(game.cover_image);
     const bannerUrl = (game.screenshots && game.screenshots.length > 0) ? game.screenshots[0] : coverUrl;
 
+    // Same 0-10 rating scale used for review scores — see lib/utils.ts's getRatingTextClass.
+    const avgRatingTextClass = game.average_rating ? getRatingTextClass(game.average_rating) : 'text-zinc-500';
+    const avgRatingGlowClass = !game.average_rating
+        ? ''
+        : game.average_rating < 5.0
+            ? 'drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]'
+            : game.average_rating < 8.0
+                ? 'drop-shadow-[0_0_12px_rgba(234,179,8,0.6)]'
+                : 'drop-shadow-[0_0_12px_rgba(16,185,129,0.6)]';
+
     return (
-        <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 relative">
+        <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 relative overflow-x-hidden">
             {/* Global Page Background based on cover */}
             {coverUrl && (
                 <div 
@@ -198,7 +263,7 @@ export default function GameDetailPage() {
                     {/* Banner Image */}
                     <div className="w-full h-64 md:h-80 relative rounded-2xl overflow-hidden shadow-2xl group">
                         {bannerUrl ? (
-                            <Image src={bannerUrl} alt="Banner" fill className="object-cover transition-transform duration-1000 group-hover:scale-105" unoptimized />
+                            <Image src={bannerUrl} alt={`${game.title} banner`} fill className="object-cover transition-transform duration-1000 group-hover:scale-105" unoptimized />
                         ) : (
                             <div className="w-full h-full bg-zinc-800" />
                         )}
@@ -207,7 +272,7 @@ export default function GameDetailPage() {
                     
                     {/* Overlapping Content: Cover & Info */}
                     <div className="px-6 md:px-12 flex flex-col md:flex-row gap-8 relative -mt-24 md:-mt-32">
-                        <div className="w-48 h-64 md:w-56 md:h-72 flex-shrink-0 rounded-xl overflow-hidden shadow-2xl border-4 border-zinc-950 relative z-20">
+                        <div className="w-36 h-48 sm:w-48 sm:h-64 md:w-56 md:h-72 flex-shrink-0 rounded-xl overflow-hidden shadow-2xl border-4 border-zinc-950 relative z-20">
                             {coverUrl ? (
                                 <Image src={coverUrl} alt={game.title} fill className="object-cover" unoptimized />
                             ) : (
@@ -218,7 +283,7 @@ export default function GameDetailPage() {
                         </div>
 
                         <div className="flex-1 mt-auto pt-4 md:pb-4 text-white z-20">
-                            <h1 className="text-4xl md:text-5xl font-black mb-3 tracking-tight drop-shadow-lg">
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black mb-3 tracking-tight drop-shadow-lg">
                                 {game.title}
                             </h1>
                             
@@ -268,10 +333,10 @@ export default function GameDetailPage() {
                                 </div>
                             )}
 
-                            <div className="flex items-center justify-between mt-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
                                 <div className="flex items-center gap-6">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">
+                                        <span className={`text-3xl font-black ${avgRatingTextClass} ${avgRatingGlowClass}`}>
                                             {STAR_SYMBOL} {game.average_rating ? game.average_rating.toFixed(1) : '-'}
                                         </span>
                                     </div>
@@ -280,10 +345,10 @@ export default function GameDetailPage() {
                                         <span><strong className="text-white">{game.log_count || 0}</strong> {t('logs')}</span>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <button 
+                                <div className="flex items-center gap-3 w-full sm:w-auto">
+                                    <button
                                         onClick={() => openLogModal(game, myReview)}
-                                        className={`px-6 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm ${myReview ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'}`}
+                                        className={`flex-1 sm:flex-none justify-center px-6 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm ${myReview ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'}`}
                                     >
                                         {myReview ? (
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
@@ -293,9 +358,9 @@ export default function GameDetailPage() {
                                         {myReview ? t('editLog') : t('logGame')}
                                     </button>
                                     {myReview && (
-                                        <button 
+                                        <button
                                             onClick={() => openLogModal(game, myReview, true)}
-                                            className="px-5 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm bg-purple-600 hover:bg-purple-500 shadow-purple-900/20"
+                                            className="flex-1 sm:flex-none justify-center px-5 py-2.5 rounded-xl font-bold text-white transition-all shadow-lg flex items-center gap-2 text-sm bg-purple-600 hover:bg-purple-500 shadow-purple-900/20"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                                             {t('logReplay')}
@@ -308,8 +373,21 @@ export default function GameDetailPage() {
                 </div>
 
                 {/* Description */}
-                <div className="mb-12 text-zinc-300 leading-relaxed text-lg font-medium px-4">
-                    {game.summary || game.description || "No description available for this game."}
+                <div className="mb-12 px-4">
+                    <div
+                        ref={descRef}
+                        className={`text-zinc-300 leading-relaxed text-lg font-medium ${isDescExpanded ? '' : 'line-clamp-5'} lg:line-clamp-none`}
+                    >
+                        {game.summary || game.description || "No description available for this game."}
+                    </div>
+                    {shouldShowDescShowMore && (
+                        <button
+                            onClick={() => setIsDescExpanded(v => !v)}
+                            className="lg:hidden mt-2 text-emerald-500 hover:text-emerald-400 hover:underline text-xs font-semibold block w-fit"
+                        >
+                            {isDescExpanded ? t('showLess') : `${t('showMore')}...`}
+                        </button>
+                    )}
                 </div>
 
                 {/* Screenshots Carousel */}
@@ -324,19 +402,21 @@ export default function GameDetailPage() {
                         
                         <div className="relative group">
                             {/* Left Arrow */}
-                            <button 
+                            <button
                                 onClick={() => scrollToScreenshot(activeIndex - 1)}
                                 disabled={activeIndex === 0}
-                                className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 p-3 bg-black/60 hover:bg-black/80 backdrop-blur text-white rounded-full transition-all shadow-xl border border-white/10 ${activeIndex === 0 ? 'opacity-0 cursor-default' : 'opacity-0 group-hover:opacity-100'}`}
+                                aria-label={t('previousScreenshot')}
+                                className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 inline-flex items-center justify-center p-3 bg-black/60 hover:bg-black/80 backdrop-blur text-white rounded-full transition-all shadow-xl border border-white/10 ${activeIndex === 0 ? 'opacity-0 cursor-default' : 'opacity-60 lg:opacity-0 lg:group-hover:opacity-100'}`}
                             >
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                             </button>
 
                             {/* Right Arrow */}
-                            <button 
+                            <button
                                 onClick={() => scrollToScreenshot(activeIndex + 1)}
                                 disabled={!game.screenshots || activeIndex === game.screenshots.length - 1}
-                                className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 p-3 bg-black/60 hover:bg-black/80 backdrop-blur text-white rounded-full transition-all shadow-xl border border-white/10 ${(!game.screenshots || activeIndex === game.screenshots.length - 1) ? 'opacity-0 cursor-default' : 'opacity-0 group-hover:opacity-100'}`}
+                                aria-label={t('nextScreenshot')}
+                                className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 inline-flex items-center justify-center p-3 bg-black/60 hover:bg-black/80 backdrop-blur text-white rounded-full transition-all shadow-xl border border-white/10 ${(!game.screenshots || activeIndex === game.screenshots.length - 1) ? 'opacity-0 cursor-default' : 'opacity-60 lg:opacity-0 lg:group-hover:opacity-100'}`}
                             >
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                             </button>
@@ -451,7 +531,7 @@ export default function GameDetailPage() {
                             {t('playerLogs')}
                         </h2>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-nowrap gap-2 overflow-x-auto no-scrollbar">
                             {[
                                 { id: '-likes_count', label: 'Popular' },
                                 { id: '-timestamp', label: 'Recent' },
@@ -461,7 +541,8 @@ export default function GameDetailPage() {
                                 <button
                                     key={filter.id}
                                     onClick={() => setOrder(filter.id)}
-                                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                                    aria-pressed={order === filter.id}
+                                    className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
                                         order === filter.id 
                                             ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)] scale-105' 
                                             : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700 hover:text-white'
@@ -478,7 +559,7 @@ export default function GameDetailPage() {
                             <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                         </div>
                     ) : reviews.length > 0 ? (
-                        <div className="grid gap-4">
+                        <div className="flex flex-col gap-4">
                             {reviews.map(review => (
                                 <ReviewCard key={review.id} review={review} />
                             ))}

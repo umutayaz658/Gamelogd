@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
 import { Review } from '@/types';
-import { getImageUrl, getRelativeTime, formatCount, formatHandle } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, formatCount, formatHandle, getRatingTextClass } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
@@ -346,7 +346,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
 
                                 {/* Rating Stars */}
                                 <div className="flex items-center gap-1 mb-2">
-                                    <div className={`flex gap-0.5 ${Number(review.rating) >= 8 ? 'text-emerald-500' : Number(review.rating) >= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                    <div className={`flex gap-0.5 ${getRatingTextClass(Number(review.rating))}`}>
                                         {[...Array(5)].map((_, i) => {
                                             const ratingVal = Number(review.rating) / 2;
                                             const fillPercentage = Math.max(0, Math.min(100, (ratingVal - i) * 100));
@@ -380,7 +380,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             );
                                         })}
                                     </div>
-                                    <span className={`text-sm font-bold ${Number(review.rating) >= 8 ? 'text-emerald-500' : Number(review.rating) >= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                    <span className={`text-sm font-bold ${getRatingTextClass(Number(review.rating))}`}>
                                         {Number(review.rating).toFixed(1)}
                                     </span>
                                 </div>
