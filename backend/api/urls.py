@@ -39,8 +39,9 @@ from .views import PlaytestFeedbackViewSet
 router.register(r'playtest-feedback', PlaytestFeedbackViewSet, basename='playtest-feedback')
 from .views import CommunityTranslationViewSet
 router.register(r'community-translations', CommunityTranslationViewSet, basename='community-translation')
-from .views import ExplorePostsViewSet
+from .views import ExplorePostsViewSet, TrendingHashtagsViewSet
 router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
+router.register(r'explore/trending-hashtags', TrendingHashtagsViewSet, basename='trending-hashtags')
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),

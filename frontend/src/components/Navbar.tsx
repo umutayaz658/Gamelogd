@@ -27,6 +27,7 @@ export default function Navbar() {
     const searchRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const mobileSearchRef = useRef<HTMLDivElement>(null);
+    const mobileSearchContainerRef = useRef<HTMLDivElement>(null);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
     const router = useRouter();
     const { user, logout, isLoading } = useAuth();
@@ -114,10 +115,12 @@ export default function Navbar() {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setIsMenuOpen(false);
             }
-            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+            const outsideDesktopSearch = searchRef.current && !searchRef.current.contains(event.target as Node);
+            const outsideMobileSearch = mobileSearchContainerRef.current && !mobileSearchContainerRef.current.contains(event.target as Node);
+            if (outsideDesktopSearch && outsideMobileSearch) {
                 setShowResults(false);
             }
-            if (mobileSearchRef.current && !mobileSearchRef.current.contains(event.target as Node)) {
+            if (outsideMobileSearch) {
                 setIsMobileSearchOpen(false);
             }
         };
@@ -404,44 +407,49 @@ export default function Navbar() {
                         <Search className="h-5 w-5" />
                     </button>
 
-                    {/* Expanding search overlay */}
-                    <div
-                        ref={mobileSearchRef}
-                        className={`absolute inset-y-0 right-0 flex items-center overflow-hidden transition-all duration-300 ease-out ${isMobileSearchOpen ? 'left-0 opacity-100' : 'left-[calc(100%-3.25rem)] opacity-0 pointer-events-none'}`}
-                    >
-                        <div className="flex items-center gap-2 w-full h-full px-4 bg-zinc-900">
-                            <div className="flex items-center flex-1 min-w-0 bg-zinc-800/70 border border-zinc-700/50 rounded-full px-3 py-1.5">
-                                <Search className="h-4 w-4 text-zinc-500 flex-shrink-0" />
-                                <input
-                                    type="text"
-                                    value={searchQuery}
-                                    onChange={handleSearchChange}
-                                    onFocus={() => setShowResults(true)}
-                                    autoFocus={isMobileSearchOpen}
-                                    placeholder="Search games and devs..."
-                                    className="bg-transparent text-sm text-white placeholder-zinc-500 outline-none border-none ml-2 w-full min-w-0"
-                                />
-                                {searchQuery && (
-                                    <button onClick={clearSearch} className="text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0">
-                                        <X className="h-4 w-4" />
-                                    </button>
-                                )}
+                    {/* Wraps both the expanding overlay and its results dropdown so outside-click
+                        detection treats a tap on a result as "inside" — the dropdown itself must
+                        live outside the overlay's overflow-hidden box below to avoid being clipped. */}
+                    <div ref={mobileSearchContainerRef} className="contents">
+                        {/* Expanding search overlay */}
+                        <div
+                            ref={mobileSearchRef}
+                            className={`absolute inset-y-0 right-0 flex items-center overflow-hidden transition-all duration-300 ease-out ${isMobileSearchOpen ? 'left-0 opacity-100' : 'left-[calc(100%-3.25rem)] opacity-0 pointer-events-none'}`}
+                        >
+                            <div className="flex items-center gap-2 w-full h-full px-4 bg-zinc-900">
+                                <div className="flex items-center flex-1 min-w-0 bg-zinc-800/70 border border-zinc-700/50 rounded-full px-3 py-1.5">
+                                    <Search className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={handleSearchChange}
+                                        onFocus={() => setShowResults(true)}
+                                        autoFocus={isMobileSearchOpen}
+                                        placeholder="Search games and devs..."
+                                        className="bg-transparent text-sm text-white placeholder-zinc-500 outline-none border-none ml-2 w-full min-w-0"
+                                    />
+                                    {searchQuery && (
+                                        <button onClick={clearSearch} className="text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0">
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => { setIsMobileSearchOpen(false); clearSearch(); }}
+                                    className="flex-shrink-0 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                                >
+                                    {t('cancel')}
+                                </button>
                             </div>
-                            <button
-                                onClick={() => { setIsMobileSearchOpen(false); clearSearch(); }}
-                                className="flex-shrink-0 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-                            >
-                                {t('cancel')}
-                            </button>
                         </div>
-                    </div>
 
-                    {/* Results render outside the overflow-hidden overlay so the dropdown isn't clipped */}
-                    {isMobileSearchOpen && showResults && (
-                        <div className="absolute top-full inset-x-4 z-10">
-                            {renderSearchResultsDropdown()}
-                        </div>
-                    )}
+                        {/* Results render outside the overflow-hidden overlay so the dropdown isn't clipped */}
+                        {isMobileSearchOpen && showResults && (
+                            <div className="absolute top-full inset-x-4 z-10">
+                                {renderSearchResultsDropdown()}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </nav>
 

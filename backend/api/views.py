@@ -5142,3 +5142,26 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             'has_next': has_next,
             'page': page,
         })
+
+
+class TrendingHashtagsViewSet(viewsets.ViewSet):
+    """Top-5 hashtags by distinct-post count over a rolling 7-day window, backed by the
+    PostHashtag table (kept in sync with Post.content by a post_save signal — see
+    api.models.sync_post_hashtags) rather than scanning Post.content live."""
+    permission_classes = [permissions.AllowAny]
+
+    def list(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.db.models import Count
+        from api.models import PostHashtag
+
+        # Same 7-day window as ExplorePostsViewSet's "popular" ordering, for consistency.
+        cutoff = timezone.now() - timedelta(days=7)
+        rows = (
+            PostHashtag.objects.filter(created_at__gte=cutoff)
+            .values('tag')
+            .annotate(count=Count('post_id', distinct=True))
+            .order_by('-count')[:5]
+        )
+        return Response({'results': [{'tag': r['tag'], 'count': r['count']} for r in rows]})

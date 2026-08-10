@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Search, Loader2, ChevronLeft, Calendar, Check, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getRatingColor, getRatingTextClass } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 
@@ -180,19 +180,6 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
         } finally {
             setIsSubmitting(false);
         }
-    };
-
-    // Helper for Rating Color
-    const getRatingColor = (value: number) => {
-        if (value < 5.0) return '#ef4444'; // red-500
-        if (value < 8.0) return '#eab308'; // yellow-500
-        return '#10b981'; // emerald-500
-    };
-
-    const getRatingTextClass = (value: number) => {
-        if (value < 5.0) return 'text-red-500';
-        if (value < 8.0) return 'text-yellow-500';
-        return 'text-emerald-500';
     };
 
     // CRITICAL FIX: Return null if not open to prevent invisible overlay blocking clicks

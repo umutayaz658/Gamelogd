@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import PostCard from "@/components/PostCard";
+import TrendingHashtags from "@/components/TrendingHashtags";
 import { useAuth } from "@/context/AuthContext";
 import { Post } from "@/types";
 import api from "@/lib/api";
@@ -178,6 +179,8 @@ function ExploreContent() {
                                         ))}
                                     </div>
                                 </div>
+
+                                <TrendingHashtags />
 
                                 {/* Posts Feed */}
                                 <div className="space-y-4">

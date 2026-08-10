@@ -199,3 +199,19 @@ export function formatHandle(username: string): string {
 export function wrapInParens(value: string | number): string {
     return `(${value})`;
 }
+
+/**
+ * Shared 0-10 rating → color scale used everywhere a numeric rating is shown
+ * (log/review creation, review cards, game average rating): <5 red, <8 yellow, >=8 emerald.
+ */
+export function getRatingTextClass(value: number): string {
+    if (value < 5.0) return 'text-red-500';
+    if (value < 8.0) return 'text-yellow-500';
+    return 'text-emerald-500';
+}
+
+export function getRatingColor(value: number): string {
+    if (value < 5.0) return '#ef4444'; // red-500
+    if (value < 8.0) return '#eab308'; // yellow-500
+    return '#10b981'; // emerald-500
+}
