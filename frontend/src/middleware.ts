@@ -10,13 +10,17 @@ export function middleware(request: NextRequest) {
         || request.cookies.get('auth_token')?.value;
     const { pathname } = request.nextUrl;
 
-    // List of public paths that don't require authentication
-    const publicPaths = ['/login', '/register', '/verify-email', '/favicon.ico'];
+    // Paths reachable with NO token. '/' renders the logged-out landing page (via
+    // page.tsx's own branching on session presence) instead of the feed, so it no
+    // longer needs to bounce anonymous visitors to /login.
+    const noAuthRequiredPaths = ['/login', '/register', '/verify-email', '/favicon.ico', '/'];
+    const isNoAuthRequiredPath = noAuthRequiredPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
 
-    // Exact match only — startsWith would also treat e.g. '/login-as-admin' or '/registered' as
-    // public, letting an unauthenticated request reach a route that was never meant to bypass
-    // the auth gate.
-    const isPublicPath = publicPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
+    // Paths a LOGGED-IN visitor gets bounced away from, back to '/'. Deliberately
+    // separate from noAuthRequiredPaths and does NOT include '/' — a logged-in user
+    // must keep landing on their normal feed at '/', never get redirected away from it.
+    const authRedirectPaths = ['/login', '/register', '/verify-email', '/favicon.ico'];
+    const isAuthRedirectPath = authRedirectPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
 
     // Also allow Next.js internal paths and API routes (handled by backend)
     if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.startsWith('/static')) {
@@ -24,7 +28,7 @@ export function middleware(request: NextRequest) {
     }
 
     // If no token and trying to access a protected route, redirect to login
-    if (!token && !isPublicPath) {
+    if (!token && !isNoAuthRequiredPath) {
         const loginUrl = new URL('/login', request.url);
         // Optional: Add redirect param to return after login
         // loginUrl.searchParams.set('from', pathname);
@@ -32,7 +36,7 @@ export function middleware(request: NextRequest) {
     }
 
     // If token exists and trying to access login/register, redirect to home
-    if (token && isPublicPath) {
+    if (token && isAuthRedirectPath) {
         return NextResponse.redirect(new URL('/', request.url));
     }
 
