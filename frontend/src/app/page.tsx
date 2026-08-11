@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import HomeClient from './HomeClient';
+import LandingPage from './LandingPage';
 import { FeedItem } from '@/types';
 
 // Server-side fetch of the initial for-you feed so the first paint has real content instead
@@ -39,6 +40,17 @@ async function fetchInitialFeed(): Promise<FeedItem[] | null> {
 }
 
 export default async function Home() {
+  const cookieStore = await cookies();
+  // Mirrors middleware's own session check (both cookie names) so this branch can
+  // never disagree with what the middleware already let through.
+  const hasSession = !!(
+    cookieStore.get('access_token')?.value || cookieStore.get('auth_token')?.value
+  );
+
+  if (!hasSession) {
+    return <LandingPage />;
+  }
+
   const initialFeed = await fetchInitialFeed();
   return <HomeClient initialFeed={initialFeed} />;
 }

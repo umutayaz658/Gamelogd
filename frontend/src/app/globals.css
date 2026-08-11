@@ -49,6 +49,66 @@
   }
 }
 
+/* Slow vertical loop for the landing page's decorative game-cover columns
+   (GameCoverWall). Each column's image list is rendered twice back-to-back, so
+   animating to -50% moves exactly one copy off-screen before snapping back to an
+   identical frame — a seamless infinite loop with no JS per frame. */
+@keyframes marquee-vertical {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover-wall-column {
+    animation: none !important;
+  }
+}
+
+/* Landing page layout: mobile needs [hero copy] -> [auth card] -> [gamer/dev pitch
+   cards], but desktop needs the hero copy and pitch cards stacked together as one
+   left column with the auth card as a separate right column. Flexbox `order` can't
+   express that regrouping (the desktop grouping isn't a reorder of the same flat
+   list), so this uses grid-template-areas, which can. */
+.landing-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "hero"
+    "auth"
+    "pitch";
+}
+
+@media (min-width: 1024px) {
+  .landing-grid {
+    grid-template-columns: 1fr 480px;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "hero auth"
+      "pitch auth";
+    /* align-content (not align-items): centers the hero+pitch row-track pair as a
+       group within the fixed-height container below, so any leftover vertical space
+       becomes even breathing room above the brand and below the last pitch card,
+       instead of being distributed per-row (which no-ops on auto-sized rows). */
+    align-content: center;
+  }
+}
+
+.landing-grid-hero {
+  grid-area: hero;
+}
+
+.landing-grid-auth {
+  grid-area: auth;
+}
+
+.landing-grid-pitch {
+  grid-area: pitch;
+}
+
 html, body {
   /* Stops vertical touch-drags from "overscrolling" past the document's real
      boundary. Mobile Safari/Chrome interpret that residual rubber-band motion as a
