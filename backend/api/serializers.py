@@ -659,10 +659,21 @@ class SimplePostSerializer(serializers.ModelSerializer):
     # a post actually has was silently dropped, showing just the first image.
     media = PostMediaSerializer(many=True, read_only=True)
     poll_results = serializers.SerializerMethodField()
+    # A direct repost's own PostCard renders its `repost_parent` (serialized through here)
+    # recursively as the fully interactive card — same for the "replying to" parent preview
+    # on the status page (get_parent_details). Without these, that card's like/bookmark/
+    # repost buttons always rendered as unliked/0, regardless of the real state, because the
+    # fields were simply missing from the response.
+    is_liked = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
+    bookmarks_count = serializers.SerializerMethodField()
+    is_reposted = serializers.SerializerMethodField()
+    reposts_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'poll_expires_at', 'poll_results', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score']
+        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'poll_expires_at', 'poll_results', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score', 'is_liked', 'likes_count', 'is_bookmarked', 'bookmarks_count', 'is_reposted', 'reposts_count']
 
     def get_poll_results(self, obj):
         return _compute_poll_results(obj, self.context)
@@ -685,10 +696,43 @@ class SimplePostSerializer(serializers.ModelSerializer):
             }
         return None
 
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['liked_post_ids']
+        return False
+
+    def get_likes_count(self, obj):
+        ann = getattr(obj, 'likes_count_ann', None)
+        return ann if ann is not None else obj.likes.count()
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get('request')
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['bookmarked_post_ids']
+        return False
+
+    def get_bookmarks_count(self, obj):
+        ann = getattr(obj, 'bookmarks_count_ann', None)
+        return ann if ann is not None else obj.bookmarks.count()
+
+    def get_is_reposted(self, obj):
+        request = self.context.get('request')
+        cache = get_request_cache(request)
+        if cache:
+            return obj.id in cache['reposted_post_ids']
+        return False
+
+    def get_reposts_count(self, obj):
+        ann = getattr(obj, 'reposts_count_ann', None)
+        return ann if ann is not None else obj.reposts.filter(DIRECT_REPOST_Q).count()
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         request = self.context.get('request')
-        
+
         # Check private profile access for the post's author
         is_private = instance.user.settings.get('privateProfile', False)
         is_owner = request and request.user.is_authenticated and request.user.id == instance.user.id
@@ -696,7 +740,7 @@ class SimplePostSerializer(serializers.ModelSerializer):
         cache = get_request_cache(request)
         if cache:
             is_following = instance.user.id in cache['following_ids']
-            
+
         if is_private and not is_owner and not is_following:
             representation['content'] = "This post is from a private account."
             representation['title'] = None
@@ -707,6 +751,13 @@ class SimplePostSerializer(serializers.ModelSerializer):
             representation['poll_options'] = []
             representation['poll_results'] = None
             representation['is_private_restricted'] = True
+            representation['replies_count'] = 0
+            representation['likes_count'] = 0
+            representation['is_liked'] = False
+            representation['is_bookmarked'] = False
+            representation['bookmarks_count'] = 0
+            representation['reposts_count'] = 0
+            representation['is_reposted'] = False
 
         return representation
 
