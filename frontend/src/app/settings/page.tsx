@@ -1741,7 +1741,7 @@ function SettingsContent() {
         { id: 'account', label: t('myAccount'), icon: User },
         { id: 'connected', label: t('connectedAccounts'), icon: Monitor },
         { id: 'privacy', label: t('privacySafety'), icon: Shield },
-        { id: 'blocked', label: 'Blocked Users', icon: UserX },
+        { id: 'blocked', label: t('blockedUsersTitle'), icon: UserX },
         { id: 'content', label: t('contentPreferences'), icon: EyeOff },
         { id: 'notifications', label: t('notifications'), icon: Bell },
         { id: 'display', label: t('displayLanguages'), icon: Globe },

@@ -82,9 +82,16 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
             isMounted = false;
             window.removeEventListener('post-created', handleCreated);
         };
-    // initialItems değişince (sekme değişimi gibi) feed'i yeniden yükle
+    // Re-sync whenever the parent hands us a new initialItems array — not just when its
+    // length changes. HomeClient passes SWR's `posts` straight through as initialItems;
+    // SWR revalidates in the background (e.g. after a like/bookmark toggle elsewhere) and
+    // produces a new array with the SAME length but updated per-item fields (is_liked,
+    // likes_count, ...). Depending on `.length` alone meant that revalidation was silently
+    // ignored — items[] stayed frozen at whatever the very first render passed in, so a
+    // like made just before a refresh could keep showing as unliked indefinitely even
+    // though the backend and every other data source already had the correct state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialItems.length]);
+    }, [initialItems]);
 
     const handlePostCreated = (newPost: Post) => {
         setItems([{ ...newPost, type: 'post' }, ...items]);
