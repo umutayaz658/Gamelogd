@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { getImageUrl, getRatingColor, getRatingTextClass } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 const RATING_SCALE_MIN = '0.0';
 const RATING_SCALE_MID = '5.0';
@@ -151,6 +152,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             } else {
                 await api.post('/reviews/', payload);
             }
+            trackEvent('log_game', { rating, is_replay: isReplay, is_edit: !!existingReview });
 
             if (onSuccess) onSuccess();
             onClose();

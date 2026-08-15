@@ -1,172 +1,53 @@
-'use client';
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { fetchForMetadata } from '@/lib/server-fetch';
+import StatusDetailClient from './StatusDetailClient';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Navbar from "@/components/Navbar";
-import LeftSidebar from "@/components/LeftSidebar";
-import RightSidebar from "@/components/RightSidebar";
-import PostCard from "@/components/PostCard";
-import PostComposer from "@/components/PostComposer";
-import api from '@/lib/api';
-import { Post, Review } from '@/types';
-import { ArrowLeft, Loader2 } from 'lucide-react';
-import { useFeed } from '@/context/FeedContext';
-import ReviewCard from '@/components/ReviewCard';
-import { useTranslation } from '@/lib/useTranslation';
+type Props = { params: Promise<{ username: string; id: string }> };
 
-export default function SinglePostPage() {
-    const { t } = useTranslation();
-    const params = useParams();
-    const router = useRouter();
-    const [post, setPost] = useState<Post | null>(null);
-    const [parentPost, setParentPost] = useState<Post | null>(null);
-    const [parentReview, setParentReview] = useState<Review | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [replies, setReplies] = useState<Post[]>([]);
+interface PostMeta {
+    id: number;
+    content?: string;
+    image?: string | null;
+    user?: { username: string; settings?: { privateProfile?: boolean } };
+}
 
-    useEffect(() => {
-        if (params?.id) {
-            const fetchData = async () => {
-                try {
-                    setLoading(true);
-                    setParentPost(null); // Reset parent on id change
+function getPost(id: string) {
+    return fetchForMetadata<PostMeta>(`/posts/${id}/`);
+}
 
-                    // 1. Fetch Focus Post & Replies
-                    const [postRes, repliesRes] = await Promise.all([
-                        api.get(`/posts/${params.id}/`),
-                        api.get(`/posts/`, { params: { parent: params.id } })
-                    ]);
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+    const { username, id } = await params;
+    const post = await getPost(id);
+    if (!post) {
+        return { title: 'Post not found' };
+    }
 
-                    const fetchedPost = postRes.data;
+    const isPrivate = !!post.user?.settings?.privateProfile;
+    if (isPrivate) {
+        return { title: 'Post', robots: { index: false, follow: false } };
+    }
 
-                    setPost(fetchedPost);
-                    setReplies(repliesRes.data.results || repliesRes.data);
+    const authorUsername = post.user?.username || username;
+    const title = `${authorUsername} on Gamelogd`;
+    const description = (post.content || '').slice(0, 160);
+    const images = post.image ? [{ url: post.image }] : undefined;
 
-                    // 2. Set Parent from embedded parent_details
-                    if (fetchedPost.parent_details) {
-                        const parent = fetchedPost.parent_details;
-                        // Use explicit type check from backend
-                        if (parent.type === 'review') {
-                            setParentReview(parent as Review);
-                        } else {
-                            setParentPost(parent as Post);
-                        }
-                    }
-                } catch (err) {
-                    console.error('Failed to fetch data:', err);
-                    setError('Failed to load post.');
-                } finally {
-                    setLoading(false);
-                }
-            };
-            fetchData();
-        }
-    }, [params?.id]);
-
-    const { addFeedItem } = useFeed();
-
-    const handleReply = (newReply: Post) => {
-        addFeedItem(newReply);
+    return {
+        title,
+        description,
+        alternates: { canonical: `/${username}/status/${id}` },
+        openGraph: { title, description, images },
+        twitter: { card: 'summary_large_image', title, description, images: images?.map(i => i.url) },
     };
+}
 
-    return (
-        <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
-            <Navbar />
+export default async function StatusDetailPage({ params }: Props) {
+    const { id } = await params;
+    const post = await getPost(id);
+    if (!post) {
+        notFound();
+    }
 
-            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6">
-                <div className="grid grid-cols-12 gap-6">
-                    {/* Left Sidebar */}
-                    <div className="hidden lg:block col-span-3">
-                        <LeftSidebar />
-                    </div>
-
-                    {/* Main Content */}
-                    <div className={`col-span-12 ${post?.project_parent ? 'lg:col-span-9' : 'lg:col-span-6'}`}>
-                        <div className="flex items-center gap-4 mb-6">
-                            <button
-                                onClick={() => router.back()}
-                                className="p-2 hover:bg-zinc-900 rounded-full transition-colors"
-                            >
-                                <ArrowLeft className="h-5 w-5 text-zinc-400" />
-                            </button>
-                            <h1 className="text-xl font-bold">{t('post')}</h1>
-                        </div>
-
-                        {loading ? (
-                            <div className="flex justify-center items-center h-64">
-                                <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-                            </div>
-                        ) : error ? (
-                            <div className="text-center py-10 text-red-400 bg-red-500/10 rounded-xl border border-red-500/20">
-                                {error}
-                            </div>
-                        ) : post ? (
-                            <div className="flex flex-col gap-4">
-                                {/* Parent Context */}
-                                {parentReview && (
-                                    <div className="relative">
-                                        <ReviewCard review={parentReview} isDetailView={true} />
-                                        {/* Visual Connector Line */}
-                                        <div className="absolute left-8 top-full h-4 w-0.5 bg-zinc-800 -z-10" />
-                                    </div>
-                                )}
-                                {parentPost && (
-                                    <div className="relative">
-                                        <PostCard post={parentPost} isDetailView={true} />
-                                        {/* Visual Connector Line */}
-                                        <div className="absolute left-8 top-full h-4 w-0.5 bg-zinc-800 -z-10" />
-                                    </div>
-                                )}
-
-                                {/* Focused Post */}
-                                <div className="z-10 bg-zinc-950">
-                                    <PostCard post={post} isDetailView={true} />
-                                </div>
-
-                                {/* Reply Composer */}
-                                <div className="border-t border-zinc-800 pt-6">
-                                    <PostComposer
-                                        onPostCreated={(newReply) => {
-                                            handleReply(newReply);
-                                            // IMMEDIATE STATE UPDATE: Append new reply to the TOP of the list
-                                            setReplies(prev => [newReply, ...prev]);
-                                        }}
-                                        replyingTo={post.user}
-                                        parentId={post.id}
-                                        parentType="post"
-                                    />
-
-                                    <div className="py-4">
-                                        {replies.length > 0 ? (
-                                            replies.map((reply) => (
-                                                <div key={reply.id} className="mb-4">
-                                                    <PostCard post={reply} />
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="py-8 text-center text-zinc-500">
-                                                {t('noRepliesYet')}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-center py-10 text-zinc-500">
-                                {t('postNotFound')}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Right Sidebar */}
-                    {!post?.project_parent && (
-                        <div className="hidden lg:block col-span-3">
-                            <RightSidebar />
-                        </div>
-                    )}
-                </div>
-            </main>
-        </div>
-    );
+    return <StatusDetailClient />;
 }

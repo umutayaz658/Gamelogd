@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { User as UserIcon, Loader2 } from 'lucide-react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 const GOOGLE_CLIENT_ID = "47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com";
 const BRAND_NAME = 'Gamelogd';
@@ -42,6 +43,7 @@ export default function LoginPage() {
 
             // 2. Use AuthContext to login
             await login(token);
+            trackEvent('login', { method: 'password' });
 
         } catch (err: any) {
             console.error('Login failed:', err);
@@ -163,6 +165,7 @@ export default function LoginPage() {
                                             router.push('/register');
                                         } else {
                                             await login(res.data.token);
+                                            trackEvent('login', { method: 'google' });
                                         }
                                     } catch (err: any) {
                                         console.error('Google Login failed:', err);

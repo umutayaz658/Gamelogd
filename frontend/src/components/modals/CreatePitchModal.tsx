@@ -3,6 +3,7 @@ import { X, Upload, Check, Image as ImageIcon } from 'lucide-react';
 import api from '@/lib/api';
 import { Pitch } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface CreatePitchModalProps {
     isOpen: boolean;
@@ -53,6 +54,7 @@ export default function CreatePitchModal({ isOpen, onClose, onSuccess }: CreateP
             const res = await api.post('/pitches/', data, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            trackEvent('pitch_create');
 
             onSuccess(res.data);
             onClose();

@@ -1,7 +1,12 @@
+import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import HomeClient from './HomeClient';
 import LandingPage from './LandingPage';
 import { FeedItem } from '@/types';
+
+export const metadata: Metadata = {
+    alternates: { canonical: '/' },
+};
 
 // Server-side fetch of the initial for-you feed so the first paint has real content instead
 // of a blank page → hydrate → spinner sequence. Fails soft: on any error (backend down, no

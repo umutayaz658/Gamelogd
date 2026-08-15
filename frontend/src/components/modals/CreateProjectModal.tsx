@@ -3,6 +3,7 @@ import { X, Upload, Check, Image as ImageIcon } from 'lucide-react';
 import api from '@/lib/api';
 import { Project, Organisation } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface CreateProjectModalProps {
     isOpen: boolean;
@@ -81,6 +82,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             const res = await api.post('/projects/', data, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            trackEvent('project_create');
 
             onSuccess(res.data);
             onClose();

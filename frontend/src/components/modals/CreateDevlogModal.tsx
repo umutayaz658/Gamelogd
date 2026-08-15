@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { Project, Post } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface CreateDevlogModalProps {
     isOpen: boolean;
@@ -112,6 +113,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
             const res = await api.post('/posts/', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            trackEvent('devlog_create');
 
             onSuccess(res.data);
             onClose();

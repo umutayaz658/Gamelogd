@@ -1,0 +1,314 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Navbar from "@/components/Navbar";
+import LeftSidebar from "@/components/LeftSidebar";
+import api from '@/lib/api';
+import { getImageUrl } from '@/lib/utils';
+import { ArrowLeft, ExternalLink, Calendar, MessageCircle, Heart, Share2, Send, Link as LinkIcon } from 'lucide-react';
+import PostComposer from '@/components/PostComposer';
+import PostCard from '@/components/PostCard';
+
+import { Post } from '@/types';
+import ShareModal from '@/components/ShareModal';
+import { useTranslation } from '@/lib/useTranslation';
+import { useToast } from '@/context/ToastContext';
+import DOMPurify from 'isomorphic-dompurify';
+
+interface NewsDetail {
+    id: number;
+    title: string;
+    link: string;
+    image_url: string | null;
+    description: string;
+    pub_date: string;
+    category: string;
+    source_name: string;
+    source_icon: string | null;
+    is_liked: boolean;
+    like_count: number;
+    comment_count: number;
+}
+
+export default function NewsDetailClient() {
+    const params = useParams();
+    const router = useRouter();
+    const id = params.id;
+    const { t } = useTranslation();
+    const toast = useToast();
+
+    const getTranslatedCategory = (cat: string) => {
+        const lower = cat.toLowerCase();
+        if (lower === 'invest') return t('catIndustryInvest');
+        if (lower === 'devs') return t('catDevelopment');
+        if (lower === 'hardware') return t('catHardware');
+        if (lower === 'general') return t('catGeneral');
+        return cat;
+    };
+
+    const [news, setNews] = useState<NewsDetail | null>(null);
+    const [comments, setComments] = useState<Post[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isLiked, setIsLiked] = useState(false);
+    const [likeCount, setLikeCount] = useState(0);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [showShareMenu, setShowShareMenu] = useState(false);
+    const shareMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+                setShowShareMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            if (!id) return;
+            try {
+                // Fetch News Detail
+                const newsRes = await api.get(`/news/${id}/`);
+                setNews(newsRes.data);
+                setIsLiked(newsRes.data.is_liked);
+                setLikeCount(newsRes.data.like_count);
+
+                // Fetch Comments (Posts with news_parent=id)
+                const commentsRes = await api.get(`/posts/?news_parent=${id}`);
+                setComments(commentsRes.data.results || commentsRes.data);
+            } catch (err) {
+                console.error("Failed to fetch news detail:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [id]);
+
+    const handleLike = async () => {
+        if (!news) return;
+        // Optimistic update
+        setIsLiked(!isLiked);
+        setLikeCount(prev => Math.max(0, isLiked ? prev - 1 : prev + 1));
+
+        try {
+            await api.post('/likes/', { news: news.id });
+        } catch (err) {
+            console.error("Like failed", err);
+            // Revert on failure
+            setIsLiked(!isLiked);
+            setLikeCount(prev => Math.max(0, isLiked ? prev + 1 : prev - 1));
+        }
+    };
+
+    const handleShare = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: news?.title || 'Shared news',
+                    url: window.location.href,
+                });
+            } catch (error) {
+                console.error('Error sharing:', error);
+            }
+        } else {
+            navigator.clipboard.writeText(window.location.href);
+            toast.success('Link copied to clipboard!');
+        }
+    };
+
+
+    if (loading) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">{t('loading')}</div>;
+    if (!news) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">{t('newsNotFound')}</div>;
+
+    return (
+        <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
+            <Navbar />
+
+            <main className="w-full mx-auto lg:max-w-[64rem] xl:max-w-[80rem] 2xl:max-w-[96rem] px-4 pt-6 pb-20">
+                <div className="grid grid-cols-12 gap-6">
+                    {/* Left Sidebar */}
+                    <div className="hidden lg:block col-span-3">
+                        <LeftSidebar />
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="col-span-12 lg:col-span-9 max-w-3xl mx-auto w-full space-y-6">
+
+                        {/* Back Button */}
+                        <button
+                            onClick={() => router.back()}
+                            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors -mt-2"
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                            <span className="text-sm font-medium">{t('back')}</span>
+                        </button>
+
+                        {/* Hero Image */}
+                        <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl border border-zinc-800">
+                            <img
+                                src={news.image_url || "/placeholder-news.jpg"}
+                                alt={news.title}
+                                className="w-full h-full object-cover"
+                            />
+                            <div className="absolute top-4 left-4">
+                                <span className="bg-emerald-600/90 backdrop-blur-md text-white text-xs px-3 py-1.5 rounded-full font-bold uppercase tracking-wide border border-white/10">
+                                    {getTranslatedCategory(news.category)}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Header Info */}
+                        <div className="space-y-4">
+                            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight">{news.title}</h1>
+
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-800 pb-6">
+                                <div className="flex items-center gap-3">
+                                    {news.source_icon && (
+                                        <img src={news.source_icon} alt={news.source_name} className="w-10 h-10 rounded-full border border-zinc-700 bg-zinc-800 p-1" />
+                                    )}
+                                    <div>
+                                        <p className="font-bold text-zinc-200">{news.source_name}</p>
+                                        <div className="flex items-center gap-2 text-xs text-zinc-500">
+                                            <Calendar className="h-3 w-3" />
+                                            {new Date(news.pub_date).toLocaleDateString(undefined, {
+                                                year: 'numeric', month: 'long', day: 'numeric'
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <a
+                                        href={news.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full sm:w-auto bg-zinc-100 text-zinc-900 hover:bg-white px-4 py-2 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        {t('readFullArticle')} <ExternalLink className="h-4 w-4" />
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="prose prose-invert prose-base md:prose-lg max-w-none text-zinc-300 leading-relaxed">
+                            {/* News comes from external RSS feeds — sanitize before rendering
+                                so a crafted item can't run script / steal the session. */}
+                            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(news.description || '') }} />
+                        </div>
+
+                        {/* Social Actions Bar */}
+                        <div className="flex items-center justify-between flex-wrap gap-y-2 py-4 border-y border-zinc-800">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleLike}
+                                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full transition-colors ${isLiked ? 'text-pink-500 bg-pink-500/10' : 'text-zinc-400 hover:bg-zinc-800 hover:text-pink-500'
+                                        }`}
+                                >
+                                    <Heart className={`h-5 w-5 ${isLiked ? 'fill-current' : ''}`} />
+                                    <span className="font-medium">{likeCount}</span>
+                                </button>
+                                <button className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-blue-400 transition-colors">
+                                    <MessageCircle className="h-5 w-5" />
+                                    <span className="font-medium">{comments.length}</span>
+                                </button>
+                            </div>
+                            <div className="relative" ref={shareMenuRef}>
+                                <button
+                                    onClick={() => setShowShareMenu(!showShareMenu)}
+                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                                >
+                                    <Share2 className="h-5 w-5" />
+                                    <span className="font-medium">{t('share')}</span>
+                                </button>
+                                {showShareMenu && (
+                                    <div className="absolute right-0 mt-1 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                setIsShareModalOpen(true);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                        >
+                                            <Send className="h-3.5 w-3.5 text-emerald-500" />
+                                            {t('sendViaDm')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                navigator.clipboard.writeText(window.location.href);
+                                                toast.success('Link copied to clipboard!');
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
+                                            {t('copyLink')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                handleShare(e);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                            {t('shareVia')}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Comments Section */}
+                        <div className="pt-4">
+                            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                                <MessageCircle className="h-5 w-5 text-emerald-500" />
+                                {t('discussion')}
+                            </h3>
+
+                            {/* Input */}
+                            <div className="mb-8">
+                                <PostComposer
+                                    onPostCreated={(newPost) => setComments([newPost, ...comments])}
+                                    parentId={news.id}
+                                    parentType="news"
+                                />
+                            </div>
+
+                            {/* List */}
+                            <div className="space-y-6">
+                                {comments.map((comment) => (
+                                    <div key={comment.id}>
+                                        <PostCard post={comment} hideNewsQuote={true} />
+                                    </div>
+                                ))}
+                                {comments.length === 0 && (
+                                    <div className="text-center py-10 text-zinc-600">
+                                        {t('noCommentsYet')}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </main>
+            {news && (
+                <ShareModal
+                    isOpen={isShareModalOpen}
+                    onClose={() => setIsShareModalOpen(false)}
+                    itemType="news"
+                    itemId={news.id}
+                    title={news.title}
+                />
+            )}
+        </div>
+    );
+}

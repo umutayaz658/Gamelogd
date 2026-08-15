@@ -42,6 +42,7 @@ router.register(r'community-translations', CommunityTranslationViewSet, basename
 from .views import ExplorePostsViewSet, TrendingHashtagsViewSet
 router.register(r'explore/posts', ExplorePostsViewSet, basename='explore-posts')
 router.register(r'explore/trending-hashtags', TrendingHashtagsViewSet, basename='trending-hashtags')
+from .views import sitemap_data_view
 
 urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current-user'),
@@ -56,4 +57,5 @@ urlpatterns = [
     path('my-permissions/', my_permissions_view, name='my-permissions'),
     path('localisation/locales/', localisation_locales_view, name='localisation-locales'),
     path('localisation/formats/', localisation_formats_view, name='localisation-formats'),
+    path('sitemap-data/', sitemap_data_view, name='sitemap-data'),
 ]

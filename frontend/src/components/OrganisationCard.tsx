@@ -9,6 +9,7 @@ import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import api from '@/lib/api';
 import { Check, Users, ShieldAlert, Globe, Twitter, Youtube, Plus, CheckSquare } from 'lucide-react';
+import { trackEvent } from '@/lib/analytics';
 
 const ORG_PATH_PREFIX = '/organisations/';
 
@@ -46,6 +47,7 @@ export default function OrganisationCard({ organisation, onFollowToggle }: Organ
                 if (onFollowToggle) onFollowToggle(organisation.slug, false);
             } else {
                 await api.post(`/organisations/${organisation.slug}/follow/`);
+                trackEvent('follow', { target_type: 'organisation' });
                 setIsFollowing(true);
                 setFollowersCount(prev => prev + 1);
                 if (onFollowToggle) onFollowToggle(organisation.slug, true);

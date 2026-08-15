@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import CustomCountrySelect from '@/components/CustomCountrySelect';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 const BRAND_NAME = 'Gamelogd';
 
@@ -253,6 +254,7 @@ export default function RegisterPage() {
         try {
             // 2. API Call
             await api.post('/register/', payload);
+            trackEvent('sign_up');
 
             // 3. Redirect to Email Verification page
             const emailEncoded = encodeURIComponent(formData.email);

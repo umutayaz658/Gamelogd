@@ -3,6 +3,7 @@ import { X, Upload, Check, Image as ImageIcon, Globe, Twitter, Youtube } from 'l
 import api from '@/lib/api';
 import { Organisation } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface CreateOrganisationModalProps {
     isOpen: boolean;
@@ -87,6 +88,7 @@ export default function CreateOrganisationModal({ isOpen, onClose, onSuccess }: 
             const res = await api.post('/organisations/', data, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            trackEvent('organisation_create');
 
             onSuccess(res.data);
             onClose();

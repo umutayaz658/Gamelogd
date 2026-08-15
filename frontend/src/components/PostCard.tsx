@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check, ImageIcon } from 'lucide-react';
 import { Post } from '@/types';
 import { getImageUrl, getRelativeTime, getTimeRemaining, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -9,6 +9,7 @@ import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
+import ShareCardModal from '@/components/ShareCardModal';
 import ImageModal from '@/components/modals/ImageModal';
 import ReportModal from '@/components/modals/ReportModal';
 import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
@@ -16,6 +17,7 @@ import ReviewCard from '@/components/ReviewCard';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { trackEvent } from '@/lib/analytics';
 
 const DOT_SEPARATOR = '•';
 const PERCENT_SIGN = '%';
@@ -168,6 +170,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const [showShareMenu, setShowShareMenu] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [isShareCardModalOpen, setIsShareCardModalOpen] = useState(false);
     const shareMenuRef = useRef<HTMLDivElement>(null);
 
     const [showMenu, setShowMenu] = useState(false);
@@ -247,6 +250,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             setIsLiked(!wasLiked);
             setLikesCount(prev => Math.max(0, wasLiked ? prev - 1 : prev + 1));
             await api.post('/likes/', { post: post.id });
+            if (!wasLiked) trackEvent('like', { target_type: 'post' });
         } catch (error) {
             console.error('Failed to toggle like', error);
             setIsLiked(wasLiked);
@@ -257,11 +261,13 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const handleBookmark = async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!user) return router.push('/login');
-        
+
         try {
+            const wasBookmarked = isBookmarked;
             setIsBookmarked(!isBookmarked);
             setBookmarksCount(prev => isBookmarked ? prev - 1 : prev + 1);
             await api.post('/bookmarks/', { post: post.id });
+            if (!wasBookmarked) trackEvent('bookmark', { target_type: 'post' });
         } catch (error) {
             console.error('Failed to toggle bookmark', error);
             setIsBookmarked(isBookmarked);
@@ -337,6 +343,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             const res = await api.post(`/posts/${post.id}/repost/`);
             if (res.data.status === 'reposted') {
                 setIsReposted(true);
+                trackEvent('repost');
             } else {
                 setIsReposted(false);
             }
@@ -363,6 +370,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         setPollCounts(prev => prev.map((c, i) => i === optionIndex ? c + 1 : c));
         try {
             const res = await api.post(`/posts/${post.id}/vote/`, { option_index: optionIndex });
+            trackEvent('poll_vote');
             setPollCounts(res.data.counts);
             setPollUserChoice(res.data.user_choice);
         } catch (error) {
@@ -942,6 +950,19 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             <Share2 className="h-3.5 w-3.5 text-zinc-550" />
                                             {t('shareVia')}
                                         </button>
+                                        {post.project_parent && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowShareMenu(false);
+                                                    setIsShareCardModalOpen(true);
+                                                }}
+                                                className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                            >
+                                                <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
+                                                {t('shareAsImage')}
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -978,6 +999,16 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                 targetType="post"
                 targetId={post.id}
             />
+            {post.project_parent && (
+                <ShareCardModal
+                    isOpen={isShareCardModalOpen}
+                    onClose={() => setIsShareCardModalOpen(false)}
+                    cardType="devlog"
+                    entityId={post.id}
+                    shareTitle={post.title || 'Devlog update'}
+                    shareText={post.content?.slice(0, 100)}
+                />
+            )}
         </div>
     );
 }

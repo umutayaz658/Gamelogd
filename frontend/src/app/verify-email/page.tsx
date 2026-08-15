@@ -7,6 +7,7 @@ import { Mail, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 function VerifyEmailForm() {
     const searchParams = useSearchParams();
@@ -130,6 +131,7 @@ function VerifyEmailForm() {
                 email,
                 code: verificationCode
             });
+            trackEvent('verify_email');
 
             setSuccessMsg('Verification successful! Logging in...');
 

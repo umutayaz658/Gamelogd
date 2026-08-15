@@ -17,6 +17,7 @@ import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import PostMediaGrid from '@/components/PostMediaGrid';
 import MentionAutocomplete from '@/components/MentionAutocomplete';
+import { trackEvent } from '@/lib/analytics';
 
 // Grid display still caps at 4 visible cells (Twitter standard, with a "+N" overlay
 // past that) — this only bounds how many files a single post can attach.
@@ -218,6 +219,7 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                     'Content-Type': 'multipart/form-data',
                 },
             });
+            trackEvent(parentId ? 'reply_create' : 'post_create');
 
             onPostCreated({ ...response.data, type: 'reply' });
 

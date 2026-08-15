@@ -14,6 +14,7 @@ import PostMediaGrid, { GridMediaItem } from '@/components/PostMediaGrid';
 import GifPicker from '@/components/GifPicker';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import api from '@/lib/api';
+import { trackEvent } from '@/lib/analytics';
 
 import MentionAutocomplete from '@/components/MentionAutocomplete';
 
@@ -218,6 +219,7 @@ export default function ReplyModal() {
             const res = await api.post('/posts/', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            trackEvent(mode === 'quote' ? 'quote_create' : 'reply_create');
 
             // Add to Global Feed dynamically
             if (mode === 'quote') {

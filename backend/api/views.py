@@ -5165,3 +5165,64 @@ class TrendingHashtagsViewSet(viewsets.ViewSet):
             .order_by('-count')[:5]
         )
         return Response({'results': [{'tag': r['tag'], 'count': r['count']} for r in rows]})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def sitemap_data_view(request):
+    """Flat, minimal-field listings of public entities for frontend/src/app/sitemap.ts to
+    consume. Deliberately bypasses the full ModelViewSet serializers/pagination used by the
+    regular list endpoints — those are heavy (nested genres/platforms/screenshots, related
+    counts, etc.) and paginated, which would take hundreds of round-trips to fully enumerate
+    for a sitemap. Private content is filtered out here so the sitemap never lists it.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.db.models import F
+
+    games = list(Game.objects.order_by('id').values('id'))
+
+    users = list(
+        User.objects.exclude(settings__privateProfile=True)
+        .order_by('id')
+        .values('username')
+    )
+
+    # Only root-level reviews/posts (no reply/repost/devlog parent) have their own canonical
+    # detail URL worth listing; capped defensively since these tables have no natural bound.
+    reviews = list(
+        Review.objects.exclude(user__settings__privateProfile=True)
+        .order_by('-timestamp')
+        .values('id', username=F('user__username'))[:5000]
+    )
+    posts = list(
+        Post.objects.filter(
+            parent__isnull=True, review_parent__isnull=True, news_parent__isnull=True,
+            project_parent__isnull=True, repost_parent__isnull=True, repost_parent_review__isnull=True,
+        )
+        .exclude(user__settings__privateProfile=True)
+        .order_by('-timestamp')
+        .values('id', username=F('user__username'))[:5000]
+    )
+
+    projects = list(Project.objects.order_by('id').values('id', 'updated_at'))
+    organisations = list(Organisation.objects.order_by('id').values('slug', 'updated_at'))
+
+    # News has no long-term SEO value once stale (RSS-sourced, superseded by newer coverage) —
+    # cap to a recent window instead of listing the entire ever-growing archive.
+    news_cutoff = timezone.now() - timedelta(days=90)
+    news = list(
+        News.objects.filter(pub_date__gte=news_cutoff)
+        .order_by('-pub_date')
+        .values('id', 'pub_date')[:2000]
+    )
+
+    return Response({
+        'games': games,
+        'users': users,
+        'reviews': reviews,
+        'posts': posts,
+        'projects': projects,
+        'organisations': organisations,
+        'news': news,
+    })
