@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import ConfirmModal from './ui/ConfirmModal';
 import { useToast } from '@/context/ToastContext';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface User {
     id: number;
@@ -116,6 +117,7 @@ export default function FollowersFollowingModal({
                 await api.post(`/users/${targetUser.username}/unfollow/`);
             } else {
                 await api.post(`/users/${targetUser.username}/follow/`);
+                trackEvent('follow', { target_type: 'user' });
             }
             if (onCountChange) {
                 onCountChange();

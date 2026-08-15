@@ -30,6 +30,9 @@ const CONNECT_SRC = [
   'http://127.0.0.1:8000',
   'https://accounts.google.com',
   'https://api.giphy.com',
+  'https://www.google-analytics.com',
+  'https://analytics.google.com',
+  'https://www.googletagmanager.com',
 ]
   .filter((v, i, arr) => v && arr.indexOf(v) === i)
   .join(' ');
@@ -131,7 +134,7 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value:
               "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://gsi.gstatic.com; " +
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://gsi.gstatic.com https://www.googletagmanager.com; " +
               "style-src 'self' 'unsafe-inline' https://accounts.google.com https://gsi.gstatic.com https://fonts.googleapis.com; " +
               "img-src * data: blob:; " +
               `connect-src ${CONNECT_SRC}; ` +

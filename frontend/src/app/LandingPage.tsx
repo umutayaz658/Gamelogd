@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import GameCoverWall from '@/components/GameCoverWall';
+import { trackEvent } from '@/lib/analytics';
 
 const GOOGLE_CLIENT_ID = "47915710744-n0ou1hdfknaur2ijac5gntqopbruoar1.apps.googleusercontent.com";
 const BRAND_NAME = 'Gamelogd';
@@ -54,6 +55,7 @@ export default function LandingPage() {
                 router.push('/register');
             } else {
                 await login(res.data.token);
+                trackEvent('login', { method: 'google' });
             }
         } catch (err: any) {
             console.error('Google Login failed:', err);

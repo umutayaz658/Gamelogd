@@ -1,6 +1,8 @@
-import { Dna, ArrowRight, Clock, Gamepad2 } from 'lucide-react';
+import { useState } from 'react';
+import { Dna, ArrowRight, Clock, Gamepad2, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslation } from '@/lib/useTranslation';
+import ShareCardModal from '@/components/ShareCardModal';
 
 interface Stat {
     name: string;
@@ -47,6 +49,7 @@ const formatHoursWithUnit = (hours: number): string => `${formatHours(hours)}h`;
 
 export default function GameDNA({ stats, username, showHeader = true }: GameDNAProps) {
     const { t } = useTranslation();
+    const [isShareCardModalOpen, setIsShareCardModalOpen] = useState(false);
 
     const isOldFormat = Array.isArray(stats);
 
@@ -112,6 +115,15 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
                         </div>
                     )}
                     {username && (
+                        <button
+                            onClick={() => setIsShareCardModalOpen(true)}
+                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                            title={t('shareAsImage')}
+                        >
+                            <Share2 className="h-4 w-4" />
+                        </button>
+                    )}
+                    {username && (
                         <Link
                             href={`/${username}/games`}
                             className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors group"
@@ -124,6 +136,16 @@ export default function GameDNA({ stats, username, showHeader = true }: GameDNAP
             </div>
 
             {content}
+
+            {username && (
+                <ShareCardModal
+                    isOpen={isShareCardModalOpen}
+                    onClose={() => setIsShareCardModalOpen(false)}
+                    cardType="game-dna"
+                    entityId={username}
+                    shareTitle={`${username}'s Game DNA`}
+                />
+            )}
         </div>
     );
 }

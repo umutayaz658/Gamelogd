@@ -3,6 +3,7 @@ import { X, Check } from 'lucide-react';
 import api from '@/lib/api';
 import { InvestorCall } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface CreateInvestorCallModalProps {
     isOpen: boolean;
@@ -29,6 +30,7 @@ export default function CreateInvestorCallModal({ isOpen, onClose, onSuccess }: 
 
         try {
             const res = await api.post('/investor-calls/', formData);
+            trackEvent('investor_call_create');
             onSuccess(res.data);
             onClose();
             setFormData({

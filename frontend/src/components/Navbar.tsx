@@ -9,6 +9,7 @@ import { useLogModal } from '@/context/LogModalContext';
 import { getImageUrl, getMediaUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 import MobileSidebarDrawer from './MobileSidebarDrawer';
 import { formatHandle } from '@/lib/utils';
 
@@ -71,6 +72,7 @@ export default function Navbar() {
             const res = await api.get(`/games/global-search/?q=${encodeURIComponent(query.trim())}`);
             const results = res.data.results || res.data;
             setSearchResults(results.slice(0, 6));
+            trackEvent('search', { search_term: query.trim() });
         } catch (err) {
             console.error('Search failed', err);
             setSearchResults([]);

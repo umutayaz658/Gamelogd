@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban, ImageIcon } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl, getRelativeTime, formatCount, formatHandle, getRatingTextClass } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -10,10 +10,12 @@ import { useState, useId, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
+import ShareCardModal from '@/components/ShareCardModal';
 import ReportModal from '@/components/modals/ReportModal';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { trackEvent } from '@/lib/analytics';
 
 const DOT_SEPARATOR = '•';
 
@@ -47,6 +49,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
 
     const [showShareMenu, setShowShareMenu] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [isShareCardModalOpen, setIsShareCardModalOpen] = useState(false);
     const shareMenuRef = useRef<HTMLDivElement>(null);
     const [showReportModal, setShowReportModal] = useState(false);
 
@@ -105,9 +108,11 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         e.stopPropagation();
         if (!user) return router.push('/login');
         try {
+            const wasLiked = isLiked;
             setIsLiked(!isLiked);
             setLikesCount(prev => Math.max(0, isLiked ? prev - 1 : prev + 1));
             await api.post('/likes/', { review: review.id });
+            if (!wasLiked) trackEvent('like', { target_type: 'review' });
         } catch (error) {
             setIsLiked(isLiked);
             setLikesCount(prev => Math.max(0, isLiked ? prev + 1 : prev - 1));
@@ -118,9 +123,11 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         e.stopPropagation();
         if (!user) return router.push('/login');
         try {
+            const wasBookmarked = isBookmarked;
             setIsBookmarked(!isBookmarked);
             setBookmarksCount(prev => isBookmarked ? prev - 1 : prev + 1);
             await api.post('/bookmarks/', { review: review.id });
+            if (!wasBookmarked) trackEvent('bookmark', { target_type: 'review' });
         } catch (error) {
             setIsBookmarked(isBookmarked);
             setBookmarksCount(prev => isBookmarked ? prev + 1 : prev - 1);
@@ -524,6 +531,17 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             <Share2 className="h-3.5 w-3.5 text-zinc-550" />
                                             {t('shareVia')}
                                         </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
+                                                setIsShareCardModalOpen(true);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
+                                            {t('shareAsImage')}
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -552,6 +570,14 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                 onClose={() => setShowReportModal(false)}
                 targetType="review"
                 targetId={review.id}
+            />
+            <ShareCardModal
+                isOpen={isShareCardModalOpen}
+                onClose={() => setIsShareCardModalOpen(false)}
+                cardType="review"
+                entityId={review.id}
+                shareTitle={`${review.user.username}'s review of ${review.game.title}`}
+                shareText={review.content?.slice(0, 100)}
             />
         </div>
     );

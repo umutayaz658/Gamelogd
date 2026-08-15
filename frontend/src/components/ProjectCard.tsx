@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { UserPlus, UserCheck, Code2, Calendar } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/lib/useTranslation';
+import { trackEvent } from '@/lib/analytics';
 
 interface ProjectCardProps {
     project: Project;
@@ -30,6 +31,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                 setFollowersCount(prev => Math.max(0, prev - 1));
             } else {
                 await api.post(`/projects/${project.id}/follow/`);
+                trackEvent('follow', { target_type: 'project' });
                 setIsFollowing(true);
                 setFollowersCount(prev => prev + 1);
             }
