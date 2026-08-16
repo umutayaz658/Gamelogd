@@ -1,18 +1,24 @@
 import { ImageResponse } from 'next/og';
-import { fetchForMetadata } from '@/lib/server-fetch';
+import { fetchForImageGeneration } from '@/lib/server-fetch';
 import {
     CardShell,
+    Glow,
+    GlassFrame,
+    CONTENT_WIDTH,
     Divider,
     Footer,
     FooterIdentity,
     FallbackCard,
     getLogoDataUri,
+    getCardFonts,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
 } from '@/lib/share-cards/shell';
 
 export const runtime = 'nodejs';
+
+const GRID_HEIGHT = 640;
 
 interface DevlogCardData {
     id: number;
@@ -25,7 +31,7 @@ interface DevlogCardData {
 }
 
 function getDevlog(id: string) {
-    return fetchForMetadata<DevlogCardData>(`/posts/${id}/`);
+    return fetchForImageGeneration<DevlogCardData>(`/posts/${id}/`);
 }
 
 // Mirrors PostMediaGrid.tsx's 1/2/3/4+ split (Twitter-standard grid), rebuilt with nested
@@ -36,12 +42,12 @@ function DevlogGrid({ images }: { images: string[] }) {
     const imgStyle: React.CSSProperties = { width: '100%', height: '100%', objectFit: 'cover' };
 
     if (images.length === 0) {
-        return <div style={{ display: 'flex', width: '100%', height: 460, background: colors.glassFill }} />;
+        return <div style={{ display: 'flex', width: '100%', height: GRID_HEIGHT, background: colors.glassFill }} />;
     }
 
     if (images.length === 1) {
         return (
-            <div style={{ display: 'flex', width: '100%', height: 460 }}>
+            <div style={{ display: 'flex', width: '100%', height: GRID_HEIGHT }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={images[0]} style={imgStyle} />
             </div>
@@ -50,7 +56,7 @@ function DevlogGrid({ images }: { images: string[] }) {
 
     if (images.length === 2) {
         return (
-            <div style={{ display: 'flex', width: '100%', height: 460, gap: 6 }}>
+            <div style={{ display: 'flex', width: '100%', height: GRID_HEIGHT, gap: 6 }}>
                 <div style={{ ...cellStyle, width: '50%' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={images[0]} style={imgStyle} />
@@ -65,7 +71,7 @@ function DevlogGrid({ images }: { images: string[] }) {
 
     if (images.length === 3) {
         return (
-            <div style={{ display: 'flex', width: '100%', height: 460, gap: 6 }}>
+            <div style={{ display: 'flex', width: '100%', height: GRID_HEIGHT, gap: 6 }}>
                 <div style={{ ...cellStyle, width: '50%' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={images[0]} style={imgStyle} />
@@ -87,7 +93,7 @@ function DevlogGrid({ images }: { images: string[] }) {
     // 4+: first 4 images, 2x2.
     const visible = images.slice(0, 4);
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: 460, gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: GRID_HEIGHT, gap: 6 }}>
             <div style={{ display: 'flex', width: '100%', height: '50%', gap: 6 }}>
                 <div style={{ ...cellStyle, width: '50%' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -114,13 +120,13 @@ function DevlogGrid({ images }: { images: string[] }) {
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const [post, logoSrc] = await Promise.all([getDevlog(id), getLogoDataUri()]);
+    const [post, logoSrc, fonts] = await Promise.all([getDevlog(id), getLogoDataUri(), getCardFonts()]);
 
     const isPrivate = !!post?.user?.settings?.privateProfile;
     if (!post || isPrivate || !post.project_details) {
         return new ImageResponse(
             <FallbackCard logoSrc={logoSrc} message="This devlog isn't available" />,
-            { width: CARD_WIDTH, height: CARD_HEIGHT }
+            { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }
         );
     }
 
@@ -128,34 +134,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         ? post.media.filter((m) => m.media_type === 'image').sort((a, b) => a.order - b.order).map((m) => m.file)
         : (post.image ? [post.image] : []);
 
-    const title = post.title || 'Devlog update';
-    const text = (post.content || '').slice(0, 200);
-
+    const rawTitle = post.title || 'Devlog update';
+    const title = rawTitle.length > 60 ? `${rawTitle.slice(0, 60)}…` : rawTitle;
+    const rawText = post.content || '';
+    const text = rawText.length > 200 ? `${rawText.slice(0, 200)}…` : rawText;
     return new ImageResponse(
         (
             <CardShell>
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
-                    {/* No Glow here — the photo grid is a wide rectangle, not the portrait
-                        shape Glow is tuned for, and a circular accent bleeding across
-                        photos + the title below reads as a mistake, not a design choice. */}
-                    <div
-                        style={{
-                            display: 'flex',
-                            width: '100%',
-                            borderRadius: 28,
-                            overflow: 'hidden',
-                            border: `2px solid ${colors.glassBorder}`,
-                            marginBottom: 40,
-                        }}
-                    >
-                        <DevlogGrid images={images} />
+                    {/* position:relative scopes Glow to just this frame — not the whole content
+                        column — so it can't bleed onto the title/text below it. */}
+                    <div style={{ display: 'flex', position: 'relative', marginBottom: 40 }}>
+                        <Glow size={550} />
+                        <GlassFrame width={CONTENT_WIDTH} height={GRID_HEIGHT} borderRadius={28}>
+                            <DevlogGrid images={images} />
+                        </GlassFrame>
                     </div>
 
-                    <div style={{ display: 'flex', fontSize: 44, fontWeight: 700, letterSpacing: -1, color: colors.text }}>
+                    <div style={{ display: 'flex', fontSize: 52, fontWeight: 700, letterSpacing: -1, color: colors.text }}>
                         {title}
                     </div>
                     {text ? (
-                        <div style={{ display: 'flex', marginTop: 16, fontSize: 28, lineHeight: 1.5, color: colors.text, opacity: 0.85 }}>
+                        <div style={{ display: 'flex', marginTop: 16, fontSize: 30, lineHeight: 1.5, color: colors.text, opacity: 0.85 }}>
                             {text}
                         </div>
                     ) : null}
@@ -174,6 +174,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 />
             </CardShell>
         ),
-        { width: CARD_WIDTH, height: CARD_HEIGHT }
+        { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }
     );
 }

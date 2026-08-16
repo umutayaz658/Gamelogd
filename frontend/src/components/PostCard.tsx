@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check, ImageIcon } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Image as ImageIcon, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check } from 'lucide-react';
 import { Post } from '@/types';
 import { getImageUrl, getRelativeTime, getTimeRemaining, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -241,6 +241,20 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         return () => window.removeEventListener('reply-created', handleReplyCreated);
     }, [post.id]);
 
+    const handleShare = async () => {
+        const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
+        if (typeof navigator.share === 'function') {
+            try {
+                await navigator.share({ url });
+            } catch {
+                // user cancelled the native share sheet — not an error
+            }
+        } else {
+            navigator.clipboard.writeText(url);
+            toast.success(t('linkCopied'));
+        }
+    };
+
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!user) return router.push('/login');
@@ -379,26 +393,6 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             setPollCounts(previousCounts);
         } finally {
             setIsVoting(false);
-        }
-    };
-
-    const handleShare = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
-        const shareData = {
-            title: post.title || `${post.user.username}'s post`,
-            text: post.content?.slice(0, 100) || '',
-            url,
-        };
-        try {
-            if (navigator.share) {
-                await navigator.share(shareData);
-            } else {
-                await navigator.clipboard.writeText(url);
-                toast.success('Link copied to clipboard!');
-            }
-        } catch (error) {
-            // User cancelled share dialog, ignore
         }
     };
 
@@ -943,11 +937,11 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
-                                                handleShare(e);
+                                                handleShare();
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >
-                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-500" />
                                             {t('shareVia')}
                                         </button>
                                         {post.project_parent && (
@@ -959,8 +953,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                                 }}
                                                 className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                             >
-                                                <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
-                                                {t('shareAsImage')}
+                                                <ImageIcon className="h-3.5 w-3.5 text-zinc-550" />
+                                                {t('shareCard')}
                                             </button>
                                         )}
                                     </div>
