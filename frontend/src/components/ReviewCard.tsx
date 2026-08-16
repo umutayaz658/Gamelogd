@@ -186,26 +186,6 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         }
     };
 
-    const handleShare = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
-        const shareData = {
-            title: `${review.user.username}'s review of ${review.game.title}`,
-            text: review.content?.slice(0, 100) || '',
-            url,
-        };
-        try {
-            if (navigator.share) {
-                await navigator.share(shareData);
-            } else {
-                await navigator.clipboard.writeText(url);
-                toast.success('Link copied to clipboard!');
-            }
-        } catch (error) {
-            // User cancelled share dialog, ignore
-        }
-    };
-
     const handleCardClick = () => {
         if (!isDetailView) {
             router.push(`/${review.user.username}/review/${review.id}`);
@@ -524,23 +504,12 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
-                                                handleShare(e);
-                                            }}
-                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                        >
-                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
-                                            {t('shareVia')}
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setShowShareMenu(false);
                                                 setIsShareCardModalOpen(true);
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >
                                             <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
-                                            {t('shareAsImage')}
+                                            {t('shareCard')}
                                         </button>
                                     </div>
                                 )}

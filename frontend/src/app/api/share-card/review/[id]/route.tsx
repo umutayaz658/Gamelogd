@@ -10,19 +10,22 @@ import {
     FooterText,
     FallbackCard,
     getLogoDataUri,
+    getCardFonts,
+    getQrDataUri,
+    SITE_URL,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
 } from '@/lib/share-cards/shell';
 
-const COVER_FRAME = frameSize(0.62, 3 / 4);
+const COVER_FRAME = frameSize(0.78, 3 / 4);
 
 export const runtime = 'nodejs';
 
 interface ReviewCardData {
     id: number;
     content?: string;
-    rating?: number;
+    rating?: number | string;
     user?: { username: string; settings?: { privateProfile?: boolean } };
     game?: { title: string; cover_image?: string | null };
 }
@@ -33,25 +36,29 @@ function getReview(id: string) {
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const [review, logoSrc] = await Promise.all([getReview(id), getLogoDataUri()]);
+    const [review, logoSrc, fonts] = await Promise.all([getReview(id), getLogoDataUri(), getCardFonts()]);
 
     const isPrivate = !!review?.user?.settings?.privateProfile;
     if (!review || isPrivate) {
         return new ImageResponse(
             <FallbackCard logoSrc={logoSrc} message="This review isn't available" />,
-            { width: CARD_WIDTH, height: CARD_HEIGHT }
+            { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }
         );
     }
 
-    const rating = review.rating != null ? review.rating.toFixed(1) : '—';
+    // DRF serializes DecimalField as a string ("8.5"), not a number — Number() first or
+    // .toFixed() throws (this was crashing the route entirely before the fix).
+    const rating = review.rating != null ? Number(review.rating).toFixed(1) : '—';
     const quote = (review.content || '').slice(0, 180);
     const gameTitle = review.game?.title || 'a game';
+    const username = review.user?.username ?? '';
+    const qrSrc = await getQrDataUri(`${SITE_URL}/${username}/review/${id}`);
 
     return new ImageResponse(
         (
             <CardShell>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
-                    <Glow />
+                    <Glow size={560} />
                     <GlassFrame width={COVER_FRAME.width} height={COVER_FRAME.height}>
                         {review.game?.cover_image ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -65,10 +72,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                     </GlassFrame>
 
                     <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 48 }}>
-                        <div style={{ display: 'flex', fontSize: 100, fontWeight: 800, color: colors.accent, letterSpacing: -2 }}>
+                        <div style={{ display: 'flex', fontSize: 124, fontWeight: 800, color: colors.accent, letterSpacing: -2 }}>
                             {rating}
                         </div>
-                        <div style={{ display: 'flex', fontSize: 36, fontWeight: 600, color: colors.muted, marginLeft: 10 }}>
+                        <div style={{ display: 'flex', fontSize: 40, fontWeight: 600, color: colors.muted, marginLeft: 10 }}>
                             /10
                         </div>
                     </div>
@@ -78,7 +85,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                             style={{
                                 display: 'flex',
                                 marginTop: 32,
-                                fontSize: 32,
+                                fontSize: 38,
                                 lineHeight: 1.5,
                                 color: colors.text,
                                 textAlign: 'center',
@@ -93,15 +100,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 <Divider />
                 <Footer
                     logoSrc={logoSrc}
+                    qrSrc={qrSrc}
                     left={
                         <FooterText
-                            primary={`@${review.user?.username ?? ''}`}
+                            primary={`@${username}`}
                             secondary={`Logged ${gameTitle}`}
                         />
                     }
                 />
             </CardShell>
         ),
-        { width: CARD_WIDTH, height: CARD_HEIGHT }
+        { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }
     );
 }

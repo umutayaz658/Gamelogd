@@ -382,26 +382,6 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         }
     };
 
-    const handleShare = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
-        const shareData = {
-            title: post.title || `${post.user.username}'s post`,
-            text: post.content?.slice(0, 100) || '',
-            url,
-        };
-        try {
-            if (navigator.share) {
-                await navigator.share(shareData);
-            } else {
-                await navigator.clipboard.writeText(url);
-                toast.success('Link copied to clipboard!');
-            }
-        } catch (error) {
-            // User cancelled share dialog, ignore
-        }
-    };
-
     const handleCardClick = () => {
         if (!isDetailView) {
             router.push(`/${post.user.username}/status/${post.id}`);
@@ -939,17 +919,6 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             <LinkIcon className="h-3.5 w-3.5 text-zinc-500" />
                                             {t('copyLink')}
                                         </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setShowShareMenu(false);
-                                                handleShare(e);
-                                            }}
-                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
-                                        >
-                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
-                                            {t('shareVia')}
-                                        </button>
                                         {post.project_parent && (
                                             <button
                                                 onClick={(e) => {
@@ -960,7 +929,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                                 className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                             >
                                                 <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
-                                                {t('shareAsImage')}
+                                                {t('shareCard')}
                                             </button>
                                         )}
                                     </div>
