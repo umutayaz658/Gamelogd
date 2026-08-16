@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { fetchForMetadata } from '@/lib/server-fetch';
+import { fetchForImageGeneration } from '@/lib/server-fetch';
 import {
     CardShell,
     Glow,
@@ -32,7 +32,7 @@ interface OrganisationCardData {
 }
 
 function getOrganisation(slug: string) {
-    return fetchForMetadata<OrganisationCardData>(`/organisations/${slug}/`);
+    return fetchForImageGeneration<OrganisationCardData>(`/organisations/${slug}/`);
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {

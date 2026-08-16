@@ -26,3 +26,23 @@ export async function fetchForMetadata<T>(path: string): Promise<T | null> {
         return null;
     }
 }
+
+// Like fetchForMetadata, but deliberately does NOT rewrite media URLs to the public origin.
+// The consumer here (next/og's ImageResponse, i.e. Satori) fetches image URLs itself,
+// server-side, from inside the same process/Docker network as the backend — not a browser.
+// Rewriting to the public origin (as fetchForMetadata correctly does for browser-facing
+// metadata) makes Docker-local media URLs unreachable from inside the frontend container
+// (`localhost:8000` there is the frontend container itself, not the backend one), which was
+// silently breaking every share card whose entity has a locally-stored (non-Cloudinary)
+// image: Project/Organisation covers and logos, and Devlog media. In production, where
+// API_INTERNAL_URL is unset and all media is on Cloudinary, internal === public and this
+// behaves identically to fetchForMetadata.
+export async function fetchForImageGeneration<T>(path: string): Promise<T | null> {
+    try {
+        const res = await fetch(`${INTERNAL_API_BASE}${path}`, { cache: 'no-store' });
+        if (!res.ok) return null;
+        return (await res.json()) as T;
+    } catch {
+        return null;
+    }
+}

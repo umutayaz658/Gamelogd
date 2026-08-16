@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { fetchForMetadata } from '@/lib/server-fetch';
+import { fetchForImageGeneration } from '@/lib/server-fetch';
 import {
     CardShell,
     Glow,
@@ -31,7 +31,7 @@ interface DevlogCardData {
 }
 
 function getDevlog(id: string) {
-    return fetchForMetadata<DevlogCardData>(`/posts/${id}/`);
+    return fetchForImageGeneration<DevlogCardData>(`/posts/${id}/`);
 }
 
 // Mirrors PostMediaGrid.tsx's 1/2/3/4+ split (Twitter-standard grid), rebuilt with nested

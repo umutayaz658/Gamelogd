@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { fetchForMetadata } from '@/lib/server-fetch';
+import { fetchForImageGeneration } from '@/lib/server-fetch';
 import {
     CardShell,
     Glow,
@@ -32,7 +32,7 @@ function getGameDna(username: string) {
     // Returns null on any non-2xx — this endpoint already 403s for private profiles when
     // called without auth (our server-side fetch never carries one), so the private case
     // and the "user doesn't exist" case both collapse into the same fallback card below.
-    return fetchForMetadata<GameDnaData>(`/users/${username}/game-dna/`);
+    return fetchForImageGeneration<GameDnaData>(`/users/${username}/game-dna/`);
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ username: string }> }) {

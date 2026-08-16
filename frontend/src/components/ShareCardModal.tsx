@@ -5,7 +5,10 @@ import { X, Download, Share2, Loader2, AlertCircle, RefreshCw } from 'lucide-rea
 import { useToast } from '@/context/ToastContext';
 import { useTranslation } from '@/lib/useTranslation';
 
-const LOAD_TIMEOUT_MS = 15000;
+// Generous on purpose: card generation involves the server fetching a remote cover image
+// itself (Satori rasterizes it), which can legitimately take longer than a typical page
+// load, especially over a slower dev-environment network path.
+const LOAD_TIMEOUT_MS = 25000;
 
 export type ShareCardType = 'review' | 'devlog' | 'project' | 'organisation' | 'game-dna';
 
