@@ -92,7 +92,7 @@ export default function ShareCardModal({
                     <X className="h-5 w-5" />
                 </button>
 
-                <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
+                <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
                     {!imageLoaded && !loadError && (
                         <div className="absolute inset-0 flex items-center justify-center">
                             <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />

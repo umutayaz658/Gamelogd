@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { fetchForMetadata } from '@/lib/server-fetch';
+import { getRatingColor } from '@/lib/utils';
 import {
     CardShell,
     Glow,
@@ -16,7 +17,10 @@ import {
     colors,
 } from '@/lib/share-cards/shell';
 
-const COVER_FRAME = frameSize(0.78, 3 / 4);
+// Narrower than other cards' cover frames — the 2:3 canvas has less vertical room left over
+// once the rating and quote sit below it, and this is the tallest (3:4 portrait) frame of
+// the five cards.
+const COVER_FRAME = frameSize(0.70, 3 / 4);
 
 export const runtime = 'nodejs';
 
@@ -46,7 +50,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     // DRF serializes DecimalField as a string ("8.5"), not a number — Number() first or
     // .toFixed() throws (this was crashing the route entirely before the fix).
-    const rating = review.rating != null ? Number(review.rating).toFixed(1) : '—';
+    const ratingNum = review.rating != null ? Number(review.rating) : null;
+    const rating = ratingNum != null ? ratingNum.toFixed(1) : '—';
+    const ratingColor = ratingNum != null ? getRatingColor(ratingNum) : colors.muted;
     const quote = (review.content || '').slice(0, 180);
     const gameTitle = review.game?.title || 'a game';
     const username = review.user?.username ?? '';
@@ -68,11 +74,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                         )}
                     </GlassFrame>
 
-                    <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 48 }}>
-                        <div style={{ display: 'flex', fontSize: 124, fontWeight: 800, color: colors.accent, letterSpacing: -2 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: 48 }}>
+                        <div style={{ display: 'flex', fontSize: 124, fontWeight: 800, color: ratingColor, letterSpacing: -2 }}>
                             {rating}
                         </div>
-                        <div style={{ display: 'flex', fontSize: 40, fontWeight: 600, color: colors.muted, marginLeft: 10 }}>
+                        <div style={{ display: 'flex', fontSize: 40, fontWeight: 600, color: colors.muted, marginLeft: 10, marginBottom: 12 }}>
                             /10
                         </div>
                     </div>

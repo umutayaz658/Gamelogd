@@ -8,7 +8,9 @@ import { join } from 'node:path';
 // are faked with a softly-radial-gradiented div or a heavy-blur `boxShadow`, never `filter`.
 
 export const CARD_WIDTH = 1080;
-export const CARD_HEIGHT = 1920;
+// 2:3, not the original 9:16 (Instagram Story full-bleed) — the taller canvas left far too
+// much empty space around every card's (comparatively short) content.
+export const CARD_HEIGHT = Math.round(CARD_WIDTH * 1.5);
 export const CARD_PADDING_X = 56;
 // Width actually available inside CardShell's horizontal padding — GlassFrame sizes are
 // computed against this, not CARD_WIDTH directly.
@@ -198,8 +200,8 @@ export function Footer({ left, logoSrc }: { left: React.ReactNode; logoSrc: stri
             <div style={{ display: 'flex', alignItems: 'center' }}>{left}</div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={logoSrc} width={56} height={56} alt="" style={{ borderRadius: 16, opacity: 0.95 }} />
-                <div style={{ display: 'flex', fontSize: 16, fontWeight: 600, color: colors.muted, marginTop: 6 }}>
+                <img src={logoSrc} width={76} height={76} alt="" style={{ borderRadius: 20, opacity: 0.95 }} />
+                <div style={{ display: 'flex', fontSize: 24, fontWeight: 700, color: colors.muted, marginTop: 8 }}>
                     gamelogd.net
                 </div>
             </div>
@@ -221,10 +223,10 @@ export function FooterIdentity({
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logoSrc} width={72} height={72} alt="" style={{ borderRadius: 20, objectFit: 'cover' }} />
+            <img src={logoSrc} width={80} height={80} alt="" style={{ borderRadius: 22, objectFit: 'cover' }} />
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 34, fontWeight: 700, color: colors.text }}>{primary}</div>
-                <div style={{ fontSize: 24, color: colors.muted, marginTop: 4 }}>{secondary}</div>
+                <div style={{ fontSize: 38, fontWeight: 700, color: colors.text }}>{primary}</div>
+                <div style={{ fontSize: 28, color: colors.muted, marginTop: 4 }}>{secondary}</div>
             </div>
         </div>
     );
@@ -235,8 +237,8 @@ export function FooterIdentity({
 export function FooterText({ primary, secondary }: { primary: string; secondary?: string }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 34, fontWeight: 700, color: colors.text }}>{primary}</div>
-            {secondary ? <div style={{ fontSize: 24, color: colors.muted, marginTop: 4 }}>{secondary}</div> : null}
+            <div style={{ fontSize: 38, fontWeight: 700, color: colors.text }}>{primary}</div>
+            {secondary ? <div style={{ fontSize: 28, color: colors.muted, marginTop: 4 }}>{secondary}</div> : null}
         </div>
     );
 }
