@@ -11,8 +11,6 @@ import {
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
-    getQrDataUri,
-    SITE_URL,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
@@ -55,7 +53,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const coverImage = project.cover_image || project.logo;
     const identityName = project.organisation_details?.name || project.owner.username;
     const identityLogo = project.organisation_details?.logo || project.owner.avatar || logoSrc;
-    const qrSrc = await getQrDataUri(`${SITE_URL}/projects/${id}`);
 
     return new ImageResponse(
         (
@@ -90,7 +87,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 <Divider />
                 <Footer
                     logoSrc={logoSrc}
-                    qrSrc={qrSrc}
                     left={<FooterIdentity logoSrc={identityLogo} primary={identityName} secondary="Project" />}
                 />
             </CardShell>

@@ -9,8 +9,6 @@ import {
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
-    getQrDataUri,
-    SITE_URL,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
@@ -50,7 +48,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
     }
 
     const totalHours = Math.round(dna.genres.reduce((sum, g) => sum + (g.total_hours || 0), 0));
-    const qrSrc = await getQrDataUri(`${SITE_URL}/${username}`);
 
     return new ImageResponse(
         (
@@ -93,7 +90,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
                 </div>
 
                 <Divider />
-                <Footer logoSrc={logoSrc} qrSrc={qrSrc} left={<FooterText primary={`@${username}`} secondary="Game DNA" />} />
+                <Footer logoSrc={logoSrc} left={<FooterText primary={`@${username}`} secondary="Game DNA" />} />
             </CardShell>
         ),
         { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }

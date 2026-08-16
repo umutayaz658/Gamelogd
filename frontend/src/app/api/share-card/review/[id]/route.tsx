@@ -11,8 +11,6 @@ import {
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
-    getQrDataUri,
-    SITE_URL,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
@@ -52,7 +50,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const quote = (review.content || '').slice(0, 180);
     const gameTitle = review.game?.title || 'a game';
     const username = review.user?.username ?? '';
-    const qrSrc = await getQrDataUri(`${SITE_URL}/${username}/review/${id}`);
 
     return new ImageResponse(
         (
@@ -100,7 +97,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 <Divider />
                 <Footer
                     logoSrc={logoSrc}
-                    qrSrc={qrSrc}
                     left={
                         <FooterText
                             primary={`@${username}`}

@@ -11,8 +11,6 @@ import {
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
-    getQrDataUri,
-    SITE_URL,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
@@ -48,8 +46,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
         );
     }
 
-    const qrSrc = await getQrDataUri(`${SITE_URL}/organisations/${slug}`);
-
     return new ImageResponse(
         (
             <CardShell>
@@ -83,7 +79,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
                 </div>
 
                 <Divider />
-                <Footer logoSrc={logoSrc} qrSrc={qrSrc} left={<FooterText primary="Organisation in Gamelogd" />} />
+                <Footer logoSrc={logoSrc} left={<FooterText primary="Organisation in Gamelogd" />} />
             </CardShell>
         ),
         { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }

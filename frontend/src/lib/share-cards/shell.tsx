@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import QRCode from 'qrcode';
 
 // Shared "Neon Glass" chrome for all 5 share-card types (frontend/src/app/api/share-card/*).
 // Every element here must stick to CSS Satori (the renderer behind next/og's ImageResponse)
@@ -69,23 +68,6 @@ export function getCardFonts(): Promise<CardFont[]> {
         );
     }
     return cardFontsPromise;
-}
-
-// White-tile QR so it scans reliably regardless of the card's dark theme — cached per URL
-// within the process since the same entity's card can be requested many times.
-const qrDataUriCache = new Map<string, Promise<string>>();
-
-export function getQrDataUri(url: string): Promise<string> {
-    let cached = qrDataUriCache.get(url);
-    if (!cached) {
-        cached = QRCode.toDataURL(url, {
-            margin: 1,
-            width: 300,
-            color: { dark: '#000000', light: '#ffffff' },
-        });
-        qrDataUriCache.set(url, cached);
-    }
-    return cached;
 }
 
 export function CardShell({ children }: { children: React.ReactNode }) {
@@ -207,24 +189,19 @@ export function Divider() {
     );
 }
 
-// Always a two-sided row: arbitrary `left` content (identity block or plain text) and a
-// Gamelogd mark + "gamelogd.net" + scannable QR cluster pinned to the right. The QR is the
-// web-only stand-in for Instagram's native "tap sticker to open app" — that feature is only
-// available to real App/Play Store apps, so a scan is the closest a web app can offer.
-export function Footer({ left, logoSrc, qrSrc }: { left: React.ReactNode; logoSrc: string; qrSrc: string }) {
+// Always a two-sided row: arbitrary `left` content (identity block or plain text) and the
+// Gamelogd mark + "gamelogd.net" pinned to the right. Never centered — keeps every card's
+// footer consistent.
+export function Footer({ left, logoSrc }: { left: React.ReactNode; logoSrc: string }) {
     return (
         <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>{left}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={logoSrc} width={56} height={56} alt="" style={{ borderRadius: 16, opacity: 0.95 }} />
-                    <div style={{ display: 'flex', fontSize: 16, fontWeight: 600, color: colors.muted, marginTop: 6 }}>
-                        gamelogd.net
-                    </div>
-                </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrSrc} width={84} height={84} alt="" style={{ borderRadius: 12 }} />
+                <img src={logoSrc} width={56} height={56} alt="" style={{ borderRadius: 16, opacity: 0.95 }} />
+                <div style={{ display: 'flex', fontSize: 16, fontWeight: 600, color: colors.muted, marginTop: 6 }}>
+                    gamelogd.net
+                </div>
             </div>
         </div>
     );

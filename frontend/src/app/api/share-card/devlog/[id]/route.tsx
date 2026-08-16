@@ -11,8 +11,6 @@ import {
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
-    getQrDataUri,
-    SITE_URL,
     CARD_WIDTH,
     CARD_HEIGHT,
     colors,
@@ -138,9 +136,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const title = post.title || 'Devlog update';
     const text = (post.content || '').slice(0, 200);
-    const username = post.user?.username ?? '';
-    const qrSrc = await getQrDataUri(`${SITE_URL}/${username}/status/${id}`);
-
     return new ImageResponse(
         (
             <CardShell>
@@ -167,7 +162,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 <Divider />
                 <Footer
                     logoSrc={logoSrc}
-                    qrSrc={qrSrc}
                     left={
                         <FooterIdentity
                             logoSrc={post.project_details.cover_image || logoSrc}

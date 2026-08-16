@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban, ImageIcon } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl, getRelativeTime, formatCount, formatHandle, getRatingTextClass } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -508,7 +508,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >
-                                            <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
                                             {t('shareCard')}
                                         </button>
                                     </div>

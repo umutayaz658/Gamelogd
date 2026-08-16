@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check, ImageIcon } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check } from 'lucide-react';
 import { Post } from '@/types';
 import { getImageUrl, getRelativeTime, getTimeRemaining, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -928,7 +928,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                                 }}
                                                 className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                             >
-                                                <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
+                                                <Share2 className="h-3.5 w-3.5 text-zinc-550" />
                                                 {t('shareCard')}
                                             </button>
                                         )}
