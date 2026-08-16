@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Image as ImageIcon, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
 import { Review } from '@/types';
 import { getImageUrl, getRelativeTime, formatCount, formatHandle, getRatingTextClass } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -103,6 +103,20 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
         window.addEventListener('post-created', handlePostCreated);
         return () => window.removeEventListener('post-created', handlePostCreated);
     }, [review.id]);
+
+    const handleShare = async () => {
+        const url = `${window.location.origin}/${review.user.username}/review/${review.id}`;
+        if (typeof navigator.share === 'function') {
+            try {
+                await navigator.share({ url });
+            } catch {
+                // user cancelled the native share sheet — not an error
+            }
+        } else {
+            navigator.clipboard.writeText(url);
+            toast.success('Link copied to clipboard!');
+        }
+    };
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -504,11 +518,22 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
+                                                handleShare();
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <Share2 className="h-3.5 w-3.5 text-zinc-500" />
+                                            {t('shareVia')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowShareMenu(false);
                                                 setIsShareCardModalOpen(true);
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
                                         >
-                                            <Share2 className="h-3.5 w-3.5 text-zinc-550" />
+                                            <ImageIcon className="h-3.5 w-3.5 text-zinc-550" />
                                             {t('shareCard')}
                                         </button>
                                     </div>

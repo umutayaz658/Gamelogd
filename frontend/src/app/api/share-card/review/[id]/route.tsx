@@ -8,7 +8,7 @@ import {
     frameSize,
     Divider,
     Footer,
-    FooterText,
+    FooterIdentity,
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
@@ -28,7 +28,7 @@ interface ReviewCardData {
     id: number;
     content?: string;
     rating?: number | string;
-    user?: { username: string; settings?: { privateProfile?: boolean } };
+    user?: { username: string; avatar?: string | null; settings?: { privateProfile?: boolean } };
     game?: { title: string; cover_image?: string | null };
 }
 
@@ -53,7 +53,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const ratingNum = review.rating != null ? Number(review.rating) : null;
     const rating = ratingNum != null ? ratingNum.toFixed(1) : '—';
     const ratingColor = ratingNum != null ? getRatingColor(ratingNum) : colors.muted;
-    const quote = (review.content || '').slice(0, 180);
+    // Capped tighter than a naive "fits in the box" character count would suggest: the cover
+    // frame above already eats most of the card's vertical space, so this needs to reliably
+    // stay within ~3 lines at fontSize 38 or it visually collides with the divider/footer
+    // beneath it (Satori has no line-clamp/overflow support to fall back on).
+    const rawContent = review.content || '';
+    const quote = rawContent.length > 130 ? `${rawContent.slice(0, 130)}…` : rawContent;
     const gameTitle = review.game?.title || 'a game';
     const username = review.user?.username ?? '';
 
@@ -104,9 +109,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 <Footer
                     logoSrc={logoSrc}
                     left={
-                        <FooterText
+                        <FooterIdentity
+                            logoSrc={review.user?.avatar}
                             primary={`@${username}`}
-                            secondary={`Logged ${gameTitle}`}
+                            secondary={gameTitle}
                         />
                     }
                 />

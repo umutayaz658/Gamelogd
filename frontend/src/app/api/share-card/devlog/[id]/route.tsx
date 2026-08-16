@@ -134,8 +134,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         ? post.media.filter((m) => m.media_type === 'image').sort((a, b) => a.order - b.order).map((m) => m.file)
         : (post.image ? [post.image] : []);
 
-    const title = post.title || 'Devlog update';
-    const text = (post.content || '').slice(0, 200);
+    const rawTitle = post.title || 'Devlog update';
+    const title = rawTitle.length > 60 ? `${rawTitle.slice(0, 60)}…` : rawTitle;
+    const rawText = post.content || '';
+    const text = rawText.length > 200 ? `${rawText.slice(0, 200)}…` : rawText;
     return new ImageResponse(
         (
             <CardShell>

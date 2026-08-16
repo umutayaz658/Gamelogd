@@ -2,10 +2,10 @@ import { ImageResponse } from 'next/og';
 import { fetchForImageGeneration } from '@/lib/server-fetch';
 import {
     CardShell,
-    Glow,
+    TopGlow,
     Divider,
     Footer,
-    FooterText,
+    FooterIdentity,
     FallbackCard,
     getLogoDataUri,
     getCardFonts,
@@ -35,9 +35,22 @@ function getGameDna(username: string) {
     return fetchForImageGeneration<GameDnaData>(`/users/${username}/game-dna/`);
 }
 
+interface GameDnaUser {
+    avatar?: string | null;
+}
+
+function getUser(username: string) {
+    return fetchForImageGeneration<GameDnaUser>(`/users/${username}/`);
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ username: string }> }) {
     const { username } = await params;
-    const [dna, logoSrc, fonts] = await Promise.all([getGameDna(username), getLogoDataUri(), getCardFonts()]);
+    const [dna, user, logoSrc, fonts] = await Promise.all([
+        getGameDna(username),
+        getUser(username),
+        getLogoDataUri(),
+        getCardFonts(),
+    ]);
 
     const genres = dna?.genres?.slice(0, 5) ?? [];
     if (!dna || genres.length === 0) {
@@ -52,16 +65,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
     return new ImageResponse(
         (
             <CardShell>
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
-                    {/* Glow scoped to just the hero-number block (its own positioning
-                        context), not the whole card — otherwise it bleeds across the bar
-                        list beneath it once the whole group is vertically centered. */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 56, position: 'relative' }}>
-                        <Glow />
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1, position: 'relative' }}>
+                    {/* Anchored to the CardShell's positioning context (not the hero block)
+                        so the light reads as falling from the top of the card, not as a halo
+                        centered directly behind the number. */}
+                    <TopGlow />
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 56 }}>
                         <div style={{ display: 'flex', fontSize: 116, fontWeight: 800, letterSpacing: -2, color: colors.accent }}>
                             {totalHours.toLocaleString('en-US')}
                         </div>
-                        <div style={{ display: 'flex', marginTop: 10, fontSize: 26, fontWeight: 700, letterSpacing: 4, color: colors.muted }}>
+                        <div style={{ display: 'flex', marginTop: 10, fontSize: 32, fontWeight: 800, letterSpacing: 4, color: colors.muted }}>
                             HOURS PLAYED
                         </div>
                     </div>
@@ -90,7 +103,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
                 </div>
 
                 <Divider />
-                <Footer logoSrc={logoSrc} left={<FooterText primary={`@${username}`} secondary="Game DNA" />} />
+                <Footer
+                    logoSrc={logoSrc}
+                    left={
+                        <FooterIdentity
+                            logoSrc={user?.avatar}
+                            primary={`@${username}`}
+                            secondary="Game DNA"
+                        />
+                    }
+                />
             </CardShell>
         ),
         { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }

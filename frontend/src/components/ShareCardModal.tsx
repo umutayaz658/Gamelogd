@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Download, Share2, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Download, Share2, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useTranslation } from '@/lib/useTranslation';
 
@@ -81,20 +81,19 @@ export default function ShareCardModal({
     return (
         <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4"
-            onClick={onClose}
+            onClick={(e) => {
+                // This modal is rendered inline inside ReviewCard/PostCard's own JSX, not via
+                // a portal — without stopPropagation, a backdrop click bubbles up through the
+                // DOM to the card's root onClick (whole-card-click navigates to the thread),
+                // so closing the modal was also opening the thread underneath it.
+                e.stopPropagation();
+                onClose();
+            }}
         >
             <div
                 className="relative flex flex-col items-center gap-5 w-full max-w-sm"
                 onClick={(e) => e.stopPropagation()}
             >
-                <button
-                    onClick={onClose}
-                    className="absolute -top-12 right-0 p-2 text-zinc-400 hover:text-white bg-zinc-900/60 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer"
-                    title="Close"
-                >
-                    <X className="h-5 w-5" />
-                </button>
-
                 <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
                     {!imageLoaded && !loadError && (
                         <div className="absolute inset-0 flex items-center justify-center">
