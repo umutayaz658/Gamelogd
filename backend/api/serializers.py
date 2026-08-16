@@ -860,13 +860,14 @@ class PostSerializer(serializers.ModelSerializer):
         return post
 
     def get_author_details(self, obj):
+        request = self.context.get('request')
         if obj.author_identity == 'organisation' and obj.project_parent and obj.project_parent.organisation:
             org = obj.project_parent.organisation
             return {
                 'type': 'organisation',
                 'name': org.name,
                 'slug': org.slug,
-                'avatar': org.logo.url if org.logo else None,
+                'avatar': request.build_absolute_uri(org.logo.url) if org.logo and request else (org.logo.url if org.logo else None),
                 'is_verified': org.is_verified,
             }
         elif obj.author_identity == 'project' and obj.project_parent:
@@ -875,7 +876,7 @@ class PostSerializer(serializers.ModelSerializer):
                 'type': 'project',
                 'name': proj.title,
                 'slug': proj.id,
-                'avatar': proj.cover_image.url if proj.cover_image else None,
+                'avatar': request.build_absolute_uri(proj.cover_image.url) if proj.cover_image and request else (proj.cover_image.url if proj.cover_image else None),
                 'is_verified': False,
             }
         else:
@@ -884,7 +885,7 @@ class PostSerializer(serializers.ModelSerializer):
                 'type': 'user',
                 'name': f"{user.first_name} {user.last_name}".strip() or user.username,
                 'slug': user.username,
-                'avatar': user.avatar.url if user.avatar else None,
+                'avatar': request.build_absolute_uri(user.avatar.url) if user.avatar and request else (user.avatar.url if user.avatar else None),
                 'is_verified': False,
             }
 
@@ -946,10 +947,12 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_project_details(self, obj):
         if obj.project_parent:
+            request = self.context.get('request')
+            cover = obj.project_parent.cover_image
             return {
                 'id': obj.project_parent.id,
                 'title': obj.project_parent.title,
-                'cover_image': obj.project_parent.cover_image.url if obj.project_parent.cover_image else None
+                'cover_image': request.build_absolute_uri(cover.url) if cover and request else (cover.url if cover else None)
             }
         return None
 
@@ -1375,11 +1378,13 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def get_organisation_details(self, obj):
         if obj.organisation:
+            request = self.context.get('request')
+            logo = obj.organisation.logo
             return {
                 'id': obj.organisation.id,
                 'name': obj.organisation.name,
                 'slug': obj.organisation.slug,
-                'logo': obj.organisation.logo.url if obj.organisation.logo else None,
+                'logo': request.build_absolute_uri(logo.url) if logo and request else (logo.url if logo else None),
                 'is_verified': obj.organisation.is_verified
             }
         return None
@@ -1568,10 +1573,12 @@ class JobPostingSerializer(serializers.ModelSerializer):
 
     def get_project_details(self, obj):
         if obj.project:
+            request = self.context.get('request')
+            cover = obj.project.cover_image
             return {
                 'id': obj.project.id,
                 'title': obj.project.title,
-                'cover_image': obj.project.cover_image.url if obj.project.cover_image else None
+                'cover_image': request.build_absolute_uri(cover.url) if cover and request else (cover.url if cover else None)
             }
         return None
 
@@ -1692,11 +1699,13 @@ class OrganisationInvitationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'invited_by', 'created_at', 'is_active']
         
     def get_organisation_details(self, obj):
+        request = self.context.get('request')
+        logo = obj.organisation.logo
         return {
             'id': obj.organisation.id,
             'name': obj.organisation.name,
             'slug': obj.organisation.slug,
-            'logo': obj.organisation.logo.url if obj.organisation.logo else None
+            'logo': request.build_absolute_uri(logo.url) if logo and request else (logo.url if logo else None)
         }
 
 
