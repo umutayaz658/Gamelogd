@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { fetcher, unwrapList } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import RecommendedGames from '@/components/RecommendedGames';
+import WhoToFollowRail from '@/components/WhoToFollowRail';
 import NewsSkeleton from '@/components/skeletons/NewsSkeleton';
 import { useTranslation } from '@/lib/useTranslation';
 import { getRelativeTime } from '@/lib/utils';
@@ -135,6 +136,9 @@ export default function RightSidebar() {
                 {user && user.username && (
                     <RecommendedGames username={user.username} />
                 )}
+
+                {/* Who to Follow */}
+                {user && <WhoToFollowRail layout="vertical" limit={5} />}
             </div>
         </div>
     );

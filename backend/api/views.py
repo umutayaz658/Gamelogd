@@ -792,6 +792,82 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         cache.set(cache_key, serializer.data, timeout=600)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='suggested', permission_classes=[permissions.IsAuthenticated])
+    def suggested(self, request):
+        """Who-to-follow suggestions, ranked by shared interests and shared library games
+        (the same "taste" signals FeedViewSet.for_you/score_post_for_user already use for post
+        ranking), falling back to follower count + recent activity for candidates with neither
+        overlap — i.e. a brand-new account with no declared interests/library yet still gets
+        popular, active accounts instead of an empty shelf.
+
+        Deliberately avoids stacking multiple Count() annotations over different relations in
+        one query (see count_subquery's docstring on join multiplication silently producing
+        wrong counts) — followers_count uses that existing safe subquery helper; interest/
+        library overlap is computed in Python over a bounded, prefetched candidate pool,
+        mirroring score_post_for_user's own set-intersection approach.
+        """
+        user = request.user
+
+        try:
+            limit = min(max(1, int(request.query_params.get('limit', 8))), 20)
+        except (TypeError, ValueError):
+            limit = 8
+
+        from api.models import Follow
+        from .serializers import count_subquery
+
+        followed_ids = set(user.following.values_list('following_id', flat=True))
+        exclude_ids = get_hidden_user_ids(user) | followed_ids | {user.id}
+        user_interest_ids = set(user.interests.values_list('id', flat=True))
+        user_game_ids = set(user.library.values_list('game_id', flat=True))
+
+        # Bound the candidate pool before scoring in Python (same reasoning as
+        # recommended_games' sample_games: never sort/hydrate the whole user table).
+        candidates = list(
+            User.objects.exclude(id__in=exclude_ids)
+            .exclude(is_private=True)
+            .annotate(followers_count_ann=count_subquery(Follow, 'following'))
+            .prefetch_related('interests', 'library')
+            .order_by('-id')[:300]
+        )
+
+        def taste_score(candidate):
+            interest_overlap = len({i.id for i in candidate.interests.all()} & user_interest_ids)
+            library_overlap = len({e.game_id for e in candidate.library.all()} & user_game_ids)
+            score = interest_overlap * 4.0 + library_overlap * 3.0
+            if interest_overlap == 0 and library_overlap == 0:
+                score += min(candidate.followers_count_ann, 50) * 0.1
+            return score
+
+        scored = sorted(((taste_score(c), c) for c in candidates), key=lambda pair: pair[0], reverse=True)
+        shortlist = [c for _, c in scored[:limit * 3]]
+
+        # Recent-activity tiebreak, only for the shortlist — bounded query cost regardless of
+        # how large the candidate pool above was. Deprioritizes dormant accounts among
+        # otherwise similarly-scored suggestions rather than recommending an account that
+        # hasn't posted in months.
+        from datetime import timedelta
+        active_cutoff = timezone.now() - timedelta(days=30)
+        shortlist_ids = [c.id for c in shortlist]
+        active_ids = set(Post.objects.filter(user_id__in=shortlist_ids, timestamp__gte=active_cutoff).values_list('user_id', flat=True))
+        active_ids |= set(Review.objects.filter(user_id__in=shortlist_ids, timestamp__gte=active_cutoff).values_list('user_id', flat=True))
+
+        ranked = sorted(
+            shortlist,
+            key=lambda c: taste_score(c) + (1.5 if c.id in active_ids else 0.0),
+            reverse=True,
+        )
+
+        # Sample rather than always returning the strict top-N — otherwise the widget shows
+        # the exact same people in the exact same order on every single load/refresh (no
+        # freshness at all, since scoring is fully deterministic for a given user's data).
+        # Drawn from the top-scoring slice so it still skews toward the best matches, same
+        # spirit as recommended_games' sample_games.
+        chosen = random.sample(ranked, min(limit, len(ranked)))
+
+        serializer = UserSerializer(chosen, many=True, context={'request': request})
+        return Response(serializer.data)
+
     def _format_image_url(self, request, cover_image):
         if not cover_image: return None
         if str(cover_image).startswith('http'): return str(cover_image)
@@ -1624,7 +1700,19 @@ class PostViewSet(viewsets.ModelViewSet):
         review_parent_id = self.request.query_params.get('review_parent', None)
         if review_parent_id is not None:
             queryset = queryset.filter(review_parent_id=review_parent_id)
-        
+
+        # Quote-reposts of a given Post/Review (excludes plain/direct reposts, which carry
+        # no content of their own — see DIRECT_REPOST_Q). Powers the "View Quotes" page.
+        quotes_of_id = self.request.query_params.get('quotes_of', None)
+        if quotes_of_id is not None:
+            from api.serializers import DIRECT_REPOST_Q
+            queryset = queryset.filter(repost_parent_id=quotes_of_id).exclude(DIRECT_REPOST_Q)
+
+        quotes_of_review_id = self.request.query_params.get('quotes_of_review', None)
+        if quotes_of_review_id is not None:
+            from api.serializers import DIRECT_REPOST_Q
+            queryset = queryset.filter(repost_parent_review_id=quotes_of_review_id).exclude(DIRECT_REPOST_Q)
+
         news_parent_id = self.request.query_params.get('news_parent', None)
         if news_parent_id is not None:
             queryset = queryset.filter(news_parent_id=news_parent_id)
@@ -1786,7 +1874,10 @@ class PostViewSet(viewsets.ModelViewSet):
 
         if existing:
             existing.delete()
-            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_200_OK)
+            # reposts_count in the response is direct+quote combined (see
+            # PostSerializer.get_reposts_count), not filtered to DIRECT_REPOST_Q like the
+            # lookup above — the frontend overwrites its displayed count with this value.
+            return Response({'status': 'unreposted', 'reposts_count': original_post.reposts.count()}, status=status.HTTP_200_OK)
 
         # Create direct repost
         repost_post = Post.objects.create(
@@ -1808,7 +1899,7 @@ class PostViewSet(viewsets.ModelViewSet):
                 notification_type='repost',
             )
 
-        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.filter(DIRECT_REPOST_Q).count()}, status=status.HTTP_201_CREATED)
+        return Response({'status': 'reposted', 'reposts_count': original_post.reposts.count()}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='not-interested', permission_classes=[permissions.IsAuthenticated])
     def not_interested(self, request, pk=None):
@@ -3553,11 +3644,12 @@ class FeedViewSet(viewsets.ViewSet):
         # Precompute engagement counts in the query (single subquery each) so the scoring loop
         # and the serializer don't fire a per-item .count() — the N+1 that made this endpoint
         # issue hundreds of queries per request.
-        from .serializers import count_subquery, DIRECT_REPOST_Q
+        from .serializers import count_subquery
         post_anns = dict(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
+            # Direct reposts + quote-reposts combined (see PostSerializer.get_reposts_count).
+            reposts_count_ann=count_subquery(Post, 'repost_parent'),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
         review_anns = dict(
@@ -3698,8 +3790,9 @@ class FeedViewSet(viewsets.ViewSet):
             scored_items.append((score, item_type, item))
 
         scored_items.sort(key=lambda x: x[0], reverse=True)
-        top_items = scored_items[:60]
-        
+        from api.services.categorize import interleave_by_author
+        top_items = interleave_by_author(scored_items)[:60]
+
         results = []
         for score, item_type, item in top_items:
             if item_type == 'post':
@@ -3731,7 +3824,7 @@ class FeedViewSet(viewsets.ViewSet):
 
         # Annotate engagement counts so the serializers below read them instead of firing a
         # per-item .count() (see for_you / count_subquery).
-        from .serializers import count_subquery, DIRECT_REPOST_Q
+        from .serializers import count_subquery
         posts = Post.objects.filter(
             user_id__in=followed_users_ids,
             parent__isnull=True,
@@ -3740,7 +3833,8 @@ class FeedViewSet(viewsets.ViewSet):
         ).exclude(id__in=not_interested_post_ids).select_related('user').prefetch_related('user__interests', 'media').annotate(
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
+            # Direct reposts + quote-reposts combined (see PostSerializer.get_reposts_count).
+            reposts_count_ann=count_subquery(Post, 'repost_parent'),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         ).order_by('-timestamp')[:50]
 
@@ -5054,7 +5148,7 @@ class ExplorePostsViewSet(viewsets.ViewSet):
         except (TypeError, ValueError):
             page_size = 20
 
-        from api.serializers import count_subquery, DIRECT_REPOST_Q
+        from api.serializers import count_subquery
         from core.models import Like, Bookmark
         posts = Post.objects.filter(
             parent__isnull=True,
@@ -5067,7 +5161,8 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             # longer renders those relations, only their counts.
             likes_count_ann=count_subquery(Like, 'post'),
             replies_count_ann=count_subquery(Post, 'parent'),
-            reposts_count_ann=count_subquery(Post, 'repost_parent', q_filter=DIRECT_REPOST_Q),
+            # Direct reposts + quote-reposts combined (see PostSerializer.get_reposts_count).
+            reposts_count_ann=count_subquery(Post, 'repost_parent'),
             bookmarks_count_ann=count_subquery(Bookmark, 'post'),
         )
 
@@ -5115,6 +5210,8 @@ class ExplorePostsViewSet(viewsets.ViewSet):
             candidates = posts.order_by('-timestamp')[:200]
             scored = [(score_post_for_user(p, user, followed_users_ids, user_interest_ids), p) for p in candidates]
             scored.sort(key=lambda x: x[0], reverse=True)
+            from api.services.categorize import interleave_by_author
+            scored = interleave_by_author(scored)
 
             start = (page - 1) * page_size
             end = start + page_size

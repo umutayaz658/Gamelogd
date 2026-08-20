@@ -48,15 +48,29 @@ export function getMediaUrl(path: string | null | undefined): string | null {
 }
 
 /**
- * next/image's optimizer runs server-side (inside the Next.js process) and fetches the
- * original image itself before serving an optimized version — in local Docker dev that means
- * the *frontend* container trying to reach `localhost:8000`, which resolves to itself, not the
- * backend container, and always fails (shows as a broken image). Real deployments serve media
- * from Cloudinary/a public domain, which the optimizer can reach fine, so this only ever
- * matches in the local dev case.
+ * next/image's optimizer runs server-side (inside the Next.js process, proxied through
+ * Vercel's /_next/image in production) and fetches the original image itself before serving
+ * an optimized version. Two cases where that's actively harmful rather than just unnecessary:
+ *
+ * - Local Docker dev: the *frontend* container tries to reach `localhost:8000`, which resolves
+ *   to itself, not the backend container, and always fails (shows as a broken image). Real
+ *   deployments serve media from Cloudinary/a public domain, which the optimizer can reach
+ *   fine, so this only ever matches in the local dev case.
+ * - getImageUrl()'s no-avatar fallback (ui-avatars.com initials / placehold.co placeholder):
+ *   Vercel's image-optimizer proxy caches its response PER SOURCE URL, including error
+ *   responses — a URL first requested before a host was added to next.config's
+ *   images.remotePatterns keeps serving that stale 400 indefinitely after the config is fixed,
+ *   even though the exact same host works fine for every URL requested for the first time
+ *   after the fix. Since these are already tiny, on-the-fly-generated fallback images with
+ *   nothing to gain from Next's resize/optimize pipeline, routing them through the browser
+ *   directly (like a plain <img> would) sidesteps that whole caching failure mode for good —
+ *   this is what made one avatarless user's posts show a broken image while every other
+ *   avatarless user's posts (and that same user's own profile page, which uses a plain <img>)
+ *   rendered the initials fallback fine.
  */
 export function isUnreachableForImageOptimizer(url: string): boolean {
-    return /^https?:\/\/(localhost|127\.0\.0\.1):/.test(url);
+    return /^https?:\/\/(localhost|127\.0\.0\.1):/.test(url)
+        || /^https:\/\/(ui-avatars\.com|placehold\.co)\//.test(url);
 }
 
 export const getImageUrl = (path: string | null | undefined, name?: string) => {

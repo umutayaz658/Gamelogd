@@ -173,6 +173,38 @@ def score_post_for_user(post, user, followed_users_ids, user_interest_ids):
     return score
 
 
+def interleave_by_author(scored_entries, get_item=lambda entry: entry[-1]):
+    """Re-orders a score-descending list of scored (..., item) tuples so consecutive items
+    rarely share an author — a cheap author-diversity pass (a well-known real feed-ranking
+    heuristic: don't let one prolific poster dominate the top of the feed) that needs no
+    ML/extra infra. Shared by FeedViewSet.for_you (score, item_type, item) and
+    ExplorePostsViewSet's mode=for_you (score, item) tuples via the `get_item` extractor —
+    default assumes the item is the last element of the tuple, true for both shapes.
+
+    Groups entries into per-author buckets (each bucket keeps its own score order), orders
+    the buckets by first-appearance (i.e. by each author's best score, since the input is
+    already sorted descending), then round-robins one item per author per pass. With enough
+    distinct authors this guarantees no two consecutive results share an author; with fewer,
+    it still spaces them out as much as physically possible.
+    """
+    buckets = {}
+    order = []
+    for entry in scored_entries:
+        author_id = get_item(entry).user_id
+        if author_id not in buckets:
+            buckets[author_id] = []
+            order.append(author_id)
+        buckets[author_id].append(entry)
+
+    interleaved = []
+    while len(interleaved) < len(scored_entries):
+        for author_id in order:
+            bucket = buckets[author_id]
+            if bucket:
+                interleaved.append(bucket.pop(0))
+    return interleaved
+
+
 def update_all_trending_scores():
     """Update trending scores for all recent posts."""
     from core.models import Post

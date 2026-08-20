@@ -726,8 +726,9 @@ class SimplePostSerializer(serializers.ModelSerializer):
         return False
 
     def get_reposts_count(self, obj):
+        # Direct reposts + quote-reposts combined — see PostSerializer.get_reposts_count.
         ann = getattr(obj, 'reposts_count_ann', None)
-        return ann if ann is not None else obj.reposts.filter(DIRECT_REPOST_Q).count()
+        return ann if ann is not None else obj.reposts.count()
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -910,11 +911,12 @@ class PostSerializer(serializers.ModelSerializer):
         return ann if ann is not None else obj.bookmarks.count()
 
     def get_reposts_count(self, obj):
-        # Count only direct reposts (see DIRECT_REPOST_Q) so this matches the repost toggle
-        # action (views.py PostViewSet.repost) and the is_reposted flag. Quote-reposts are
-        # separate posts with their own content/media and are not part of this counter.
+        # Matches X/Twitter: the number shown next to the repost icon is direct reposts PLUS
+        # quote-reposts combined (obj.reposts holds both — see DIRECT_REPOST_Q for how they're
+        # told apart). is_reposted below stays direct-only on purpose — quoting a post doesn't
+        # light up the repost icon for the quoting user, only a plain repost does.
         ann = getattr(obj, 'reposts_count_ann', None)
-        return ann if ann is not None else obj.reposts.filter(DIRECT_REPOST_Q).count()
+        return ann if ann is not None else obj.reposts.count()
 
     def get_is_reposted(self, obj):
         request = self.context.get('request')
