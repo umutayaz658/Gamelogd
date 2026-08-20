@@ -312,7 +312,7 @@ export default function FollowersFollowingModal({
                                                         disabled={actionLoadingId === user.id}
                                                         className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                                                             user.is_following
-                                                                ? 'bg-zinc-800 border border-zinc-750 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                                                                ? 'bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white'
                                                                 : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/20'
                                                         }`}
                                                     >

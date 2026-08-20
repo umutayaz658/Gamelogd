@@ -53,6 +53,9 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const shareMenuRef = useRef<HTMLDivElement>(null);
     const [showReportModal, setShowReportModal] = useState(false);
 
+    const [showRepostMenu, setShowRepostMenu] = useState(false);
+    const repostMenuRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -60,6 +63,9 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
             }
             if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
                 setShowShareMenu(false);
+            }
+            if (repostMenuRef.current && !repostMenuRef.current.contains(event.target as Node)) {
+                setShowRepostMenu(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -450,13 +456,13 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 <span className="text-sm">{formatCount(repliesCount)}</span>
                             </button>
 
-                            <div className="relative">
+                            <div className="relative" ref={repostMenuRef}>
                                 <button
                                     className="flex items-center gap-2 text-zinc-500 hover:text-green-500 group transition-colors"
-                                    title="Quote Review"
+                                    title={t('quoteReview')}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        openQuoteModal({ ...review, type: 'review' } as any);
+                                        setShowRepostMenu(!showRepostMenu);
                                     }}
                                 >
                                     <div className="p-2 rounded-full group-hover:bg-green-500/10 transition-colors">
@@ -464,6 +470,32 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     </div>
                                     <span className="text-sm">{formatCount(repostsCount)}</span>
                                 </button>
+                                {showRepostMenu && (
+                                    <div className="absolute left-0 mt-1 w-32 bg-zinc-900 border border-zinc-850 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowRepostMenu(false);
+                                                openQuoteModal({ ...review, type: 'review' } as any);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                            {t('quoteReview')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowRepostMenu(false);
+                                                router.push(`/${review.user.username}/review/${review.id}/quotes`);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+                                            {t('viewQuotes')}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <button

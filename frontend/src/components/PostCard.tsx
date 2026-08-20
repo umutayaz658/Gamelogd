@@ -241,6 +241,21 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         return () => window.removeEventListener('reply-created', handleReplyCreated);
     }, [post.id]);
 
+    // Same idea for quote-reposts: 'post-created' carries the freshly created quote post
+    // itself (see ReplyModal.tsx), so bump this post's repost count (which is direct+quote
+    // combined — see PostSerializer.get_reposts_count) when it's the one just quoted. Mirrors
+    // ReviewCard's identical listener for repost_parent_review.
+    useEffect(() => {
+        const handlePostCreated = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.repost_parent === post.id) {
+                setRepostsCount(prev => prev + 1);
+            }
+        };
+        window.addEventListener('post-created', handlePostCreated);
+        return () => window.removeEventListener('post-created', handlePostCreated);
+    }, [post.id]);
+
     const handleShare = async () => {
         const url = `${window.location.origin}/${post.user.username}/status/${post.id}`;
         if (typeof navigator.share === 'function') {
@@ -880,6 +895,17 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                                             {t('quotePost')}
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowRepostMenu(false);
+                                                router.push(`/${post.user.username}/status/${post.id}/quotes`);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+                                            {t('viewQuotes')}
                                         </button>
                                     </div>
                                 )}

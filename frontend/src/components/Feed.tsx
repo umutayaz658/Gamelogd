@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Calendar, ExternalLink } from 'lucide-react';
-import api, { unwrapList } from '@/lib/api';
 import { Post, Review, News, FeedItem } from '@/types';
 import PostCard from '@/components/PostCard';
 import ReviewCard from '@/components/ReviewCard';
 import PostComposer from '@/components/PostComposer';
-import FeedSkeleton from '@/components/skeletons/FeedSkeleton';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/lib/useTranslation';
 
@@ -20,52 +18,16 @@ interface FeedProps {
 export default function Feed({ initialItems = [], hideComposer = false }: FeedProps) {
     const { t } = useTranslation();
     const [items, setItems] = useState<FeedItem[]>(initialItems);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
 
-    // Fetch Posts & Reviews
+    // Every caller (HomeClient, bookmarks, ProfileClient's activity/reviews/replies/opinions
+    // tabs) already fetches its own data and hands it down as `initialItems` — Feed itself
+    // has no business fetching. It used to fall back to an unfiltered `/posts/` + `/reviews/`
+    // fetch whenever `initialItems` was empty, which couldn't tell "parent hasn't fetched yet"
+    // apart from "parent fetched and the real answer is zero results" — a brand-new user with
+    // zero follows got an empty (correct) response from /feed/following/, and Feed silently
+    // replaced it with everyone's posts.
     useEffect(() => {
-        let isMounted = true;
-
-        const fetchFeed = async () => {
-            if (initialItems.length > 0) {
-                setItems(initialItems);
-                return;
-            }
-
-            setIsLoading(true);
-            setError(null);
-            try {
-                // Parallel fetch
-                const [postsRes, reviewsRes] = await Promise.all([
-                    api.get('/posts/'),
-                    api.get('/reviews/')
-                ]);
-
-                if (isMounted) {
-                    const posts = unwrapList<Post>(postsRes.data).map((p: Post) => ({ ...p, type: 'post' as const }));
-                    const reviews = unwrapList<Review>(reviewsRes.data).map((r: Review) => ({ ...r, type: 'review' as const }));
-
-                    // Merge and Sort by timestamp desc
-                    const combined = [...posts, ...reviews].sort((a, b) =>
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-
-                    setItems(combined);
-                }
-            } catch (err) {
-                console.error('Failed to fetch feed:', err);
-                if (isMounted) {
-                    setError('Failed to load feed.');
-                }
-            } finally {
-                if (isMounted) {
-                    setIsLoading(false);
-                }
-            }
-        };
-
-        fetchFeed();
+        setItems(initialItems);
 
         const handleCreated = (e: Event) => {
             const customEvent = e as CustomEvent<Post>;
@@ -79,7 +41,6 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
         window.addEventListener('post-created', handleCreated);
 
         return () => {
-            isMounted = false;
             window.removeEventListener('post-created', handleCreated);
         };
     // Re-sync whenever the parent hands us a new initialItems array — not just when its
@@ -120,13 +81,7 @@ export default function Feed({ initialItems = [], hideComposer = false }: FeedPr
             {!hideComposer && <PostComposer onPostCreated={handlePostCreated} />}
 
             {/* Feed List */}
-            {isLoading && items.length === 0 ? (
-                <FeedSkeleton />
-            ) : error ? (
-                <div className="text-center py-10 text-red-400 bg-red-500/10 rounded-xl border border-red-500/20">
-                    {error}
-                </div>
-            ) : items.length === 0 ? (
+            {items.length === 0 ? (
                 <div className="text-center py-10 text-zinc-500">
                     {t('noActivityYetShareSomething')}
                 </div>

@@ -7,6 +7,7 @@ import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import Feed from "@/components/Feed";
 import FeedSkeleton from "@/components/skeletons/FeedSkeleton";
+import WhoToFollowRail from "@/components/WhoToFollowRail";
 import { fetcher } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -92,6 +93,14 @@ export default function HomeClient({ initialFeed }: HomeClientProps) {
                     <span>{t('tryAgain')}</span>
                   </button>
                 </div>
+              </div>
+            ) : activeTab === 'following' && (posts ?? []).length === 0 ? (
+              <div className="flex flex-col gap-6">
+                <div className="text-center py-6">
+                  <p className="font-bold text-white text-lg mb-1">{t('notFollowingAnyoneYet')}</p>
+                  <p className="text-sm text-zinc-500">{t('notFollowingAnyoneYetSubtitle')}</p>
+                </div>
+                <WhoToFollowRail layout="horizontal" limit={8} />
               </div>
             ) : (
               <Feed initialItems={posts ?? []} />
