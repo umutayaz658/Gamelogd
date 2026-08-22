@@ -69,7 +69,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                     {/* position:relative scopes Glow to just this frame — not the whole content
                         column — so it can't bleed past the frame onto the rating/quote below it. */}
                     <div style={{ display: 'flex', position: 'relative' }}>
-                        <Glow size={560} />
+                        <Glow size={560} color={ratingColor} />
                         <GlassFrame width={COVER_FRAME.width} height={COVER_FRAME.height}>
                             {review.game?.cover_image ? (
                                 // eslint-disable-next-line @next/next/no-img-element
