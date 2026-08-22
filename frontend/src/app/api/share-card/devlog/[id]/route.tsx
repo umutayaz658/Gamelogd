@@ -25,7 +25,13 @@ interface DevlogCardData {
     title?: string | null;
     content?: string;
     user?: { username: string; settings?: { privateProfile?: boolean } };
-    project_details?: { id: number; title: string; cover_image: string | null } | null;
+    project_details?: {
+        id: number;
+        title: string;
+        cover_image: string | null;
+        owner_username: string;
+        organisation_name: string | null;
+    } | null;
     media?: { id: number; file: string; media_type: 'image' | 'video'; order: number }[];
     image?: string | null;
 }
@@ -168,7 +174,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                         <FooterIdentity
                             logoSrc={post.project_details.cover_image || logoSrc}
                             primary={post.project_details.title}
-                            secondary="Devlog"
+                            secondary={post.project_details.organisation_name || `@${post.project_details.owner_username}`}
                         />
                     }
                 />

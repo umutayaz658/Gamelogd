@@ -83,7 +83,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
                 </div>
 
                 <Divider />
-                <Footer logoSrc={logoSrc} left={<FooterText primary="Organisation in Gamelogd" />} />
+                <Footer logoSrc={logoSrc} left={<FooterText primary="Organisation in Gamelogd" color={colors.muted} />} />
             </CardShell>
         ),
         { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }
