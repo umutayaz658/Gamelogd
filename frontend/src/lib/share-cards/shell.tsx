@@ -104,7 +104,12 @@ export function CardShell({ children }: { children: React.ReactNode }) {
 // background simply covers the glow's whole footprint and nothing is visible at all (this
 // happened for real once the Project/Organisation frames were enlarged to ~90% of card
 // width — a 420px glow was smaller than the frame it was supposed to peek out from behind).
-export function Glow({ size = 420 }: { size?: number } = {}) {
+//
+// `color` defaults to the shared glow1 accent but can be overridden per-card — the Review
+// card passes the rating's own color so the glow reads as an extension of the score. Must be
+// a 6-digit hex string (not a named color/rgb()) since the alpha suffixes below are appended
+// directly onto it.
+export function Glow({ size = 420, color = colors.glow1 }: { size?: number; color?: string } = {}) {
     const blurOuter = Math.round(size * 0.52);
     const spreadOuter = Math.round(size * 0.33);
     const blurInner = Math.round(size * 0.29);
@@ -121,11 +126,11 @@ export function Glow({ size = 420 }: { size?: number } = {}) {
                 marginTop: -size / 2,
                 display: 'flex',
                 borderRadius: 999,
-                background: colors.glow1,
+                background: color,
                 opacity: 0.35,
                 // Two shadow layers of the SAME color at different blur/spread give a soft
                 // falloff without the two-tone ring an emerald+indigo blend used to produce.
-                boxShadow: `0 0 ${blurOuter}px ${spreadOuter}px ${colors.glow1}55, 0 0 ${blurInner}px ${spreadInner}px ${colors.glow1}77`,
+                boxShadow: `0 0 ${blurOuter}px ${spreadOuter}px ${color}55, 0 0 ${blurInner}px ${spreadInner}px ${color}77`,
             }}
         />
     );

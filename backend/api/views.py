@@ -874,9 +874,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         if hasattr(cover_image, 'url'):
             url = cover_image.url
             if request and not str(url).startswith('http'):
-                host = request.get_host()
-                if 'backend' in host: host = host.replace('backend', '127.0.0.1')
-                return f"{request.scheme}://{host}{url}"
+                return request.build_absolute_uri(url)
         return None
 
     @action(detail=True, methods=['get'])
@@ -1403,10 +1401,8 @@ class GameViewSet(viewsets.ReadOnlyModelViewSet):
                 elif hasattr(g.cover_image, 'url'):
                     url = g.cover_image.url
                     if request and not str(url).startswith('http'):
-                        host = request.get_host()
-                        if 'backend' in host: host = host.replace('backend', '127.0.0.1')
-                        image_url = f"{request.scheme}://{host}{url}"
-            
+                        image_url = request.build_absolute_uri(url)
+
             result.append({
                 "id": g.id,
                 "title": g.title,
@@ -1439,10 +1435,8 @@ class GameViewSet(viewsets.ReadOnlyModelViewSet):
                 elif hasattr(g.cover_image, 'url'):
                     url = g.cover_image.url
                     if request and not str(url).startswith('http'):
-                        host = request.get_host()
-                        if 'backend' in host: host = host.replace('backend', '127.0.0.1')
-                        image_url = f"{request.scheme}://{host}{url}"
-            
+                        image_url = request.build_absolute_uri(url)
+
             result.append({
                 "id": g.id,
                 "title": g.title,

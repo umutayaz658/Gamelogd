@@ -35,6 +35,7 @@ export default function ShareCardModal({
     const [loadError, setLoadError] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
     const [sharing, setSharing] = useState(false);
+    const [cardFile, setCardFile] = useState<File | null>(null);
 
     const baseCardUrl = `/api/share-card/${cardType}/${entityId}`;
     const cardUrl = retryCount > 0 ? `${baseCardUrl}?retry=${retryCount}` : baseCardUrl;
@@ -49,23 +50,43 @@ export default function ShareCardModal({
         return () => clearTimeout(timer);
     }, [isOpen, imageLoaded, cardUrl]);
 
+    // Pre-fetches the card as a File as soon as it's done rendering, ahead of any click.
+    // navigator.share() only works within the browser's "transient user activation" window
+    // from the click that triggered it — desktop Chrome/Edge enforce this strictly and it
+    // expires fast, so awaiting a fetch()+blob() *inside* the click handler (the old approach)
+    // made share() throw NotAllowedError on desktop by the time the network round-trip
+    // finished, while mobile browsers are lenient enough about the timing that it still
+    // worked there. Fetching ahead of time means the click handler can call share()
+    // synchronously with an already-available File, with no await in front of it.
+    useEffect(() => {
+        if (!imageLoaded) return;
+        let cancelled = false;
+        fetch(cardUrl)
+            .then((res) => (res.ok ? res.blob() : Promise.reject()))
+            .then((blob) => {
+                if (!cancelled) setCardFile(new File([blob], fileName, { type: 'image/png' }));
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [imageLoaded, cardUrl, fileName]);
+
     if (!isOpen) return null;
 
     const handleRetry = () => {
         setImageLoaded(false);
         setLoadError(false);
+        setCardFile(null);
         setRetryCount((n) => n + 1);
     };
 
     const handleShare = async () => {
+        if (!cardFile) return;
         setSharing(true);
         try {
-            const res = await fetch(cardUrl);
-            if (!res.ok) throw new Error('share card fetch failed');
-            const blob = await res.blob();
-            const file = new File([blob], fileName, { type: 'image/png' });
-            if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-                await navigator.share({ files: [file], title: shareTitle, text: shareText });
+            if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [cardFile] })) {
+                await navigator.share({ files: [cardFile], title: shareTitle, text: shareText });
             } else {
                 toast.error(t('shareNotSupported'));
             }
@@ -140,7 +161,7 @@ export default function ShareCardModal({
                     </a>
                     <button
                         onClick={handleShare}
-                        disabled={sharing || !imageLoaded}
+                        disabled={sharing || !imageLoaded || !cardFile}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl font-semibold text-sm transition-colors cursor-pointer disabled:cursor-default"
                     >
                         {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
