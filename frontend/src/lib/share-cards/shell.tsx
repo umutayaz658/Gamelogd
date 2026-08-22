@@ -242,11 +242,15 @@ export function Footer({ left, logoSrc }: { left: React.ReactNode; logoSrc: stri
 }
 
 // Small logo + stacked (primary bold / secondary muted) text — used by Devlog (project
-// identity) and Project (owner/org identity) footers.
+// identity), Project (owner/org identity), Review, and Game DNA footers.
 //
 // `logoSrc` is optional — a missing user avatar should read as "no photo", not as the
 // Gamelogd brand mark standing in for one (that read as if it were the user's actual
 // profile picture). When it's absent this renders a plain initial-letter tile instead.
+//
+// `secondary` is optional — when omitted (Project's footer has nothing to put there), the
+// text column collapses to just the primary line; the row's own `alignItems: 'center'`
+// already re-centers that single line against the logo without any extra styling.
 export function FooterIdentity({
     logoSrc,
     primary,
@@ -254,7 +258,7 @@ export function FooterIdentity({
 }: {
     logoSrc?: string | null;
     primary: string;
-    secondary: string;
+    secondary?: string;
 }) {
     const initial = primary.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?';
     return (
@@ -283,18 +287,27 @@ export function FooterIdentity({
             )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 38, fontWeight: 700, color: colors.text }}>{primary}</div>
-                <div style={{ fontSize: 28, color: colors.muted, marginTop: 4 }}>{secondary}</div>
+                {secondary ? <div style={{ fontSize: 28, color: colors.muted, marginTop: 4 }}>{secondary}</div> : null}
             </div>
         </div>
     );
 }
 
-// Plain stacked (primary/secondary) text with no leading logo — Review, Game DNA, and
-// Organisation's single-line footer all use this.
-export function FooterText({ primary, secondary }: { primary: string; secondary?: string }) {
+// Plain stacked (primary/secondary) text with no leading logo — Organisation's single-line
+// footer ("Organisation in Gamelogd") is the only current user, always muted rather than the
+// bold `colors.text` default — it's a category label, not an identity name.
+export function FooterText({
+    primary,
+    secondary,
+    color = colors.text,
+}: {
+    primary: string;
+    secondary?: string;
+    color?: string;
+}) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 38, fontWeight: 700, color: colors.text }}>{primary}</div>
+            <div style={{ fontSize: 38, fontWeight: 700, color }}>{primary}</div>
             {secondary ? <div style={{ fontSize: 28, color: colors.muted, marginTop: 4 }}>{secondary}</div> : null}
         </div>
     );

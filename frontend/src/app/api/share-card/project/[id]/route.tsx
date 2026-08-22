@@ -91,7 +91,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 <Divider />
                 <Footer
                     logoSrc={logoSrc}
-                    left={<FooterIdentity logoSrc={identityLogo} primary={identityName} secondary="Project" />}
+                    left={<FooterIdentity logoSrc={identityLogo} primary={identityName} />}
                 />
             </CardShell>
         ),

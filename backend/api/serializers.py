@@ -947,11 +947,14 @@ class PostSerializer(serializers.ModelSerializer):
     def get_project_details(self, obj):
         if obj.project_parent:
             request = self.context.get('request')
-            cover = obj.project_parent.cover_image
+            project = obj.project_parent
+            cover = project.cover_image
             return {
-                'id': obj.project_parent.id,
-                'title': obj.project_parent.title,
-                'cover_image': request.build_absolute_uri(cover.url) if cover and request else (cover.url if cover else None)
+                'id': project.id,
+                'title': project.title,
+                'cover_image': request.build_absolute_uri(cover.url) if cover and request else (cover.url if cover else None),
+                'owner_username': project.owner.username,
+                'organisation_name': project.organisation.name if project.organisation else None,
             }
         return None
 
