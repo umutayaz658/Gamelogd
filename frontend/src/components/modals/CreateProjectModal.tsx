@@ -34,6 +34,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
     const [coverImage, setCoverImage] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [showTechDropdown, setShowTechDropdown] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +65,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        setError(null);
 
         try {
             const data = new FormData();
@@ -92,8 +94,21 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             setCoverImage(null);
             setPreviewUrl(null);
             setShowTechDropdown(false);
-        } catch (error) {
-            console.error('Failed to create project:', error);
+        } catch (err: any) {
+            console.error('Failed to create project:', err);
+            const responseData = err.response?.data;
+            if (responseData) {
+                if (typeof responseData === 'object') {
+                    const message = Object.entries(responseData)
+                        .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
+                        .join('\n');
+                    setError(message);
+                } else {
+                    setError(responseData);
+                }
+            } else {
+                setError('Failed to create project. Check input details.');
+            }
         } finally {
             setLoading(false);
         }
@@ -171,6 +186,11 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
  
                     {/* Scrollable Form Content */}
                     <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin-dark">
+                        {error && (
+                            <div className="p-3.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs font-semibold whitespace-pre-line animate-in fade-in duration-200">
+                                {error}
+                            </div>
+                        )}
                         {/* Title Input */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('projectTitle')}</label>
