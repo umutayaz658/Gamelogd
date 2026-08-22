@@ -52,7 +52,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
         getCardFonts(),
     ]);
 
-    const genres = dna?.genres?.slice(0, 5) ?? [];
+    const genres = dna?.genres?.slice(0, 7) ?? [];
     if (!dna || genres.length === 0) {
         return new ImageResponse(
             <FallbackCard logoSrc={logoSrc} message="No Game DNA yet" />,
