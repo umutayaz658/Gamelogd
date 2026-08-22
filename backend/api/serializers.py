@@ -507,10 +507,7 @@ class GameSerializer(serializers.ModelSerializer):
             return value
         request = self.context.get('request')
         if request:
-            host = request.get_host()
-            if 'backend' in host:
-                host = host.replace('backend', '127.0.0.1')
-            return f"{request.scheme}://{host}{obj.cover_image.url}"
+            return request.build_absolute_uri(obj.cover_image.url)
         return value
 
 class GameDetailSerializer(serializers.ModelSerializer):

@@ -58,15 +58,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         (
             <CardShell>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
-                    <Glow size={650} />
-                    <GlassFrame width={COVER_FRAME.width} height={COVER_FRAME.height}>
-                        {coverImage ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={coverImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                            <div style={{ display: 'flex', width: '100%', height: '100%', background: colors.glassFill }} />
-                        )}
-                    </GlassFrame>
+                    {/* position:relative scopes Glow to just this frame — not the whole content
+                        column — so it can't bleed past the frame onto the title below it. */}
+                    <div style={{ display: 'flex', position: 'relative' }}>
+                        <Glow size={650} />
+                        <GlassFrame width={COVER_FRAME.width} height={COVER_FRAME.height}>
+                            {coverImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={coverImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                                <div style={{ display: 'flex', width: '100%', height: '100%', background: colors.glassFill }} />
+                            )}
+                        </GlassFrame>
+                    </div>
 
                     <div
                         style={{

@@ -50,17 +50,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
         (
             <CardShell>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
-                    <Glow size={650} />
-                    {/* Same square glass frame as the Project card — deliberately not circular,
-                        so Project and Organisation read as siblings in the same family. */}
-                    <GlassFrame width={LOGO_FRAME.width} height={LOGO_FRAME.height}>
-                        {org.logo ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={org.logo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                            <div style={{ display: 'flex', width: '100%', height: '100%', background: colors.glassFill }} />
-                        )}
-                    </GlassFrame>
+                    {/* position:relative scopes Glow to just this frame — not the whole content
+                        column — so it can't bleed past the frame onto the title below it. */}
+                    <div style={{ display: 'flex', position: 'relative' }}>
+                        <Glow size={650} />
+                        {/* Same square glass frame as the Project card — deliberately not circular,
+                            so Project and Organisation read as siblings in the same family. */}
+                        <GlassFrame width={LOGO_FRAME.width} height={LOGO_FRAME.height}>
+                            {org.logo ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={org.logo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                                <div style={{ display: 'flex', width: '100%', height: '100%', background: colors.glassFill }} />
+                            )}
+                        </GlassFrame>
+                    </div>
 
                     <div
                         style={{

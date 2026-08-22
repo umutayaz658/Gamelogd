@@ -66,18 +66,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         (
             <CardShell>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
-                    <Glow size={560} />
-                    <GlassFrame width={COVER_FRAME.width} height={COVER_FRAME.height}>
-                        {review.game?.cover_image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                                src={review.game.cover_image}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                        ) : (
-                            <div style={{ display: 'flex', width: '100%', height: '100%', background: colors.glassFill }} />
-                        )}
-                    </GlassFrame>
+                    {/* position:relative scopes Glow to just this frame — not the whole content
+                        column — so it can't bleed past the frame onto the rating/quote below it. */}
+                    <div style={{ display: 'flex', position: 'relative' }}>
+                        <Glow size={560} />
+                        <GlassFrame width={COVER_FRAME.width} height={COVER_FRAME.height}>
+                            {review.game?.cover_image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={review.game.cover_image}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                />
+                            ) : (
+                                <div style={{ display: 'flex', width: '100%', height: '100%', background: colors.glassFill }} />
+                            )}
+                        </GlassFrame>
+                    </div>
 
                     <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: 48 }}>
                         <div style={{ display: 'flex', fontSize: 124, fontWeight: 800, color: ratingColor, letterSpacing: -2 }}>
