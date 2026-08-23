@@ -55,6 +55,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
     const [nextPlaythrough, setNextPlaythrough] = useState(2);
     const [playtimeHours, setPlaytimeHours] = useState<number | ''>('');
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
+    const [gamePlatforms, setGamePlatforms] = useState<string[]>([]);
 
     // Reset state on open/close
     useEffect(() => {
@@ -123,6 +124,23 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, selectedGame?.id, user?.username]);
+
+    // The search endpoint's `platforms` field is empty for almost every game — it's only
+    // populated on-demand (see GameViewSet.details / fetch_game_details) the first time
+    // someone opens that game's own page. Fetch the real per-game list here so the platform
+    // picker offers what the game was actually released on instead of a generic fallback.
+    useEffect(() => {
+        if (!isOpen || !selectedGame) { setGamePlatforms([]); return; }
+        setGamePlatforms(selectedGame.platforms && selectedGame.platforms.length > 0 ? selectedGame.platforms : []);
+        let cancelled = false;
+        api.get(`/games/${selectedGame.id}/details/`).then(res => {
+            if (cancelled) return;
+            if (Array.isArray(res.data?.platforms) && res.data.platforms.length > 0) {
+                setGamePlatforms(res.data.platforms);
+            }
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [isOpen, selectedGame?.id]);
 
     // Search Logic
     useEffect(() => {
@@ -391,10 +409,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                             showSelectionAccent={false}
                                             matchTriggerWidth
                                             fullWidth
-                                            options={(selectedGame?.platforms && selectedGame.platforms.length > 0
-                                                ? selectedGame.platforms
-                                                : DEFAULT_PLATFORMS
-                                            ).map((platform: string) => ({ value: platform, label: platform }))}
+                                            options={(gamePlatforms.length > 0 ? gamePlatforms : DEFAULT_PLATFORMS)
+                                                .map((platform: string) => ({ value: platform, label: platform }))}
                                         />
                                     </div>
                                 </div>
