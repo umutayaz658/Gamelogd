@@ -579,9 +579,17 @@ class ReviewSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked',
             'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
-            'is_liked_by_user', 'likes_count', 'playthrough_number', 'replies_count', 'reposts_count'
+            'is_liked_by_user', 'likes_count', 'playthrough_number', 'replies_count', 'reposts_count',
+            'platform',
         ]
         read_only_fields = ['id', 'user', 'timestamp']
+
+    def validate_platform(self, value):
+        if not value:
+            return value
+        import re
+        value = re.sub(r'<[^>]+>', '', str(value)).strip()[:100]
+        return value
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')

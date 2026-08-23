@@ -2703,7 +2703,7 @@ class LibraryViewSet(viewsets.ModelViewSet):
     serializer_class = LibraryEntrySerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['user__username', 'platform', 'status']
+    filterset_fields = ['user__username', 'platform', 'status', 'game']
     ordering_fields = ['playtime_forever', 'game__title']
     ordering = ['-playtime_forever']
 

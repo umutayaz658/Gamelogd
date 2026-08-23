@@ -48,6 +48,11 @@ class Review(models.Model):
     # Replay tracking
     playthrough_number = models.PositiveIntegerField(default=1)
 
+    # Platform this specific playthrough was logged on. Kept on the review itself (rather
+    # than only on the shared LibraryEntry) so replays of the same game on different
+    # platforms each keep their own correct value for display.
+    platform = models.CharField(max_length=100, blank=True, default='')
+
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     # Auto-assigned (language-agnostic embedding classification, see

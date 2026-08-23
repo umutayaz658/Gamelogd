@@ -69,6 +69,7 @@ export interface Review {
     is_completed: boolean;
     contains_spoilers: boolean;
     playthrough_number?: number;
+    platform?: string;
     timestamp: string;
     type?: 'review';
     replies_count?: number;

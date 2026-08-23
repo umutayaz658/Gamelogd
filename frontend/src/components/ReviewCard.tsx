@@ -392,6 +392,13 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     </span>
                                 </div>
 
+                                {/* Platform */}
+                                {review.platform && (
+                                    <div className="text-xs text-zinc-500 font-medium mb-2">
+                                        {review.platform}
+                                    </div>
+                                )}
+
                                 {/* Badges */}
                                 <div className="flex flex-wrap gap-2 mb-2">
                                     {review.playthrough_number && review.playthrough_number > 1 && (

@@ -23,9 +23,13 @@ interface FilterDropdownProps {
     // of the default fixed w-56 — for call sites where the menu should visually
     // "belong" to its button rather than being its own independent size.
     matchTriggerWidth?: boolean;
+    // When true, the trigger button stretches to fill its container and pins the
+    // chevron to the right edge, so this can drop into a form layout as a styled
+    // replacement for a native <select> instead of only sitting inline in a toolbar.
+    fullWidth?: boolean;
 }
 
-export default function FilterDropdown({ label, icon, options, value, onChange, showAllOption = true, allLabel, align = 'left', showSelectionAccent = true, matchTriggerWidth = false }: FilterDropdownProps) {
+export default function FilterDropdown({ label, icon, options, value, onChange, showAllOption = true, allLabel, align = 'left', showSelectionAccent = true, matchTriggerWidth = false, fullWidth = false }: FilterDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [position, setPosition] = useState<{ top: number; left?: number; right?: number; width?: number } | null>(null);
     const [mounted, setMounted] = useState(false);
@@ -84,20 +88,20 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
     const isAccented = showSelectionAccent && !!value;
 
     return (
-        <div className="relative">
+        <div className={fullWidth ? 'relative w-full' : 'relative'}>
             <button
                 ref={buttonRef}
                 onClick={handleToggle}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${isOpen || isAccented
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${fullWidth ? 'w-full justify-between' : ''} ${isOpen || isAccented
                         ? 'bg-zinc-800 border-zinc-700 text-white'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
                     }`}
             >
-                {icon && <span className={isAccented ? "text-emerald-500" : ""}>{icon}</span>}
-                <span className={isAccented ? "text-emerald-500" : ""}>
-                    {selectedOption ? selectedOption.label : label}
+                <span className={`flex items-center gap-2 min-w-0 truncate ${isAccented ? "text-emerald-500" : ""}`}>
+                    {icon}
+                    <span className="truncate">{selectedOption ? selectedOption.label : label}</span>
                 </span>
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {mounted && isOpen && position && createPortal(
