@@ -116,7 +116,7 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
                         // ever clipping an option label wider than a short trigger like "All".
                         minWidth: matchTriggerWidth ? position.width : undefined,
                     }}
-                    className={`${matchTriggerWidth ? 'w-max' : 'w-56'} max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150`}
+                    className={`${matchTriggerWidth ? 'w-max' : 'w-56'} max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-[999999] animate-in fade-in zoom-in-95 duration-150`}
                 >
                     <div className="p-1">
                         {showAllOption && (
