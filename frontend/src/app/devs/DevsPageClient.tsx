@@ -16,6 +16,7 @@ import PlaytestFeedback from '@/components/devs/PlaytestFeedback';
 import WorkspaceSettings from '@/components/devs/WorkspaceSettings';
 import PostCard from '@/components/PostCard';
 import ProjectCard from '@/components/ProjectCard';
+import BoardSwitcher from '@/components/devs/BoardSwitcher';
 import CreateProjectModal from '@/components/modals/CreateProjectModal';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import api from '@/lib/api';
@@ -24,7 +25,7 @@ import { Post, Project } from '@/types';
 export default function DevsPageClient() {
     const { t } = useTranslation();
     const { user } = useAuth();
-    const { activeTool, activeWorkspace, setActiveTool } = useWorkspace();
+    const { activeTool, activeWorkspace, activeBoard, setActiveTool, logActivity } = useWorkspace();
 
     const [devlogs, setDevlogs] = useState<Post[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -33,6 +34,10 @@ export default function DevsPageClient() {
     const [retryToken, setRetryToken] = useState(0);
     const [showProjectModal, setShowProjectModal] = useState(false);
     const [showDevlogModal, setShowDevlogModal] = useState(false);
+
+    const scopedProjectId = activeBoard.startsWith('project_')
+        ? parseInt(activeBoard.replace('project_', ''), 10)
+        : null;
 
     // Fetch data only when on devlogs / projects tool
     useEffect(() => {
@@ -44,16 +49,23 @@ export default function DevsPageClient() {
             try {
                 const params = new URLSearchParams();
                 params.append('manageable', 'true');
-                if (activeWorkspace.type === 'org' && activeWorkspace.org) {
-                    params.append('organisation', String(activeWorkspace.org.id));
-                }
                 if (activeTool === 'devlogs') {
+                    if (activeBoard.startsWith('project_')) {
+                        params.append('project_parent', activeBoard.replace('project_', ''));
+                    } else if (activeBoard === 'org' && activeWorkspace.type === 'org' && activeWorkspace.org) {
+                        params.append('organisation_slug', activeWorkspace.org.slug);
+                    } else if (activeBoard === 'solo') {
+                        params.append('personal_only', 'true');
+                    }
                     const res = await api.get(`/posts/?${params.toString()}`);
                     const data = res.data.results ?? res.data;
                     setDevlogs([...data].sort((a: Post, b: Post) =>
                         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
                     ));
                 } else {
+                    if (activeWorkspace.type === 'org' && activeWorkspace.org) {
+                        params.append('organisation', String(activeWorkspace.org.id));
+                    }
                     const res = await api.get(`/projects/?${params.toString()}`);
                     setProjects(res.data.results ?? res.data);
                 }
@@ -65,7 +77,7 @@ export default function DevsPageClient() {
             finally { setLoading(false); }
         };
         fetchData();
-    }, [activeTool, activeWorkspace, user, retryToken]);
+    }, [activeTool, activeWorkspace, activeBoard, user, retryToken]);
 
     const loadErrorView = (
         <div className="text-center py-20 space-y-3">
@@ -126,12 +138,18 @@ export default function DevsPageClient() {
                     <div className="space-y-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="text-xl font-bold text-white">{t('devlogsPublisher')}</h2>
+                                <div className="flex items-center gap-3">
+                                    <BoardSwitcher />
+                                    <span className="text-zinc-700 text-lg font-light" aria-hidden="true">/</span>
+                                    <h2 className="text-xl font-bold text-white">{t('devlogsPublisher')}</h2>
+                                </div>
                                 <p className="text-sm text-zinc-500 mt-0.5">{t('publishDevlogsHint')}</p>
                             </div>
                             <button
-                                onClick={() => setShowDevlogModal(true)}
-                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20"
+                                onClick={() => scopedProjectId && setShowDevlogModal(true)}
+                                disabled={!scopedProjectId}
+                                title={!scopedProjectId ? t('selectProjectToLogDev') : undefined}
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-900/20"
                             >
                                 <PlusCircle className="w-4 h-4" />
                                 {t('newDevlog')}
@@ -172,7 +190,7 @@ export default function DevsPageClient() {
                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
                             </div>
                         ) : loadError ? loadErrorView : projects.length > 0 ? (
-                            <div className="flex flex-col gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {projects.map((p) => <ProjectCard key={p.id} project={p} />)}
                             </div>
                         ) : (
@@ -209,11 +227,15 @@ export default function DevsPageClient() {
                     setActiveTool('projects');
                 }}
             />
-            <CreateDevlogModal
-                isOpen={showDevlogModal}
-                onClose={() => setShowDevlogModal(false)}
-                onSuccess={(newPost) => setDevlogs((prev) => [newPost, ...prev])}
-            />
+            {scopedProjectId && (
+                <CreateDevlogModal
+                    isOpen={showDevlogModal}
+                    onClose={() => setShowDevlogModal(false)}
+                    projectId={scopedProjectId}
+                    onLogged={() => logActivity('devlog_published', 'A new devlog was published.', '📰')}
+                    onSuccess={(newPost) => setDevlogs((prev) => [newPost, ...prev])}
+                />
+            )}
         </>
     );
 }

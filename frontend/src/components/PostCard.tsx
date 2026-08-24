@@ -511,11 +511,11 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 >
                                     {formatHandle(author.slug.toString().toLowerCase())}
                                 </Link>
-                            ) : (
-                                <span className="text-zinc-500 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 border border-zinc-750 rounded uppercase select-none tracking-wider flex-shrink-0">
+                            ) : author.type === 'organisation' ? (
+                                <span className="text-zinc-500 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 border border-zinc-800 rounded uppercase select-none tracking-wider flex-shrink-0">
                                     {author.type}
                                 </span>
-                            )}
+                            ) : null}
                             <span className="text-zinc-700 text-sm flex-shrink-0" aria-hidden="true">{DOT_SEPARATOR}</span>
                             {/* suppressHydrationWarning: this tooltip's exact wording depends on the
                                 renderer's timezone, which can legitimately differ between the SSR
@@ -599,18 +599,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         <div className="min-w-0 flex flex-col">
                             {post.title && (
                                 <div className="mb-2">
-                                    {post.project_parent && (
-                                        <div className="mb-1">
-                                            <Link
-                                                href={`/projects/${post.project_parent}`}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="text-emerald-500 hover:text-emerald-400 font-bold text-sm hover:underline transition-colors tracking-wide"
-                                            >
-                                                {post.project_details?.title || 'PROJECT DEVLOG'}
-                                            </Link>
-                                        </div>
-                                    )}
-                                    <h3 className={`font-bold text-white mb-2 leading-tight ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
+                                    <h3 className={`font-bold text-blue-400 mb-2 leading-tight ${isDetailView ? 'text-2xl' : 'text-xl'}`}>
                                         {post.title}
                                     </h3>
                                 </div>

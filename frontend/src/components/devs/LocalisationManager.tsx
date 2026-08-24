@@ -287,7 +287,7 @@ export default function LocalisationManager() {
             ...(isPlural ? { isPlural: true, basePlural } : {}),
         };
         setTranslationKeys((prev) => [...prev, entry]);
-        logActivity('translation_approved', `Translation key "${key}" added.`, '🌍');
+        logActivity('translation_key_added', `Translation key "${key}" added.`, '🌍');
     };
 
     const handleEditKeyMeta = (id: string, newKey: string, newBaseText: string, newBasePlural?: Partial<Record<CldrCategory, string>>) => {
@@ -340,6 +340,7 @@ export default function LocalisationManager() {
             translations: newGlossTranslation.trim() ? { [activeLang]: newGlossTranslation.trim() } : {},
         };
         setGlossary((prev) => [...prev, term]);
+        logActivity('glossary_added', `Glossary term "${term.term}" added.`, '📖');
         setNewGlossTerm('');
         setNewGlossTranslation('');
     };
@@ -364,7 +365,10 @@ export default function LocalisationManager() {
 
     const handleReject = (c: CommunityTranslation) => {
         setBusyId(c.id);
-        reject(c).catch((err) => toast.error(err.response?.data?.detail || 'Failed to reject translation.')).finally(() => setBusyId(null));
+        reject(c)
+            .then(() => logActivity('translation_rejected', `"${c.key}" rejected for ${c.language}.`, '❌'))
+            .catch((err) => toast.error(err.response?.data?.detail || 'Failed to reject translation.'))
+            .finally(() => setBusyId(null));
     };
 
     const handleUnapprove = (c: CommunityTranslation) => {
@@ -374,7 +378,9 @@ export default function LocalisationManager() {
 
     const performDelete = () => {
         if (!deleteTarget) return;
-        remove(deleteTarget)
+        const target = deleteTarget;
+        remove(target)
+            .then(() => logActivity('translation_rejected', `"${target.key}" translation deleted for ${target.language}.`, '🗑️'))
             .catch((err) => toast.error(err.response?.data?.detail || 'Failed to delete translation.'))
             .finally(() => setDeleteTarget(null));
     };
@@ -382,6 +388,7 @@ export default function LocalisationManager() {
     const handleSaveLanguages = (languages: { code: string; name: string }[], source: { code: string; name: string }) => {
         setTranslationLanguages(languages);
         setTranslationSourceLanguage(source);
+        logActivity('language_added', `Project languages updated (${languages.length} languages).`, '🌐');
         // The catalog endpoint derives its language list from the persisted blob, so the
         // debounced save must actually reach the backend before refetching — otherwise the
         // newly added language doesn't appear until some unrelated later refetch.

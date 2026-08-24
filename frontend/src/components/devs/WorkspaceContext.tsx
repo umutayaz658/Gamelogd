@@ -766,6 +766,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             text,
             icon,
             time: 'just now',
+            createdAt: new Date().toISOString(),
             actor,
         };
         setData((d) => ({ ...d, activities: [item, ...d.activities].slice(0, 50) }));

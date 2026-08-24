@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, Lock, Search, Settings2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/components/devs/WorkspaceContext';
 import api from '@/lib/api';
 import { getImageUrl, formatHandle, wrapInParens } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
@@ -105,6 +106,9 @@ export default function MemberManager({
     const { user: currentUser } = useAuth();
     const toast = useToast();
     const { t } = useTranslation();
+    // MemberManager is only ever rendered from TeamRoles.tsx, itself only reachable under
+    // /devs's WorkspaceProvider — safe to call unconditionally here.
+    const { logActivity } = useWorkspace();
 
     const [permissions, setPermissions] = useState<string[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
@@ -200,14 +204,21 @@ export default function MemberManager({
     const handleChangeRole = (member: DisplayMember, roleId: number) => {
         if (member.isOwner) return;
         api.patch(memberEndpoint(member.id), { custom_role: roleId })
-            .then(() => { onRefresh(); setRoleDrawerFor(null); })
+            .then(() => {
+                logActivity('member_role_changed', `${member.user.username}'s role was changed.`, '🔑');
+                onRefresh();
+                setRoleDrawerFor(null);
+            })
             .catch((err) => toast.error(err.response?.data?.error || err.response?.data?.custom_role?.[0] || err.response?.data?.detail || 'Failed to update role.'));
     };
 
     const handleRemoveMember = (member: DisplayMember) => {
         if (member.isOwner) return;
         api.delete(memberEndpoint(member.id))
-            .then(onRefresh)
+            .then(() => {
+                logActivity('member_removed', `${member.user.username} was removed.`, '👋');
+                onRefresh();
+            })
             .catch((err) => toast.error(err.response?.data?.error || 'Failed to remove member.'))
             .finally(() => setConfirmRemove(null));
     };
@@ -243,7 +254,10 @@ export default function MemberManager({
                                 organisationSlug={organisationSlug}
                                 projectId={projectId}
                                 excludeUserIds={displayMembers.map((m) => m.user.id)}
-                                onInvited={onRefresh}
+                                onInvited={(username) => {
+                                    logActivity('member_joined', username ? `${username} was invited.` : 'A new member was invited.', '👋');
+                                    onRefresh();
+                                }}
                             />
                         )}
                     </div>

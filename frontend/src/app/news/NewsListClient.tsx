@@ -43,7 +43,10 @@ export default function NewsListClient() {
         return cat;
     };
     const [news, setNews] = useState<NewsItem[]>([]);
+    const [heroNews, setHeroNews] = useState<NewsItem[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
     const [ordering, setOrdering] = useState<'newest' | 'oldest'>('newest');
@@ -51,6 +54,7 @@ export default function NewsListClient() {
 
     const filterRef = useRef<HTMLDivElement>(null);
     const isFirstMount = useRef(true);
+    const isFirstSearchDebounce = useRef(true);
 
     // Custom smooth scroll with ease-in-out physics
     const smoothScrollTo = (targetY: number, duration: number = 700) => {
@@ -94,23 +98,79 @@ export default function NewsListClient() {
         }
     }, []);
 
+    // Debounce the search box into `debouncedSearch` (matches the 500ms pattern used for
+    // game search in LogGameModal). Both start at '' so the very first grid fetch below
+    // doesn't wait on this timer — it only matters for propagating later keystrokes, and
+    // resetting to page 1 only once the user has actually typed something (not on mount,
+    // which would otherwise clobber a deep-linked `?page=N`).
     useEffect(() => {
-        const fetchNews = async () => {
-            setLoading(true);
-            try {
-                // This page paginates client-side over the full list (see `visibleNews`
-                // below), so request the backend's max page size rather than its 20-item
-                // default now that /news/ is paginated.
-                const res = await api.get('/news/?page_size=100');
-                setNews(unwrapList<NewsItem>(res.data));
-            } catch (err) {
-                console.error("Failed to fetch news:", err);
-            } finally {
-                setLoading(false);
+        const timeout = setTimeout(() => {
+            setDebouncedSearch(searchQuery.trim());
+            if (!isFirstSearchDebounce.current) {
+                handlePageChange(1);
             }
-        };
-        fetchNews();
-    }, []);
+            isFirstSearchDebounce.current = false;
+        }, 500);
+        return () => clearTimeout(timeout);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQuery]);
+
+    const handleClearSearch = () => {
+        setSearchQuery('');
+        setDebouncedSearch('');
+        handlePageChange(1);
+    };
+
+    // Grid: a real server page per page/category/sort/search combination — previously this
+    // fetched a fixed 100-item batch once and sliced it locally, which silently capped the
+    // page count regardless of how many articles actually existed within the 90-day window.
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        const params = new URLSearchParams();
+        params.set('page', String(currentPage));
+        params.set('page_size', '20');
+        params.set('category', selectedCategories.includes('all') ? 'all' : selectedCategories.join(','));
+        params.set('ordering', ordering === 'newest' ? '-pub_date' : 'pub_date');
+        if (debouncedSearch) params.set('search', debouncedSearch);
+
+        api.get(`/news/?${params.toString()}`).then(res => {
+            if (cancelled) return;
+            setNews(unwrapList<NewsItem>(res.data));
+            setTotalCount(res.data?.count ?? 0);
+        }).catch(err => {
+            if (cancelled) return;
+            console.error("Failed to fetch news:", err);
+            setNews([]);
+            setTotalCount(0);
+        }).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+
+        return () => { cancelled = true; };
+    }, [currentPage, selectedCategories, ordering, debouncedSearch]);
+
+    // Hero cards: their own independent request (always the top 3 for the current
+    // category/sort, ignoring search) rather than sliced off the grid batch — mixing a
+    // 3-item "page" into the same offset math as the 20-item grid pages caused duplicate/
+    // skipped articles once the grid moved to real server pagination.
+    useEffect(() => {
+        let cancelled = false;
+        const params = new URLSearchParams();
+        params.set('page', '1');
+        params.set('page_size', '3');
+        params.set('category', selectedCategories.includes('all') ? 'all' : selectedCategories.join(','));
+        params.set('ordering', ordering === 'newest' ? '-pub_date' : 'pub_date');
+
+        api.get(`/news/?${params.toString()}`).then(res => {
+            if (cancelled) return;
+            setHeroNews(unwrapList<NewsItem>(res.data));
+        }).catch(() => {
+            if (!cancelled) setHeroNews([]);
+        });
+
+        return () => { cancelled = true; };
+    }, [selectedCategories, ordering]);
 
     // Smooth scroll to news grid when page changes (ignoring first mount)
     useEffect(() => {
@@ -152,51 +212,7 @@ export default function NewsListClient() {
         handlePageChange(1);
     };
 
-    const categoryFilteredNews = useMemo(() => {
-        let result = [...news];
-
-        if (!selectedCategories.includes('all')) {
-            result = result.filter(item => selectedCategories.includes(item.category));
-        }
-
-        result.sort((a, b) => {
-            const dateA = new Date(a.pub_date).getTime();
-            const dateB = new Date(b.pub_date).getTime();
-            return ordering === 'newest' ? dateB - dateA : dateA - dateB;
-        });
-
-        return result;
-    }, [news, selectedCategories, ordering]);
-
-    const heroNews = useMemo(() => {
-        return categoryFilteredNews.slice(0, 3);
-    }, [categoryFilteredNews]);
-
-    const searchFilteredNews = useMemo(() => {
-        if (searchQuery.trim() === '') {
-            return categoryFilteredNews;
-        }
-        const query = searchQuery.toLowerCase();
-        return categoryFilteredNews.filter(item =>
-            item.title.toLowerCase().includes(query) ||
-            (item.description && item.description.toLowerCase().includes(query))
-        );
-    }, [categoryFilteredNews, searchQuery]);
-
-    const gridNews = useMemo(() => {
-        const isSearchActive = searchQuery.trim() !== '';
-        const start = isSearchActive ? (currentPage - 1) * 20 : 3 + (currentPage - 1) * 20;
-        const end = start + 20;
-        return searchFilteredNews.slice(start, end);
-    }, [searchFilteredNews, searchQuery, currentPage]);
-
-    const totalPages = useMemo(() => {
-        const isSearchActive = searchQuery.trim() !== '';
-        const totalGridItems = isSearchActive 
-            ? searchFilteredNews.length 
-            : Math.max(0, categoryFilteredNews.length - 3);
-        return Math.ceil(totalGridItems / 20);
-    }, [categoryFilteredNews, searchFilteredNews, searchQuery]);
+    const totalPages = useMemo(() => Math.ceil(totalCount / 20), [totalCount]);
 
     const pageNumbers = useMemo(() => {
         const pages: (number | string)[] = [];
@@ -332,19 +348,13 @@ export default function NewsListClient() {
                                     <input
                                         type="text"
                                         value={searchQuery}
-                                        onChange={(e) => {
-                                            setSearchQuery(e.target.value);
-                                            handlePageChange(1);
-                                        }}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
                                         placeholder={t('searchNewsPlaceholder')}
                                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-medium"
                                     />
                                     {searchQuery && (
                                         <button
-                                            onClick={() => {
-                                                setSearchQuery('');
-                                                handlePageChange(1);
-                                            }}
+                                            onClick={handleClearSearch}
                                             className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-500 hover:text-zinc-300"
                                         >
                                             <X className="h-4 w-4" />
@@ -376,19 +386,13 @@ export default function NewsListClient() {
                                     <input
                                         type="text"
                                         value={searchQuery}
-                                        onChange={(e) => {
-                                            setSearchQuery(e.target.value);
-                                            handlePageChange(1);
-                                        }}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
                                         placeholder={t('searchNewsPlaceholder')}
                                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-medium"
                                     />
                                     {searchQuery && (
                                         <button
-                                            onClick={() => {
-                                                setSearchQuery('');
-                                                handlePageChange(1);
-                                            }}
+                                            onClick={handleClearSearch}
                                             className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-500 hover:text-zinc-300"
                                         >
                                             <X className="h-4 w-4" />
@@ -443,7 +447,7 @@ export default function NewsListClient() {
                             <>
                                 {/* Mobile: compact horizontal list cards */}
                                 <div className="grid grid-cols-1 gap-3 lg:hidden">
-                                    {gridNews.map((item) => (
+                                    {news.map((item) => (
                                         <div key={item.id} onClick={() => handleCardClick(item.id)} className="flex gap-3 p-3 bg-zinc-900 rounded-xl border border-zinc-800 active:bg-zinc-800/50 transition-colors cursor-pointer">
                                             <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
                                                 <img
@@ -474,7 +478,7 @@ export default function NewsListClient() {
 
                                 {/* Desktop: large cards with image, description, and external link */}
                                 <div className="hidden lg:grid lg:grid-cols-2 gap-6">
-                                    {gridNews.map((item) => (
+                                    {news.map((item) => (
                                         <div key={item.id} onClick={() => handleCardClick(item.id)} className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col group cursor-pointer block">
                                             <div className="relative h-48 overflow-hidden">
                                                 <img
@@ -564,7 +568,7 @@ export default function NewsListClient() {
                                 )}
                             </>
                         )}
-                        {!loading && searchFilteredNews.length === 0 && (
+                        {!loading && news.length === 0 && (
                             <div className="text-center py-20 text-zinc-500">
                                 {t('noNewsFound')}
                             </div>

@@ -6,8 +6,15 @@ interface FilterDropdownProps {
     label: string;
     icon?: React.ReactNode;
     options: { value: string; label: string }[];
-    value: string;
-    onChange: (value: string) => void;
+    // Single-select mode (default): value/onChange are the API.
+    value?: string;
+    onChange?: (value: string) => void;
+    // Multi-select mode: pass multiSelect plus values/onChangeMulti instead.
+    // The menu stays open across picks so several options can be toggled in
+    // one visit, and each row shows its own checkbox-style check state.
+    multiSelect?: boolean;
+    values?: string[];
+    onChangeMulti?: (values: string[]) => void;
     showAllOption?: boolean;
     allLabel?: string;
     // Which edge the popover hangs from — 'right' avoids overflowing off the
@@ -23,9 +30,13 @@ interface FilterDropdownProps {
     // of the default fixed w-56 — for call sites where the menu should visually
     // "belong" to its button rather than being its own independent size.
     matchTriggerWidth?: boolean;
+    // When true, the trigger button stretches to fill its container and pins the
+    // chevron to the right edge, so this can drop into a form layout as a styled
+    // replacement for a native <select> instead of only sitting inline in a toolbar.
+    fullWidth?: boolean;
 }
 
-export default function FilterDropdown({ label, icon, options, value, onChange, showAllOption = true, allLabel, align = 'left', showSelectionAccent = true, matchTriggerWidth = false }: FilterDropdownProps) {
+export default function FilterDropdown({ label, icon, options, value = '', onChange, multiSelect = false, values = [], onChangeMulti, showAllOption = true, allLabel, align = 'left', showSelectionAccent = true, matchTriggerWidth = false, fullWidth = false }: FilterDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [position, setPosition] = useState<{ top: number; left?: number; right?: number; width?: number } | null>(null);
     const [mounted, setMounted] = useState(false);
@@ -81,23 +92,37 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
     }, [isOpen]);
 
     const selectedOption = options.find(opt => opt.value === value);
-    const isAccented = showSelectionAccent && !!value;
+    const selectedLabels = multiSelect
+        ? options.filter(opt => values.includes(opt.value)).map(opt => opt.label)
+        : [];
+    const triggerText = multiSelect
+        ? (selectedLabels.length > 0 ? selectedLabels.join(', ') : label)
+        : (selectedOption ? selectedOption.label : label);
+    const isAccented = showSelectionAccent && (multiSelect ? selectedLabels.length > 0 : !!value);
+
+    const toggleMultiValue = (optionValue: string) => {
+        if (!onChangeMulti) return;
+        const next = values.includes(optionValue)
+            ? values.filter(v => v !== optionValue)
+            : [...values, optionValue];
+        onChangeMulti(next);
+    };
 
     return (
-        <div className="relative">
+        <div className={fullWidth ? 'relative w-full' : 'relative'}>
             <button
                 ref={buttonRef}
                 onClick={handleToggle}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${isOpen || isAccented
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${fullWidth ? 'w-full justify-between' : ''} ${isOpen || isAccented
                         ? 'bg-zinc-800 border-zinc-700 text-white'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
                     }`}
             >
-                {icon && <span className={isAccented ? "text-emerald-500" : ""}>{icon}</span>}
-                <span className={isAccented ? "text-emerald-500" : ""}>
-                    {selectedOption ? selectedOption.label : label}
+                <span className={`flex items-center gap-2 min-w-0 truncate ${isAccented ? "text-emerald-500" : ""}`}>
+                    {icon}
+                    <span className="truncate">{triggerText}</span>
                 </span>
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {mounted && isOpen && position && createPortal(
@@ -112,13 +137,16 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
                         // ever clipping an option label wider than a short trigger like "All".
                         minWidth: matchTriggerWidth ? position.width : undefined,
                     }}
-                    className={`${matchTriggerWidth ? 'w-max' : 'w-56'} max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150`}
+                    className={`${matchTriggerWidth ? 'w-max' : 'w-56'} max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl shadow-black/50 overflow-hidden z-[999999] animate-in fade-in zoom-in-95 duration-150`}
                 >
                     <div className="p-1">
                         {showAllOption && (
                             <button
-                                onClick={() => { onChange(''); setIsOpen(false); }}
-                                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === '' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
+                                onClick={() => {
+                                    if (multiSelect) { onChangeMulti?.([]); return; }
+                                    onChange?.(''); setIsOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${(multiSelect ? values.length === 0 : value === '') ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
                             >
                                 {allLabel || `All ${label.replace('All ', '')}`}
                             </button>
@@ -126,19 +154,25 @@ export default function FilterDropdown({ label, icon, options, value, onChange, 
                         {/* Caps the visible list to ~5 rows — the rest scrolls instead of
                             growing the popover unbounded when there are many options. */}
                         <div className="max-h-[220px] overflow-y-auto">
-                            {options.map((option) => (
-                                <button
-                                    key={option.value}
-                                    onClick={() => { onChange(option.value); setIsOpen(false); }}
-                                    className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === option.value
-                                            ? 'bg-emerald-500/10 text-emerald-500'
-                                            : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-                                        }`}
-                                >
-                                    {option.label}
-                                    {value === option.value && <Check className="h-4 w-4" />}
-                                </button>
-                            ))}
+                            {options.map((option) => {
+                                const isSelected = multiSelect ? values.includes(option.value) : value === option.value;
+                                return (
+                                    <button
+                                        key={option.value}
+                                        onClick={() => {
+                                            if (multiSelect) { toggleMultiValue(option.value); return; }
+                                            onChange?.(option.value); setIsOpen(false);
+                                        }}
+                                        className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg text-sm transition-colors ${isSelected
+                                                ? 'bg-emerald-500/10 text-emerald-500'
+                                                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                                            }`}
+                                    >
+                                        {option.label}
+                                        {isSelected && <Check className="h-4 w-4" />}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>,

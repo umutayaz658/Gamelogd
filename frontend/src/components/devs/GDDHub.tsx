@@ -34,7 +34,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
     GDDDoc, GDDDocSection, GDDComment, GDDDocRevision,
     BalancingTable, BalancingRow, DialogueNode, Task,
-    GDDCategory, DEFAULT_GDD_CATEGORIES,
+    GDDCategory, DEFAULT_GDD_CATEGORIES, ActivityType,
 } from './WorkspaceTypes';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import BoardSwitcher from './BoardSwitcher';
@@ -719,7 +719,7 @@ function DocEditor({
 }: {
     doc: GDDDoc;
     tasks: Task[];
-    onUpdate: (doc: GDDDoc) => void;
+    onUpdate: (doc: GDDDoc, activity?: { silent?: boolean; text?: string; icon?: string }) => void;
     onBack: () => void;
     currentUser: string;
 }) {
@@ -745,15 +745,23 @@ function DocEditor({
             editedBy: currentUser,
             editedAt: new Date().toISOString(),
         };
-        onUpdate({
-            ...doc,
-            content,
-            isPublic,
-            lastEdited: 'just now',
-            revisions: explicit
-                ? [revision, ...doc.revisions].slice(0, 20)
-                : doc.revisions,
-        });
+        const publishChanged = explicit && isPublic !== doc.isPublic;
+        onUpdate(
+            {
+                ...doc,
+                content,
+                isPublic,
+                lastEdited: 'just now',
+                revisions: explicit
+                    ? [revision, ...doc.revisions].slice(0, 20)
+                    : doc.revisions,
+            },
+            !explicit
+                ? { silent: true }
+                : publishChanged
+                    ? { text: `GDD page "${doc.title}" ${isPublic ? 'published' : 'unpublished'}.`, icon: isPublic ? '🌍' : '🔒' }
+                    : undefined
+        );
         setIsDirty(false);
     }, [doc, content, isPublic, currentUser, onUpdate]);
 
@@ -798,18 +806,24 @@ function DocEditor({
             resolved: false,
             createdAt: new Date().toISOString(),
         };
-        onUpdate({ ...doc, comments: [...(doc.comments ?? []), comment] });
+        onUpdate(
+            { ...doc, comments: [...(doc.comments ?? []), comment] },
+            { text: `Commented on GDD page "${doc.title}".`, icon: '💬' }
+        );
     };
 
     const resolveComment = (id: string) => {
-        onUpdate({
-            ...doc,
-            comments: doc.comments.map(c => c.id === id ? { ...c, resolved: true } : c),
-        });
+        onUpdate(
+            { ...doc, comments: doc.comments.map(c => c.id === id ? { ...c, resolved: true } : c) },
+            { text: `Comment resolved on GDD page "${doc.title}".`, icon: '✅' }
+        );
     };
 
     const deleteComment = (id: string) => {
-        onUpdate({ ...doc, comments: doc.comments.filter(c => c.id !== id) });
+        onUpdate(
+            { ...doc, comments: doc.comments.filter(c => c.id !== id) },
+            { silent: true }
+        );
     };
 
     const exportMD = () => {
@@ -1534,9 +1548,14 @@ export default function GDDHub() {
         setEditingDoc(newDoc);
     }, [setGDDDocs, logActivity, data.gddCategories, setEditingDoc]);
 
-    const handleUpdateDoc = useCallback((updated: GDDDoc) => {
+    const handleUpdateDoc = useCallback((updated: GDDDoc, activity?: { silent?: boolean; text?: string; icon?: string; type?: ActivityType }) => {
         setGDDDocs(prev => prev.map(d => d.id === updated.id ? updated : d));
-        logActivity('gdd_edited', `GDD page "${updated.title}" updated.`, '📝');
+        // Autosave ticks pass `silent` so idle editing doesn't flood the activity feed with
+        // indistinguishable "updated" entries; comment/publish actions pass their own text/icon
+        // instead of falling back to the generic message so they're distinguishable in the feed.
+        if (!activity?.silent) {
+            logActivity(activity?.type ?? 'gdd_edited', activity?.text ?? `GDD page "${updated.title}" updated.`, activity?.icon ?? '📝');
+        }
         setEditingDoc(updated);
     }, [setGDDDocs, logActivity, setEditingDoc]);
 

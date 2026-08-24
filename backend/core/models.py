@@ -48,6 +48,18 @@ class Review(models.Model):
     # Replay tracking
     playthrough_number = models.PositiveIntegerField(default=1)
 
+    # Platform(s) this specific playthrough was logged on (a player may have played the
+    # same game on more than one, e.g. PC and PS5). Kept on the review itself (rather than
+    # only on the shared LibraryEntry) so replays of the same game on different platforms
+    # each keep their own correct value for display.
+    platforms = models.JSONField(default=list, blank=True)
+
+    # Playtime for this specific playthrough. Also mirrored onto the shared LibraryEntry
+    # (see ReviewViewSet._sync_library_status) for the aggregate Game DNA / library view,
+    # but kept here too so each review's own display doesn't get overwritten by a replay
+    # logged with a different playtime.
+    playtime_hours = models.FloatField(null=True, blank=True)
+
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     # Auto-assigned (language-agnostic embedding classification, see

@@ -7,6 +7,9 @@ import { getImageUrl, getRatingColor, getRatingTextClass } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { trackEvent } from '@/lib/analytics';
+import FilterDropdown from '@/components/FilterDropdown';
+
+const DEFAULT_PLATFORMS = ['PC', 'PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'Mobile'];
 
 const RATING_SCALE_MIN = '0.0';
 const RATING_SCALE_MID = '5.0';
@@ -51,7 +54,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [nextPlaythrough, setNextPlaythrough] = useState(2);
     const [playtimeHours, setPlaytimeHours] = useState<number | ''>('');
-    const [selectedPlatform, setSelectedPlatform] = useState<string>('');
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+    const [gamePlatforms, setGamePlatforms] = useState<string[]>([]);
 
     // Reset state on open/close
     useEffect(() => {
@@ -67,7 +71,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setContainsSpoilers(false);
             setSubmitError(null);
             setPlaytimeHours('');
-            setSelectedPlatform('');
+            setSelectedPlatforms([]);
         } else if (isReplay && initialGame) {
             // Replay mode: fresh form but with game pre-selected
             setSelectedGame(initialGame);
@@ -78,7 +82,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsCompleted(false);
             setContainsSpoilers(false);
             setPlaytimeHours('');
-            setSelectedPlatform('');
+            setSelectedPlatforms([]);
             // Fetch how many playthroughs exist to determine next number
             const username = user?.username || '';
             api.get(`/reviews/?game_id=${initialGame.id}&username=${username}`).then(res => {
@@ -94,11 +98,49 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsLiked(existingReview.is_liked || false);
             setIsCompleted(existingReview.is_completed || false);
             setContainsSpoilers(existingReview.contains_spoilers || false);
+            setPlaytimeHours(existingReview.playtime_hours != null ? existingReview.playtime_hours : '');
+            setSelectedPlatforms(existingReview.platforms || []);
         } else if (initialGame) {
             setSelectedGame(initialGame);
             setStep(2);
         }
     }, [isOpen, initialGame, existingReview, isReplay, user?.username]);
+
+    // Prefill playtime from the Game DNA library entry when the selected game's playtime
+    // is already known from Steam (Xbox has no playtime API, so it never applies there).
+    // Only fills an empty field — never overwrites what the user already typed or is
+    // editing, since they may well have played the game elsewhere too.
+    useEffect(() => {
+        if (!isOpen || !selectedGame || !user?.username) return;
+        let cancelled = false;
+        api.get(`/library/?user__username=${user.username}&game=${selectedGame.id}`).then(res => {
+            if (cancelled) return;
+            const data = res.data.results || res.data;
+            const entry = Array.isArray(data) ? data[0] : null;
+            if (entry && entry.platform && String(entry.platform).toLowerCase().includes('steam') && entry.playtime_hours > 0) {
+                setPlaytimeHours((prev) => (prev === '' ? entry.playtime_hours : prev));
+            }
+        }).catch(() => {});
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, selectedGame?.id, user?.username]);
+
+    // The search endpoint's `platforms` field is empty for almost every game — it's only
+    // populated on-demand (see GameViewSet.details / fetch_game_details) the first time
+    // someone opens that game's own page. Fetch the real per-game list here so the platform
+    // picker offers what the game was actually released on instead of a generic fallback.
+    useEffect(() => {
+        if (!isOpen || !selectedGame) { setGamePlatforms([]); return; }
+        setGamePlatforms(selectedGame.platforms && selectedGame.platforms.length > 0 ? selectedGame.platforms : []);
+        let cancelled = false;
+        api.get(`/games/${selectedGame.id}/details/`).then(res => {
+            if (cancelled) return;
+            if (Array.isArray(res.data?.platforms) && res.data.platforms.length > 0) {
+                setGamePlatforms(res.data.platforms);
+            }
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [isOpen, selectedGame?.id]);
 
     // Search Logic
     useEffect(() => {
@@ -142,7 +184,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                 contains_spoilers: containsSpoilers
             };
             if (playtimeHours !== '') payload.playtime_hours = playtimeHours;
-            if (selectedPlatform) payload.platform = selectedPlatform;
+            if (selectedPlatforms.length > 0) payload.platforms = selectedPlatforms;
 
             if (isReplay) {
                 payload.playthrough_number = nextPlaythrough;
@@ -354,24 +396,23 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                                 setPlaytimeHours(num);
                                             }}
                                             placeholder="e.g. 10"
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-600 text-sm"
+                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-600 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('platform')}</label>
-                                        <select
-                                            value={selectedPlatform}
-                                            onChange={(e) => setSelectedPlatform(e.target.value)}
-                                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all appearance-none text-sm"
-                                        >
-                                            <option value="">{t('selectPlatform')}</option>
-                                            {(selectedGame?.platforms && selectedGame.platforms.length > 0
-                                                ? selectedGame.platforms
-                                                : ['PC', 'PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'Mobile']
-                                            ).map((platform: string) => (
-                                                <option key={platform} value={platform}>{platform}</option>
-                                            ))}
-                                        </select>
+                                        <FilterDropdown
+                                            label={t('selectPlatform')}
+                                            multiSelect
+                                            values={selectedPlatforms}
+                                            onChangeMulti={setSelectedPlatforms}
+                                            showAllOption={false}
+                                            showSelectionAccent={false}
+                                            matchTriggerWidth
+                                            fullWidth
+                                            options={(gamePlatforms.length > 0 ? gamePlatforms : DEFAULT_PLATFORMS)
+                                                .map((platform: string) => ({ value: platform, label: platform }))}
+                                        />
                                     </div>
                                 </div>
 
