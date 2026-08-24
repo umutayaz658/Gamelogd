@@ -26,7 +26,7 @@ import {
     Code2, Minus, Table as TableIcon, Type, Plus, GripVertical, FileText,
     Globe, Lock, ArrowLeft, ChevronRight, Check, Loader2, MessageSquare, Palette
 } from 'lucide-react';
-import type { GDDDoc, Task, GDDComment } from './WorkspaceTypes';
+import type { GDDDoc, Task, GDDComment, ActivityType } from './WorkspaceTypes';
 import { useTranslation } from '@/lib/useTranslation';
 
 const MIDDLE_DOT = '·';
@@ -904,7 +904,7 @@ interface GDDEditorProps {
     docs: GDDDoc[];
     tasks: Task[];
     currentUser: string;
-    onUpdate: (doc: GDDDoc) => void;
+    onUpdate: (doc: GDDDoc, activity?: { silent?: boolean; text?: string; icon?: string; type?: ActivityType }) => void;
     onBack: () => void;
     selectedComment: { text: string; timestamp: number } | null;
 }
@@ -953,8 +953,11 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
         }
     }, [title]);
 
-    // Save handler
-    const performSave = useCallback((ed: ReturnType<typeof useEditor>) => {
+    // Save handler. `silent` distinguishes incidental saves (autosave debounce, the
+    // save-before-navigate calls) from deliberate ones (Ctrl+S) — silent saves don't log an
+    // activity, unless the public/private state actually changed, which always logs (with its
+    // own distinct message) regardless of `silent`, since that's a meaningful action on its own.
+    const performSave = useCallback((ed: ReturnType<typeof useEditor>, silent = false) => {
         if (!ed) return;
         const storage = ed.storage as any;
         if (!storage || !storage.markdown) return;
@@ -971,18 +974,24 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
             return true;
         });
 
-        onUpdate({
-            ...doc,
-            title,
-            isPublic,
-            content: markdown,
-            comments: cleanedComments,
-            lastEdited: new Date().toISOString(),
-            revisions: [
-                { id: `rev-${Date.now()}`, content: markdown, editedAt: new Date().toISOString(), editedBy: currentUser },
-                ...(doc.revisions || []).slice(0, 29),
-            ],
-        });
+        const publishChanged = isPublic !== doc.isPublic;
+        onUpdate(
+            {
+                ...doc,
+                title,
+                isPublic,
+                content: markdown,
+                comments: cleanedComments,
+                lastEdited: new Date().toISOString(),
+                revisions: [
+                    { id: `rev-${Date.now()}`, content: markdown, editedAt: new Date().toISOString(), editedBy: currentUser },
+                    ...(doc.revisions || []).slice(0, 29),
+                ],
+            },
+            publishChanged
+                ? { text: `GDD page "${title}" ${isPublic ? 'published' : 'unpublished'}.`, icon: isPublic ? '🌍' : '🔒', type: 'gdd_published' }
+                : { silent }
+        );
         setLastSaved(new Date());
         setIsDirty(false);
     }, [doc, title, isPublic, currentUser, onUpdate]);
@@ -1069,7 +1078,7 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
             detectSlash(ed);
             if (saveTimer.current) clearTimeout(saveTimer.current);
             // Auto-save after 1.5s of inactivity (Notion-like)
-            saveTimer.current = setTimeout(() => performSave(ed), 1500);
+            saveTimer.current = setTimeout(() => performSave(ed, true), 1500);
         },
     });
 
@@ -1110,10 +1119,10 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
             }).run();
             setSlashOpen(false);
             slashRangeRef.current = null;
-            
+
             // Save parent
-            performSave(editor);
-            
+            performSave(editor, true);
+
             // Navigate to new subpage
             const event = new CustomEvent('gdd-create-and-navigate', {
                 detail: {
@@ -1214,10 +1223,10 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
             resolved: false,
             createdAt: new Date().toISOString()
         };
-        onUpdate({
-            ...doc,
-            comments: [...(doc.comments || []), newComment]
-        });
+        onUpdate(
+            { ...doc, comments: [...(doc.comments || []), newComment] },
+            { text: `Commented on GDD page "${doc.title}".`, icon: '💬', type: 'comment_added' }
+        );
     }, [doc, currentUser, onUpdate]);
 
     // Submit custom comment from the dialog
@@ -1300,7 +1309,7 @@ export default function GDDEditor({ doc, docs, tasks: _tasks, currentUser, onUpd
                 setCtxMenu(null);
 
                 // Save parent
-                performSave(editor);
+                performSave(editor, true);
 
                 // Navigate to new page
                 const event = new CustomEvent('gdd-create-and-navigate', {

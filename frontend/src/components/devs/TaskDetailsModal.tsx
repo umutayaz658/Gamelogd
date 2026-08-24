@@ -145,6 +145,7 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
             createdAt: new Date().toISOString(),
         };
         update({ comments: [...task.comments, c] });
+        logActivity('comment_added', `Commented on task "${task.title}".`, '💬');
         setNewComment('');
     };
 
@@ -230,7 +231,14 @@ export default function TaskDetailsModal({ task, columns, onClose, onUpdate, onD
                                                     key={col.id}
                                                     type="button"
                                                     onClick={() => {
-                                                        update({ columnId: col.id });
+                                                        if (col.id !== task.columnId) {
+                                                            update({ columnId: col.id });
+                                                            if (col.id === 'done') {
+                                                                logActivity('task_completed', `Task "${task.title}" completed.`, '✅');
+                                                            } else {
+                                                                logActivity('task_moved', `Task "${task.title}" moved to "${col.label}".`, '↔️');
+                                                            }
+                                                        }
                                                         setShowStatusDropdown(false);
                                                     }}
                                                     className={cn(

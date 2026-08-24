@@ -1578,19 +1578,23 @@ class ReviewViewSet(viewsets.ModelViewSet):
         NotInterested.objects.get_or_create(user=request.user, review=review)
         return Response({"status": "success"}, status=status.HTTP_201_CREATED)
 
-    def _sync_library_status(self, review, playtime_hours=None, platform=None):
+    def _sync_library_status(self, review, playtime_hours=None, platforms=None):
         """Sync LibraryEntry status based on review is_completed flag, and ensure logged games are in the library."""
         from api.models import LibraryEntry
-        
-        # Sanitize platform input
-        if platform:
+
+        # LibraryEntry only tracks one platform per game (unlike Review, which can carry
+        # several), so use the first sanitized entry from the submitted list as its value.
+        platform = None
+        if platforms:
+            if isinstance(platforms, str):
+                platforms = [platforms]
             import re
-            platform = str(platform).strip()[:100]  # Truncate to max field length
-            # Strip any HTML/script tags
-            platform = re.sub(r'<[^>]+>', '', platform)
-            if not platform:
-                platform = None
-        
+            for raw in platforms:
+                cleaned = re.sub(r'<[^>]+>', '', str(raw)).strip()[:100]
+                if cleaned:
+                    platform = cleaned
+                    break
+
         entry, created = LibraryEntry.objects.get_or_create(
             user=review.user,
             game=review.game,
@@ -1639,15 +1643,15 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         review = serializer.save(user=self.request.user)
         playtime_hours = self.request.data.get('playtime_hours')
-        platform = self.request.data.get('platform')
-        self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
+        platforms = self.request.data.get('platforms')
+        self._sync_library_status(review, playtime_hours=playtime_hours, platforms=platforms)
         self._schedule_review_tagging(review)
 
     def perform_update(self, serializer):
         review = serializer.save()
         playtime_hours = self.request.data.get('playtime_hours')
-        platform = self.request.data.get('platform')
-        self._sync_library_status(review, playtime_hours=playtime_hours, platform=platform)
+        platforms = self.request.data.get('platforms')
+        self._sync_library_status(review, playtime_hours=playtime_hours, platforms=platforms)
         self._schedule_review_tagging(review)
 
 
@@ -1737,6 +1741,10 @@ class PostViewSet(viewsets.ModelViewSet):
                 Q(project_parent__members__user=user, project_parent__members__status='active') |
                 Q(project_parent__organisation__members__user=user, project_parent__organisation__members__role__in=['owner', 'admin'])
             ).distinct()
+
+        personal_only = self.request.query_params.get('personal_only', None)
+        if personal_only == 'true':
+            queryset = queryset.filter(project_parent__organisation__isnull=True)
 
         return queryset
 
@@ -2739,8 +2747,11 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NewsSerializer
     permission_classes = [permissions.AllowAny]
     pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['category']
+    # Category is handled manually in list() below (comma-separated multi-select, which
+    # DjangoFilterBackend's exact-match filterset_fields can't express), so only Ordering
+    # and Search stay as automatic backends.
+    filter_backends = [filters.OrderingFilter, filters.SearchFilter]
+    search_fields = ['title', 'description']
     ordering_fields = ['pub_date', 'like_count', 'comment_count']
     ordering = ['-pub_date']
 
@@ -2750,27 +2761,40 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
         return context
 
     def list(self, request, *args, **kwargs):
-        # Cache only the ordered PK list, not the serialized response — NewsSerializer's
+        # Cache only the matching PK list, not the serialized response — NewsSerializer's
         # is_liked/is_bookmarked are per-authenticated-user, so caching the full response
         # would leak one user's like/bookmark flags to another. Re-serializing a handful of
         # cached PKs per request keeps that correct while skipping the repeated filter/order
-        # query (and its per-row count_subquery cost) on every list load.
+        # query on every list load. No count cap beyond the 90-day retention fetch_news
+        # already enforces — the ID list itself is cheap to cache/slice; only the annotated
+        # DB fetch below (per page) is expensive, so that's what stays bounded to page_size.
         from django.core.cache import cache
         category = request.query_params.get('category', 'all')
         ordering = request.query_params.get('ordering', '-pub_date')
-        cache_key = f"news_ids:v1:{category}:{ordering}"
+        search = request.query_params.get('search', '').strip()
+        cache_key = f"news_ids:v2:{category}:{ordering}:{search}"
         ids = cache.get(cache_key)
         if ids is None:
-            ids = list(self.filter_queryset(self.get_queryset()).values_list('id', flat=True)[:300])
+            queryset = self.get_queryset()
+            if category and category != 'all':
+                categories = [c.strip() for c in category.split(',') if c.strip()]
+                if categories:
+                    queryset = queryset.filter(category__in=categories)
+            queryset = self.filter_queryset(queryset)
+            ids = list(queryset.values_list('id', flat=True))
             cache.set(cache_key, ids, timeout=180)
 
-        id_order = {pk: i for i, pk in enumerate(ids)}
-        queryset = sorted(self.get_queryset().filter(id__in=ids), key=lambda n: id_order.get(n.id, len(ids)))
+        paginator = self.pagination_class()
+        page_ids = paginator.paginate_queryset(ids, request, view=self)
+        if page_ids is None:
+            page_ids = ids
 
-        page = self.paginate_queryset(queryset)
-        serializer = self.get_serializer(page if page is not None else queryset, many=True)
-        if page is not None:
-            return self.get_paginated_response(serializer.data)
+        id_order = {pk: i for i, pk in enumerate(page_ids)}
+        page_rows = sorted(self.get_queryset().filter(id__in=page_ids), key=lambda n: id_order[n.id])
+        serializer = self.get_serializer(page_rows, many=True)
+
+        if page_ids is not ids:
+            return paginator.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])

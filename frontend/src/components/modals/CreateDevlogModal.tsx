@@ -1,6 +1,7 @@
 
 import { useState, useRef, useEffect } from 'react';
-import { X, Image as ImageIcon, Video, Check, Upload, Layout, Plus, Trash2 } from 'lucide-react';
+import axios from 'axios';
+import { X, Check, Upload, Plus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { Project, Post } from '@/types';
@@ -11,7 +12,12 @@ interface CreateDevlogModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: (newPost: Post) => void;
-    defaultProjectId?: number;
+    projectId: number;
+    // Optional: only the Devs page's own entry point passes this (it already has
+    // useWorkspace()'s logActivity in scope). This modal can't call useWorkspace() itself —
+    // it's also rendered from a project's own page, which lives outside /devs's
+    // WorkspaceProvider, so the hook would throw there.
+    onLogged?: () => void;
 }
 
 interface MediaItem {
@@ -20,10 +26,9 @@ interface MediaItem {
     type: 'image' | 'video';
 }
 
-export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultProjectId }: CreateDevlogModalProps) {
+export default function CreateDevlogModal({ isOpen, onClose, onSuccess, projectId, onLogged }: CreateDevlogModalProps) {
     const { t, language } = useTranslation();
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [selectedProject, setSelectedProject] = useState<number | ''>('');
+    const [project, setProject] = useState<Project | null>(null);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
 
@@ -33,33 +38,21 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const [authorIdentity, setAuthorIdentity] = useState<'user' | 'organisation' | 'project'>('user');
-
-    // Fetch user's projects
+    // Fetch the project this devlog belongs to (for the background/branding visuals
+    // and to resolve author_identity automatically — no more "Publish As" picker).
     useEffect(() => {
         if (isOpen) {
-            const fetchProjects = async () => {
-                try {
-                    const res = await api.get('/projects/?manageable=true');
-                    const results = res.data.results || res.data;
-                    setProjects(results);
-                    if (defaultProjectId) {
-                        setSelectedProject(defaultProjectId);
-                    }
-                } catch (err) {
-                    console.error("Failed to load projects", err);
-                }
-            };
-            fetchProjects();
+            api.get(`/projects/${projectId}/`)
+                .then(res => setProject(res.data))
+                .catch(err => console.error("Failed to load project", err));
         } else {
             // Reset state when closed
             setTitle('');
             setContent('');
-            setSelectedProject('');
+            setProject(null);
             setMediaItems([]);
-            setAuthorIdentity('user');
         }
-    }, [isOpen, defaultProjectId]);
+    }, [isOpen, projectId]);
 
     // Cleanup object URLs on unmount or change
     useEffect(() => {
@@ -93,27 +86,47 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
         });
     };
 
+    const postAs = (authorIdentity: 'organisation' | 'project') => {
+        const formData = new FormData();
+        formData.append('project_parent', String(projectId));
+        formData.append('title', title);
+        formData.append('content', content);
+        formData.append('author_identity', authorIdentity);
+
+        // Append each file as 'uploaded_media' (DRF ListField handles multiple values for same key)
+        mediaItems.forEach(item => {
+            formData.append('uploaded_media', item.file);
+        });
+
+        return api.post('/posts/', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedProject) return;
         setLoading(true);
 
         try {
-            const formData = new FormData();
-            formData.append('project_parent', selectedProject.toString());
-            formData.append('title', title);
-            formData.append('content', content);
-            formData.append('author_identity', authorIdentity);
-
-            // Append each file as 'uploaded_media' (DRF ListField handles multiple values for same key)
-            mediaItems.forEach(item => {
-                formData.append('uploaded_media', item.file);
-            });
-
-            const res = await api.post('/posts/', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            // No more "Publish As" picker — resolve authorship automatically: post as the
+            // organisation when the project belongs to one, otherwise as the project itself.
+            const identity = project?.organisation_details ? 'organisation' : 'project';
+            let res;
+            try {
+                res = await postAs(identity);
+            } catch (err) {
+                // A project editor/admin who isn't an org owner/admin can post as the
+                // project but not as the organisation (see PostViewSet.perform_create) —
+                // retry once as 'project' instead of failing on a choice the user no
+                // longer makes explicitly.
+                if (identity === 'organisation' && axios.isAxiosError(err) && err.response?.status === 403) {
+                    res = await postAs('project');
+                } else {
+                    throw err;
+                }
+            }
             trackEvent('devlog_create');
+            onLogged?.();
 
             onSuccess(res.data);
             onClose();
@@ -123,9 +136,6 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
             setLoading(false);
         }
     };
-
-    // Helper: Find selected project to get its cover image
-    const currentProject = projects.find(p => p.id === Number(selectedProject));
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -173,8 +183,8 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                         >
                             {/* Background Project Cover */}
                             <div className="absolute inset-0">
-                                {currentProject?.cover_image ? (
-                                    <img src={getImageUrl(currentProject.cover_image)} alt="Project Cover" className="w-full h-full object-cover opacity-20 grayscale blur-[2px] transition-transform duration-700 group-hover:scale-105" />
+                                {project?.logo ? (
+                                    <img src={getImageUrl(project.logo)} alt="Project Cover" className="w-full h-full object-cover opacity-20 grayscale blur-[2px] transition-transform duration-700 group-hover:scale-105" />
                                 ) : (
                                     <div className="w-full h-full bg-zinc-900/50" />
                                 )}
@@ -206,16 +216,16 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                     />
 
                     {/* Bottom Project Info Overlay (Only if no media, or sleek bar if media exists?) */}
-                    {currentProject && mediaItems.length === 0 && (
+                    {project && mediaItems.length === 0 && (
                         <div className="absolute bottom-0 left-0 right-0 p-6 text-left pointer-events-none">
                             <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1 shadow-black drop-shadow-md">{t('postingTo')}</p>
-                            <h3 className="text-2xl font-black text-white leading-none shadow-black drop-shadow-lg">{currentProject.title}</h3>
+                            <h3 className="text-2xl font-black text-white leading-none shadow-black drop-shadow-lg">{project.title}</h3>
                         </div>
                     )}
-                    {currentProject && mediaItems.length > 0 && (
+                    {project && mediaItems.length > 0 && (
                         <div className="p-4 border-t border-zinc-800 bg-zinc-950/90 backdrop-blur-sm z-10 flex items-center justify-between">
                             <span className="text-zinc-400 text-xs font-bold uppercase tracking-wider">{t('projects')}</span>
-                            <span className="text-white font-bold text-sm truncate max-w-[150px]">{currentProject.title}</span>
+                            <span className="text-white font-bold text-sm truncate max-w-[150px]">{project.title}</span>
                         </div>
                     )}
                 </div>
@@ -235,73 +245,6 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
 
                     {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin-dark">
-
-                        {/* Project Selector - Prominent */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('selectProject')}</label>
-                            <div className="relative">
-                                <select
-                                    required
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all font-medium text-lg"
-                                    value={selectedProject}
-                                    onChange={e => {
-                                        const val = e.target.value;
-                                        setSelectedProject(val ? Number(val) : '');
-                                        setAuthorIdentity('user');
-                                    }}
-                                >
-                                    <option value="">{t('chooseProjectPlaceholder')}</option>
-                                    {projects.map(p => (
-                                        <option key={p.id} value={p.id}>{p.title}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                                    <Layout className="h-5 w-5" />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Author Identity Selector */}
-                        {currentProject?.organisation_details && (
-                            <div className="space-y-2 animate-in fade-in duration-200">
-                                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('publishAs')}</label>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setAuthorIdentity('user')}
-                                        className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
-                                            authorIdentity === 'user'
-                                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20'
-                                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
-                                        }`}
-                                    >
-                                        {t('individual')}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAuthorIdentity('organisation')}
-                                        className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
-                                            authorIdentity === 'organisation'
-                                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20'
-                                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
-                                        }`}
-                                    >
-                                        {t('organisationColonLabel')} {currentProject.organisation_details.name}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAuthorIdentity('project')}
-                                        className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
-                                            authorIdentity === 'project'
-                                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20'
-                                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
-                                        }`}
-                                    >
-                                        {t('projectColonLabel')} {currentProject.title}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
 
                         {/* Title Input */}
                         <div className="space-y-2">
@@ -341,7 +284,7 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, defaultP
                         <button
                             type="submit"
                             onClick={handleSubmit}
-                            disabled={loading || !selectedProject || !title}
+                            disabled={loading || !title.trim()}
                             className="px-8 py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2 text-sm"
                         >
                             {loading ? t('posting') : (

@@ -179,11 +179,25 @@ export interface GlossaryTerm {
 export type ActivityType =
     | 'task_created'
     | 'task_completed'
+    | 'task_deleted'
+    | 'task_moved'
+    | 'column_changed'
+    | 'comment_added'
     | 'subtask_checked'
     | 'gdd_edited'
+    | 'gdd_published'
     | 'asset_added'
+    | 'asset_removed'
     | 'translation_approved'
+    | 'translation_rejected'
+    | 'translation_key_added'
+    | 'glossary_added'
+    | 'language_added'
     | 'member_joined'
+    | 'member_removed'
+    | 'member_role_changed'
+    | 'project_created'
+    | 'devlog_published'
     | 'git_push'
     | 'steam_build';
 
@@ -192,6 +206,11 @@ export interface ActivityItem {
     type: ActivityType;
     text: string;
     time: string;
+    // Real ISO timestamp, added alongside the legacy pre-formatted `time` string so the
+    // dashboard can compute a live "X min ago" via getRelativeTime instead of `time` being
+    // frozen at whatever it said the moment it was logged. Optional so activity blobs
+    // persisted before this field existed still render (falling back to `time`).
+    createdAt?: string;
     icon: string;
     actor?: string;
 }

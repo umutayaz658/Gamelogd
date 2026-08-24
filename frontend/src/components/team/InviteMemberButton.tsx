@@ -17,7 +17,7 @@ interface InviteMemberButtonProps {
     /** User ids to exclude from the search/quick-add results (current members + self). */
     excludeUserIds: number[];
     /** Called after a successful invite is sent — refetch whatever pending-invite list you show. */
-    onInvited: () => void;
+    onInvited: (username?: string) => void;
     className?: string;
 }
 
@@ -70,11 +70,11 @@ export default function InviteMemberButton({
     const handleInvite = (targetUser: { id: number; username: string }, roleId: number, legacyRole: string) => {
         if (scope === 'project') {
             api.post('/project-members/', { project: projectId, user_id: targetUser.id, role: legacyRole, custom_role: roleId })
-                .then(() => { onInvited(); setShowInviteModal(false); })
+                .then(() => { onInvited(targetUser.username); setShowInviteModal(false); })
                 .catch((err) => toast.error(err.response?.data?.detail || err.response?.data?.error || (Array.isArray(err.response?.data) ? err.response.data[0] : null) || 'Failed to invite.'));
         } else if (organisationSlug) {
             api.post(`/organisations/${organisationSlug}/invite/`, { user_id: targetUser.id, role: legacyRole, custom_role: roleId })
-                .then(() => { onInvited(); setShowInviteModal(false); })
+                .then(() => { onInvited(targetUser.username); setShowInviteModal(false); })
                 .catch((err) => toast.error(err.response?.data?.error || 'Failed to invite.'));
         }
     };

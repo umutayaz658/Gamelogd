@@ -390,12 +390,22 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     <span className={`text-sm font-bold ${getRatingTextClass(Number(review.rating))}`}>
                                         {Number(review.rating).toFixed(1)}
                                     </span>
+                                    {review.playtime_hours != null && review.playtime_hours > 0 && (
+                                        <span className="text-sm text-zinc-500 font-medium flex items-center gap-1">
+                                            <span className="text-zinc-600">{DOT_SEPARATOR}</span>
+                                            {Number.isInteger(review.playtime_hours) ? review.playtime_hours : review.playtime_hours.toFixed(1)}h
+                                        </span>
+                                    )}
                                 </div>
 
-                                {/* Platform */}
-                                {review.platform && (
-                                    <div className="text-xs text-zinc-500 font-medium mb-2">
-                                        {review.platform}
+                                {/* Platforms */}
+                                {review.platforms && review.platforms.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {review.platforms.map((platform) => (
+                                            <span key={platform} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
+                                                {platform}
+                                            </span>
+                                        ))}
                                     </div>
                                 )}
 

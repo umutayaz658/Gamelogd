@@ -254,7 +254,7 @@ export default function ProjectDetailClient() {
                                                     onClick={() => setShowDevlogModal(true)}
                                                     className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
                                                 >
-                                                    <Plus className="w-4 h-4" /> {t('logDev')}
+                                                    <Plus className="w-4 h-4" /> {t('newDevlog')}
                                                 </button>
                                             )}
                                             {/* Follow Button */}
@@ -561,7 +561,7 @@ export default function ProjectDetailClient() {
             <CreateDevlogModal
                 isOpen={showDevlogModal}
                 onClose={() => setShowDevlogModal(false)}
-                defaultProjectId={project.id}
+                projectId={project.id}
                 onSuccess={(newPost) => {
                     setDevlogs(prev => [newPost, ...prev]);
                 }}

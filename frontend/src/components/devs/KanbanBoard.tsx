@@ -209,7 +209,11 @@ export default function KanbanBoard() {
             if (task && task.columnId !== colId) {
                 setTasks((prev) => prev.map((t) => t.id === draggedId ? { ...t, columnId: colId } : t));
                 const col = columns.find((c) => c.id === colId);
-                logActivity('task_created', `Task "${task.title}" moved to "${col?.label ?? colId}".`, '📋');
+                if (colId === 'done') {
+                    logActivity('task_completed', `Task "${task.title}" completed.`, '✅');
+                } else {
+                    logActivity('task_moved', `Task "${task.title}" moved to "${col?.label ?? colId}".`, '↔️');
+                }
             }
             setDraggedId(null);
             setDragOverId(null);
@@ -251,7 +255,7 @@ export default function KanbanBoard() {
                 const [removed] = updated.splice(draggedIdx, 1);
                 updated.splice(targetIdx, 0, removed);
                 setColumns(updated);
-                logActivity('task_created', 'Columns reordered.', '📋');
+                logActivity('column_changed', 'Columns reordered.', '📋');
             }
         }
         setDraggedColId(null);
@@ -266,7 +270,7 @@ export default function KanbanBoard() {
     const executeDeleteTask = (id: string) => {
         const task = tasks.find((t) => t.id === id);
         setTasks((prev) => prev.filter((t) => t.id !== id));
-        if (task) logActivity('task_created', `Task "${task.title}" deleted.`, '🗑️');
+        if (task) logActivity('task_deleted', `Task "${task.title}" deleted.`, '🗑️');
         setConfirmDeleteTaskId(null);
     };
 
@@ -302,13 +306,18 @@ export default function KanbanBoard() {
             dotColor: COLUMN_DOTS[safeIdx],
         };
         setColumns([...columns, newCol]);
+        logActivity('column_changed', `Column "${newCol.label}" added.`, '📋');
         setNewColName('');
         setAddingColumn(false);
     };
 
     const handleRenameColumn = (colId: string) => {
         if (!renameValue.trim()) { setRenamingColId(null); return; }
+        const oldLabel = columns.find((c) => c.id === colId)?.label;
         setColumns(columns.map((c) => c.id === colId ? { ...c, label: renameValue.trim() } : c));
+        if (oldLabel && oldLabel !== renameValue.trim()) {
+            logActivity('column_changed', `Column "${oldLabel}" renamed to "${renameValue.trim()}".`, '📋');
+        }
         setRenamingColId(null);
     };
 
@@ -323,7 +332,7 @@ export default function KanbanBoard() {
         // Move tasks in this column to another column
         setTasks((prev) => prev.map((t) => t.columnId === colId ? { ...t, columnId: fallbackColId } : t));
         setColumns(remaining);
-        logActivity('task_created', `Column deleted. Tasks moved to "${remaining[0].label}".`, '📋');
+        logActivity('column_changed', `Column deleted. Tasks moved to "${remaining[0].label}".`, '🗑️');
         setConfirmDeleteColId(null);
     };
 

@@ -54,7 +54,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [nextPlaythrough, setNextPlaythrough] = useState(2);
     const [playtimeHours, setPlaytimeHours] = useState<number | ''>('');
-    const [selectedPlatform, setSelectedPlatform] = useState<string>('');
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
     const [gamePlatforms, setGamePlatforms] = useState<string[]>([]);
 
     // Reset state on open/close
@@ -71,7 +71,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setContainsSpoilers(false);
             setSubmitError(null);
             setPlaytimeHours('');
-            setSelectedPlatform('');
+            setSelectedPlatforms([]);
         } else if (isReplay && initialGame) {
             // Replay mode: fresh form but with game pre-selected
             setSelectedGame(initialGame);
@@ -82,7 +82,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsCompleted(false);
             setContainsSpoilers(false);
             setPlaytimeHours('');
-            setSelectedPlatform('');
+            setSelectedPlatforms([]);
             // Fetch how many playthroughs exist to determine next number
             const username = user?.username || '';
             api.get(`/reviews/?game_id=${initialGame.id}&username=${username}`).then(res => {
@@ -98,8 +98,8 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
             setIsLiked(existingReview.is_liked || false);
             setIsCompleted(existingReview.is_completed || false);
             setContainsSpoilers(existingReview.contains_spoilers || false);
-            setPlaytimeHours('');
-            setSelectedPlatform(existingReview.platform || '');
+            setPlaytimeHours(existingReview.playtime_hours != null ? existingReview.playtime_hours : '');
+            setSelectedPlatforms(existingReview.platforms || []);
         } else if (initialGame) {
             setSelectedGame(initialGame);
             setStep(2);
@@ -184,7 +184,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                 contains_spoilers: containsSpoilers
             };
             if (playtimeHours !== '') payload.playtime_hours = playtimeHours;
-            if (selectedPlatform) payload.platform = selectedPlatform;
+            if (selectedPlatforms.length > 0) payload.platforms = selectedPlatforms;
 
             if (isReplay) {
                 payload.playthrough_number = nextPlaythrough;
@@ -403,8 +403,9 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                                         <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('platform')}</label>
                                         <FilterDropdown
                                             label={t('selectPlatform')}
-                                            value={selectedPlatform}
-                                            onChange={setSelectedPlatform}
+                                            multiSelect
+                                            values={selectedPlatforms}
+                                            onChangeMulti={setSelectedPlatforms}
                                             showAllOption={false}
                                             showSelectionAccent={false}
                                             matchTriggerWidth

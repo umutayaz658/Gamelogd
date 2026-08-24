@@ -580,15 +580,32 @@ class ReviewSerializer(serializers.ModelSerializer):
             'id', 'user', 'game', 'game_id', 'rating', 'content', 'is_liked', 'is_bookmarked',
             'bookmarks_count', 'is_completed', 'contains_spoilers', 'timestamp', 'type',
             'is_liked_by_user', 'likes_count', 'playthrough_number', 'replies_count', 'reposts_count',
-            'platform',
+            'platforms', 'playtime_hours',
         ]
         read_only_fields = ['id', 'user', 'timestamp']
 
-    def validate_platform(self, value):
+    def validate_platforms(self, value):
         if not value:
-            return value
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("platforms must be a list.")
         import re
-        value = re.sub(r'<[^>]+>', '', str(value)).strip()[:100]
+        cleaned = []
+        for item in value:
+            item = re.sub(r'<[^>]+>', '', str(item)).strip()[:100]
+            if item and item not in cleaned:
+                cleaned.append(item)
+        return cleaned[:20]
+
+    def validate_playtime_hours(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("playtime_hours must be a number.")
+        if value < 0 or value > 50000:
+            raise serializers.ValidationError("playtime_hours must be between 0 and 50000.")
         return value
 
     def get_is_bookmarked(self, obj):

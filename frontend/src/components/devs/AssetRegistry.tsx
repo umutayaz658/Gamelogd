@@ -331,7 +331,7 @@ export default function AssetRegistry() {
     const handleDelete = (id: string) => {
         const asset = assets.find((a) => a.id === id);
         setAssets((prev) => prev.filter((a) => a.id !== id));
-        if (asset) logActivity('asset_added', `Asset "${asset.name}" removed from assets.`, '🗑️');
+        if (asset) logActivity('asset_removed', `Asset "${asset.name}" removed from assets.`, '🗑️');
     };
 
     return (

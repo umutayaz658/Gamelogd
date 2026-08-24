@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { X, Upload, Check, Image as ImageIcon } from 'lucide-react';
 import api from '@/lib/api';
-import { Project, Organisation } from '@/types';
+import { Project } from '@/types';
 import { useTranslation } from '@/lib/useTranslation';
 import { trackEvent } from '@/lib/analytics';
+import { useWorkspace } from '@/components/devs/WorkspaceContext';
+import FilterDropdown from '@/components/FilterDropdown';
 
 interface CreateProjectModalProps {
     isOpen: boolean;
@@ -18,6 +20,7 @@ const AVAILABLE_TECH = [
 
 export default function CreateProjectModal({ isOpen, onClose, onSuccess }: CreateProjectModalProps) {
     const { t } = useTranslation();
+    const { activeWorkspace, logActivity } = useWorkspace();
     const [formData, setFormData] = useState<{
         title: string;
         description: string;
@@ -29,35 +32,19 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
         status: 'in_dev',
         tech_stack: []
     });
-    const [selectedOrgId, setSelectedOrgId] = useState<string>('');
-    const [userOrganisations, setUserOrganisations] = useState<Organisation[]>([]);
-    const [coverImage, setCoverImage] = useState<File | null>(null);
+    const [logoImage, setLogoImage] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showTechDropdown, setShowTechDropdown] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
-        if (isOpen) {
-            const fetchOrgs = async () => {
-                try {
-                    const res = await api.get('/organisations/?member=true');
-                    setUserOrganisations(res.data.results || res.data);
-                } catch (error) {
-                    console.error("Failed to fetch user's organisations:", error);
-                }
-            };
-            fetchOrgs();
-        }
-    }, [isOpen]);
-
     if (!isOpen) return null;
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            setCoverImage(file);
+            setLogoImage(file);
             setPreviewUrl(URL.createObjectURL(file));
         }
     };
@@ -73,25 +60,28 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
             data.append('description', formData.description);
             data.append('status', formData.status);
             data.append('tech_stack', JSON.stringify(formData.tech_stack));
-            if (selectedOrgId) {
-                data.append('organisation', selectedOrgId);
+            if (activeWorkspace.type === 'org' && activeWorkspace.org) {
+                data.append('organisation', String(activeWorkspace.org.id));
             }
 
-            if (coverImage) {
-                data.append('cover_image', coverImage);
+            if (logoImage) {
+                // This upload is the project's square profile photo, not its banner — the
+                // project page renders `logo` in the small avatar slot and `cover_image` in
+                // the header banner, and this modal only collects one image.
+                data.append('logo', logoImage);
             }
 
             const res = await api.post('/projects/', data, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             trackEvent('project_create');
+            logActivity('project_created', `Project "${res.data.title}" created.`, '🚀');
 
             onSuccess(res.data);
             onClose();
             // Reset form
             setFormData({ title: '', description: '', status: 'in_dev', tech_stack: [] });
-            setSelectedOrgId('');
-            setCoverImage(null);
+            setLogoImage(null);
             setPreviewUrl(null);
             setShowTechDropdown(false);
         } catch (err: any) {
@@ -118,7 +108,8 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="w-full max-w-5xl h-[600px] bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
 
-                {/* LEFT COLUMN: Visual / Cover Image Upload */}
+                {/* LEFT COLUMN: Logo Upload (the project's square profile photo — see the
+                    `logo` field note in handleSubmit) */}
                 <div
                     className="w-full md:w-2/5 bg-zinc-950 border-r border-zinc-800 relative group cursor-pointer flex flex-col items-center justify-center text-center p-6 transition-all hover:bg-zinc-950/80"
                     onClick={() => fileInputRef.current?.click()}
@@ -135,14 +126,14 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                         <>
                             <img
                                 src={previewUrl}
-                                alt="Cover Preview"
+                                alt="Logo Preview"
                                 className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity"
                             />
                             <div className="relative z-10 flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
                                 <div className="p-4 bg-black/50 backdrop-blur-md rounded-full mb-3 text-blue-500">
                                     <Upload className="h-8 w-8" />
                                 </div>
-                                <p className="text-white font-bold text-lg shadow-black drop-shadow-lg">{t('changeCoverImage')}</p>
+                                <p className="text-white font-bold text-lg shadow-black drop-shadow-lg">{t('changeLogo')}</p>
                             </div>
  
                             {/* Persistent Title Preview */}
@@ -163,9 +154,9 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                             <div className="p-6 rounded-full bg-zinc-900 border border-zinc-800 mb-6 group-hover:scale-110 transition-transform duration-300 group-hover:border-blue-500/30 group-hover:bg-zinc-900/50">
                                 <ImageIcon className="h-12 w-12" />
                             </div>
-                            <h3 className="text-xl font-bold text-zinc-300 mb-2">{t('uploadCoverImage')}</h3>
+                            <h3 className="text-xl font-bold text-zinc-300 mb-2">{t('uploadLogo')}</h3>
                             <p className="text-sm max-w-[200px]">
-                                {t('chooseStandardizedImageDesc')}
+                                {t('oneToOneSquare')}
                             </p>
                         </div>
                     )}
@@ -184,8 +175,9 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                         </button>
                     </div>
  
-                    {/* Scrollable Form Content */}
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin-dark">
+                    {/* Form Content — fits without scrolling now that Publish As is gone; the
+                        description textarea scrolls internally on its own if it grows. */}
+                    <div className="flex-1 overflow-y-hidden p-8 space-y-6">
                         {error && (
                             <div className="p-3.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs font-semibold whitespace-pre-line animate-in fade-in duration-200">
                                 {error}
@@ -218,49 +210,27 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                             />
                         </div>
  
-                        {/* Publish As Select */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('publishAs')}</label>
-                            <div className="relative">
-                                <select
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all text-sm"
-                                    value={selectedOrgId}
-                                    onChange={e => setSelectedOrgId(e.target.value)}
-                                >
-                                    <option value="">{t('personalProfileIndividual')}</option>
-                                    {userOrganisations.map(org => (
-                                        <option key={org.id} value={org.id}>
-                                            {[t('organisationColonLabel'), org.name].join(' ')}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-                                </div>
-                            </div>
-                        </div>
-
                         <div className="grid grid-cols-2 gap-6">
                             {/* Status Select */}
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('developmentStatus')}</label>
-                                <div className="relative">
-                                    <select
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white appearance-none focus:border-blue-500/50 outline-none transition-all"
-                                        value={formData.status}
-                                        onChange={e => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="in_dev">{t('inDevelopmentEmoji')}</option>
-                                        <option value="alpha">{t('alphaEmoji')}</option>
-                                        <option value="beta">{t('betaEmoji')}</option>
-                                        <option value="released">{t('releasedEmoji')}</option>
-                                    </select>
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-                                    </div>
-                                </div>
+                                <FilterDropdown
+                                    label={t('developmentStatus')}
+                                    value={formData.status}
+                                    onChange={(v) => setFormData({ ...formData, status: v })}
+                                    showAllOption={false}
+                                    showSelectionAccent={false}
+                                    matchTriggerWidth
+                                    fullWidth
+                                    options={[
+                                        { value: 'in_dev', label: t('inDevelopment') },
+                                        { value: 'alpha', label: 'Alpha' },
+                                        { value: 'beta', label: 'Beta' },
+                                        { value: 'released', label: t('released') },
+                                    ]}
+                                />
                             </div>
- 
+
                             {/* Tech Stack Input */}
                             <div className="space-y-2 relative">
                                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('techStack')}</label>

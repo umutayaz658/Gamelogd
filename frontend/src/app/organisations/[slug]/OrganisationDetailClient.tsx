@@ -394,17 +394,17 @@ export default function OrganisationDetailClient() {
                         {/* Tabs Content */}
                         <div className="animate-in fade-in duration-300">
                             {activeTab === 'projects' ? (
-                                <div className="flex flex-col gap-6 w-full">
-                                    {projects.length > 0 ? (
-                                        projects.map((project) => (
+                                projects.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+                                        {projects.map((project) => (
                                             <ProjectCard key={project.id} project={project} />
-                                        ))
-                                    ) : (
-                                        <div className="text-center py-20 text-zinc-500 bg-zinc-900/20 rounded-2xl border border-zinc-800/40">
-                                            {t('noProjectsFound') || 'Bu organizasyon için henüz bir proje oluşturulmamış.'}
-                                        </div>
-                                    )}
-                                </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-20 text-zinc-500 bg-zinc-900/20 rounded-2xl border border-zinc-800/40">
+                                        {t('noProjectsFound') || 'Bu organizasyon için henüz bir proje oluşturulmamış.'}
+                                    </div>
+                                )
                             ) : activeTab === 'devlogs' ? (
                                 <div className="flex flex-col gap-6 w-full">
                                     {devlogs.length > 0 ? (
