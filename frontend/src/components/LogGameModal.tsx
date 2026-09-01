@@ -5,6 +5,7 @@ import { X, Search, Loader2, ChevronLeft, Calendar, Check, RefreshCw } from 'luc
 import api from '@/lib/api';
 import { getImageUrl, getRatingColor, getRatingTextClass } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { trackEvent } from '@/lib/analytics';
 import FilterDropdown from '@/components/FilterDropdown';
@@ -35,6 +36,7 @@ interface LogGameModalProps {
 export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, existingReview, isReplay }: LogGameModalProps) {
     // State Management
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { t } = useTranslation();
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -170,6 +172,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
     };
 
     const handleSubmit = async () => {
+        if (requireAuth('logGame')) return;
         if (!selectedGame) return;
         setIsSubmitting(true);
         setSubmitError(null);

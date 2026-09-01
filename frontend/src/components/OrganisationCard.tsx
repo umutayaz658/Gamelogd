@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { Organisation } from '@/types';
 import { getImageUrl } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useTranslation } from '@/lib/useTranslation';
-import { useToast } from '@/context/ToastContext';
 import api from '@/lib/api';
 import { Check, Users, ShieldAlert, Globe, Twitter, Youtube, Plus, CheckSquare } from 'lucide-react';
 import { trackEvent } from '@/lib/analytics';
@@ -21,7 +21,7 @@ interface OrganisationCardProps {
 export default function OrganisationCard({ organisation, onFollowToggle }: OrganisationCardProps) {
     const { t } = useTranslation();
     const { user } = useAuth();
-    const toast = useToast();
+    const { requireAuth } = useAuthGate();
     const [isFollowing, setIsFollowing] = useState(organisation.is_following || false);
     const [followersCount, setFollowersCount] = useState(organisation.followers_count || 0);
     const [loading, setLoading] = useState(false);
@@ -33,10 +33,7 @@ export default function OrganisationCard({ organisation, onFollowToggle }: Organ
         e.preventDefault();
         e.stopPropagation();
 
-        if (!user) {
-            toast.info(t('pleaseLogin' as any) || 'Please log in to follow organisations.');
-            return;
-        }
+        if (requireAuth('follow')) return;
 
         setLoading(true);
         try {

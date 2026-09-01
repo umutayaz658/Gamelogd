@@ -11,6 +11,7 @@ import { Organisation, OrganisationInvitation, Project, Post } from '@/types';
 import { getImageUrl, wrapInParens } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/url';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useTranslation } from '@/lib/useTranslation';
 import {
     Check, Users, Globe, Twitter, Youtube, Calendar, Link2,
@@ -19,7 +20,6 @@ import {
 import Link from 'next/link';
 import ShareCardModal from '@/components/ShareCardModal';
 import MemberManager from '@/components/team/MemberManager';
-import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { trackEvent } from '@/lib/analytics';
 
@@ -30,8 +30,8 @@ export default function OrganisationDetailClient() {
     const { slug } = useParams() as { slug: string };
     const { t } = useTranslation();
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const router = useRouter();
-    const toast = useToast();
     const confirm = useConfirm();
 
     const [organisation, setOrganisation] = useState<Organisation | null>(null);
@@ -152,10 +152,7 @@ export default function OrganisationDetailClient() {
     const canManage = userMemberObj && (userMemberObj.role === 'owner' || userMemberObj.role === 'admin');
 
     const handleFollowToggle = async () => {
-        if (!user) {
-            toast.info(t('pleaseLogin' as any) || 'Please log in to follow.');
-            return;
-        }
+        if (requireAuth('follow')) return;
 
         setFollowLoading(true);
         try {

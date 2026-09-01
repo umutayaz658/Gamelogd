@@ -11,6 +11,7 @@ import { sanitizeUrl } from "@/lib/url";
 import api, { unwrapList } from "@/lib/api";
 import { MapPin, Link as LinkIcon, Calendar, Gamepad2, Twitter, Github, Pencil, UserPlus, Trophy, Plus, Loader2, Cake, MessageSquare, Eye, EyeOff, MoreHorizontal, X, Clock, Lock, UserX, Dna, ChevronDown, ArrowRight } from 'lucide-react';
 import { useAuth } from "@/context/AuthContext";
+import { useAuthGate } from "@/context/AuthGateContext";
 import { useFeed } from "@/context/FeedContext";
 import EditProfileModal from "@/components/EditProfileModal";
 import ImageModal from "@/components/modals/ImageModal";
@@ -64,6 +65,7 @@ interface SteamStatus {
 
 export default function ProfileClient({ username }: { username: string }) {
     const { user: currentUser } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { items: feedItems } = useFeed();
     const { t, language } = useTranslation();
     const toast = useToast();
@@ -171,10 +173,7 @@ export default function ProfileClient({ username }: { username: string }) {
     }, [isMenuOpen]);
 
     const handleBlockToggle = async () => {
-        if (!currentUser) {
-            toast.info("Please login to block users.");
-            return;
-        }
+        if (requireAuth('generic')) return;
 
         const confirmTitle = isBlocked ? 'Unblock User' : 'Block User';
         const confirmMsg = isBlocked 
@@ -206,10 +205,7 @@ export default function ProfileClient({ username }: { username: string }) {
     };
 
     const handleMuteToggle = async () => {
-        if (!currentUser) {
-            toast.info("Please login to mute users.");
-            return;
-        }
+        if (requireAuth('generic')) return;
         try {
             if (isMuted) {
                 await api.post(`/users/${username}/unmute/`);
@@ -481,10 +477,7 @@ export default function ProfileClient({ username }: { username: string }) {
     };
 
     const handleMessage = async () => {
-        if (!currentUser) {
-            toast.info("Please login to send messages.");
-            return;
-        }
+        if (requireAuth('message')) return;
         try {
             const res = await api.post('/conversations/start_chat/', { username: username });
             // Redirect to messages page with chat ID
@@ -496,10 +489,7 @@ export default function ProfileClient({ username }: { username: string }) {
     };
 
     const handleFollowToggle = async () => {
-        if (!currentUser) {
-            toast.info("Please login to follow users.");
-            return;
-        }
+        if (requireAuth('follow')) return;
 
         const isPrivateProfile = profileUser?.settings?.privateProfile || false;
 
@@ -789,6 +779,7 @@ export default function ProfileClient({ username }: { username: string }) {
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         setIsMenuOpen(false);
+                                                                        if (requireAuth('generic')) return;
                                                                         setShowReportModal(true);
                                                                     }}
                                                                     className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer"
@@ -896,6 +887,7 @@ export default function ProfileClient({ username }: { username: string }) {
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setIsMenuOpen(false);
+                                                                if (requireAuth('generic')) return;
                                                                 setShowReportModal(true);
                                                             }}
                                                             className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded-lg font-bold transition-colors cursor-pointer"

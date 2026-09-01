@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { AuthGateProvider } from '@/context/AuthGateContext';
+import AuthRequiredModal from '@/components/AuthRequiredModal';
+import BottomBarStack from '@/components/BottomBarStack';
 import { NotificationProvider } from '@/context/NotificationContext';
 import MessagesDrawer from '@/components/MessagesDrawer';
 import { LogModalProvider } from '@/context/LogModalContext';
@@ -14,7 +17,6 @@ import { FeedProvider } from '@/context/FeedContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { ConfirmProvider } from '@/context/ConfirmContext';
 import { AnalyticsConsentProvider } from '@/context/AnalyticsConsentContext';
-import ConsentBanner from '@/components/Analytics/ConsentBanner';
 import GoogleAnalyticsScript from '@/components/Analytics/GoogleAnalyticsScript';
 import AnalyticsPageviewTracker from '@/components/Analytics/AnalyticsPageviewTracker';
 
@@ -55,30 +57,39 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" className="dark">
-            <body className="bg-zinc-950 text-zinc-100 antialiased pb-14 lg:pb-0" suppressHydrationWarning={true}>
+            <body
+                className="bg-zinc-950 text-zinc-100 antialiased"
+                style={{ paddingBottom: 'var(--bottom-reserve)', transition: 'padding-bottom 300ms ease-out' }}
+                suppressHydrationWarning={true}
+            >
                 <AnalyticsConsentProvider>
                     <GoogleAnalyticsScript />
                     <ToastProvider>
                         <ConfirmProvider>
                             <AuthProvider>
-                                <NotificationProvider>
-                                    <LogModalProvider>
-                                        <ReplyModalProvider>
-                                            <PostModalProvider>
-                                                <FeedProvider>
-                                                    {children}
-                                                    <MessagesDrawer />
-                                                    <ClientLogModalWrapper />
-                                                    <ReplyModal />
-                                                    <PostModal />
-                                                    <MobileTabBar />
-                                                    <AnalyticsPageviewTracker />
-                                                    <ConsentBanner />
-                                                </FeedProvider>
-                                            </PostModalProvider>
-                                        </ReplyModalProvider>
-                                    </LogModalProvider>
-                                </NotificationProvider>
+                                <AuthGateProvider>
+                                    <NotificationProvider>
+                                        <LogModalProvider>
+                                            <ReplyModalProvider>
+                                                <PostModalProvider>
+                                                    <FeedProvider>
+                                                        {children}
+                                                        <MessagesDrawer />
+                                                        <ClientLogModalWrapper />
+                                                        <ReplyModal />
+                                                        <PostModal />
+                                                        <MobileTabBar />
+                                                        <AnalyticsPageviewTracker />
+                                                        <BottomBarStack />
+                                                        {/* Mounted after BottomBarStack so it wins the shared z-[9999]
+                                                            stacking tier if both happen to be visible at once. */}
+                                                        <AuthRequiredModal />
+                                                    </FeedProvider>
+                                                </PostModalProvider>
+                                            </ReplyModalProvider>
+                                        </LogModalProvider>
+                                    </NotificationProvider>
+                                </AuthGateProvider>
                             </AuthProvider>
                         </ConfirmProvider>
                     </ToastProvider>

@@ -7,6 +7,7 @@ import { getImageUrl, getRelativeTime, getTimeRemaining, formatCount, isUnreacha
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import ShareCardModal from '@/components/ShareCardModal';
@@ -112,6 +113,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { t, language } = useTranslation();
     const toast = useToast();
     const confirm = useConfirm();
@@ -272,7 +274,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!user) return router.push('/login');
+        if (requireAuth('like')) return;
 
         const wasLiked = isLiked;
         try {
@@ -289,7 +291,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const handleBookmark = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!user) return router.push('/login');
+        if (requireAuth('bookmark')) return;
 
         try {
             const wasBookmarked = isBookmarked;
@@ -326,6 +328,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const handleNotInterested = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setShowMenu(false);
+        if (requireAuth('generic')) return;
         try {
             await api.post(`/posts/${post.id}/not-interested/`);
             toast.success(t('notInterestedConfirmed'));
@@ -337,6 +340,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const handleMuteAuthor = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setShowMenu(false);
+        if (requireAuth('generic')) return;
         try {
             await api.post(`/users/${post.user.username}/mute/`);
             toast.success(t('muteUser'));
@@ -348,6 +352,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const handleBlockAuthor = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setShowMenu(false);
+        if (requireAuth('generic')) return;
         if (!(await confirm({ message: t('areYouSureBlock').replace('{username}', post.user.username), confirmText: t('blockUser'), isDanger: true }))) return;
         try {
             await api.post(`/users/${post.user.username}/block/`);
@@ -359,7 +364,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const handleRepost = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!user) return router.push('/login');
+        if (requireAuth('repost')) return;
         
         try {
             const previousIsReposted = isReposted;
@@ -386,7 +391,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const handleVote = async (e: React.MouseEvent, optionIndex: number) => {
         e.stopPropagation();
-        if (!user) return router.push('/login');
+        if (requireAuth('vote')) return;
         if (isVoting || pollUserChoice !== null || post.poll_results?.is_closed) return;
 
         setIsVoting(true);
@@ -579,7 +584,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                                 {t('blockUser')}
                                             </button>
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); setShowReportModal(true); }}
+                                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); if (requireAuth('generic')) return; setShowReportModal(true); }}
                                                 className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
                                             >
                                                 <Flag className="h-4 w-4" />
@@ -843,6 +848,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
+                                    if (requireAuth('reply')) return;
                                     openReplyModal({ ...post, type: 'post' });
                                 }}
                             >
@@ -878,6 +884,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowRepostMenu(false);
+                                                if (requireAuth('post')) return;
                                                 openQuoteModal({ ...post, type: 'post' });
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left border-t border-zinc-800"
@@ -928,6 +935,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
+                                                if (requireAuth('message')) return;
                                                 setIsShareModalOpen(true);
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"

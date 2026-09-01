@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import api from '@/lib/api';
 import ShareModal from '@/components/ShareModal';
 import ShareCardModal from '@/components/ShareCardModal';
@@ -31,6 +32,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { t, language } = useTranslation();
     const toast = useToast();
     const confirm = useConfirm();
@@ -126,7 +128,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!user) return router.push('/login');
+        if (requireAuth('like')) return;
         try {
             const wasLiked = isLiked;
             setIsLiked(!isLiked);
@@ -141,7 +143,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
 
     const handleBookmark = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!user) return router.push('/login');
+        if (requireAuth('bookmark')) return;
         try {
             const wasBookmarked = isBookmarked;
             setIsBookmarked(!isBookmarked);
@@ -175,6 +177,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const handleNotInterested = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setShowMenu(false);
+        if (requireAuth('generic')) return;
         try {
             await api.post(`/reviews/${review.id}/not-interested/`);
             toast.success(t('notInterestedConfirmed'));
@@ -186,6 +189,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const handleMuteAuthor = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setShowMenu(false);
+        if (requireAuth('generic')) return;
         try {
             await api.post(`/users/${review.user.username}/mute/`);
             toast.success(t('muteUser'));
@@ -197,6 +201,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
     const handleBlockAuthor = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setShowMenu(false);
+        if (requireAuth('generic')) return;
         if (!(await confirm({ message: t('areYouSureBlock').replace('{username}', review.user.username), confirmText: t('blockUser'), isDanger: true }))) return;
         try {
             await api.post(`/users/${review.user.username}/block/`);
@@ -310,7 +315,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                                 {t('blockUser')}
                                             </button>
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); setShowReportModal(true); }}
+                                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); if (requireAuth('generic')) return; setShowReportModal(true); }}
                                                 className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-zinc-800 transition-colors text-sm font-medium"
                                             >
                                                 <Flag className="h-4 w-4" />
@@ -464,6 +469,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 className="flex items-center gap-2 hover:text-emerald-500 group transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
+                                    if (requireAuth('reply')) return;
                                     openReplyModal({ ...review, type: 'review' });
                                 }}
                             >
@@ -493,6 +499,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowRepostMenu(false);
+                                                if (requireAuth('post')) return;
                                                 openQuoteModal({ ...review, type: 'review' } as any);
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"
@@ -543,6 +550,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
+                                                if (requireAuth('message')) return;
                                                 setIsShareModalOpen(true);
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"

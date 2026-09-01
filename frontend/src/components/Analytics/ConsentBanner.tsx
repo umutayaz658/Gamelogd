@@ -3,6 +3,8 @@
 import { useAnalyticsConsent } from '@/context/AnalyticsConsentContext';
 import { useTranslation } from '@/lib/useTranslation';
 
+// Positioning (fixed/bottom/z-index) lives in the shared BottomBarStack wrapper that
+// mounts this alongside AnonBanner — this is just the bar's own content/styling now.
 export default function ConsentBanner() {
     const { consent, grant, deny } = useAnalyticsConsent();
     const { t } = useTranslation();
@@ -10,7 +12,7 @@ export default function ConsentBanner() {
     if (consent !== 'unknown') return null;
 
     return (
-        <div className="fixed bottom-14 lg:bottom-0 inset-x-0 z-[9999] border-t border-zinc-800 bg-zinc-900/95 backdrop-blur px-4 py-3.5">
+        <div className="border-t border-zinc-800 bg-zinc-900/95 backdrop-blur px-4 py-3.5">
             <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center gap-3">
                 <p className="text-sm text-zinc-300 text-center sm:text-left flex-1">
                     {t('analyticsConsentMessage')}

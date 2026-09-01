@@ -1,7 +1,7 @@
 // Server-side (Server Component / generateMetadata) fetch helper for public, unauthenticated
 // entity reads used to build per-page metadata. Mirrors the API_INTERNAL_URL vs
 // NEXT_PUBLIC_API_URL split and Docker-internal-hostname media URL rewrite that
-// frontend/src/app/page.tsx's fetchInitialFeed already established for the home feed —
+// frontend/src/lib/serverFeed.ts's fetchInitialFeed already established for the home feed —
 // same reasoning applies here: this runs inside the Next.js server process, which in
 // docker-compose resolves `localhost` to the frontend container itself, not the backend
 // one, and Django builds absolute media URLs from whatever Host the request came in on.
