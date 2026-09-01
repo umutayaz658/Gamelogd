@@ -3,28 +3,30 @@
 import { Suspense, useEffect, useRef } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useAnalyticsConsent } from '@/context/AnalyticsConsentContext';
 
 function PageviewTrackerInner() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const { isAuthenticated } = useAuth();
+    const { consent } = useAnalyticsConsent();
     const loggedUserPropRef = useRef<boolean | null>(null);
 
     useEffect(() => {
-        if (typeof window.gtag !== 'function') return;
+        if (consent !== 'granted' || typeof window.gtag !== 'function') return;
         if (loggedUserPropRef.current !== isAuthenticated) {
             loggedUserPropRef.current = isAuthenticated;
             window.gtag('set', 'user_properties', { logged_in: isAuthenticated });
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, consent]);
 
     useEffect(() => {
-        if (typeof window.gtag !== 'function') return;
+        if (consent !== 'granted' || typeof window.gtag !== 'function') return;
         const query = searchParams.toString();
         window.gtag('event', 'page_view', {
             page_path: query ? `${pathname}?${query}` : pathname,
         });
-    }, [pathname, searchParams]);
+    }, [pathname, searchParams, consent]);
 
     return null;
 }
