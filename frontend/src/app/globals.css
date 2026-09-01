@@ -3,6 +3,20 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Space reserved at the bottom of the page for whatever's fixed there (mobile tab bar,
+     plus the anon login/register banner and/or cookie-consent banner stacked above it when
+     visible). Starts at a sane default per breakpoint via media queries (so there's no flash
+     before JS runs); BottomBarStack then refines it via ResizeObserver to the real combined
+     height once mounted, so scrollable content never ends up hidden BEHIND the fixed stack
+     instead of above it (which let a bright post's background bleed through the banner's
+     semi-transparent backdrop-blur while scrolling). */
+  --bottom-reserve: 3.5rem;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --bottom-reserve: 0px;
+  }
 }
 
 @theme inline {

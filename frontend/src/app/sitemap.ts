@@ -16,6 +16,9 @@ interface SitemapData {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const staticEntries: MetadataRoute.Sitemap = [
         { url: `${SITE_URL}/`, changeFrequency: 'daily', priority: 1 },
+        // '/' is the marketing page for crawlers (no session cookie = anonymous), so the
+        // actual feed content now lives at /home — index that too.
+        { url: `${SITE_URL}/home`, changeFrequency: 'hourly', priority: 0.9 },
         { url: `${SITE_URL}/explore`, changeFrequency: 'hourly', priority: 0.8 },
         { url: `${SITE_URL}/news`, changeFrequency: 'hourly', priority: 0.6 },
     ];

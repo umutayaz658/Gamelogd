@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import Cookies from 'js-cookie';
+import { isPublicBrowsablePath } from './publicPaths';
 
 // Auth mode:
 // - 'header' (default): the token is kept in a JS-readable cookie and sent via the
@@ -73,8 +74,6 @@ api.interceptors.request.use(
 
 // Response interceptor: an expired/revoked token must not leave the UI in a fake
 // "logged in" state. On 401, clear any client-side token and bounce to /login.
-const PUBLIC_PATHS = ['/login', '/register', '/', '/verify-email'];
-
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
@@ -100,7 +99,7 @@ api.interceptors.response.use(
             }
 
             const path = window.location.pathname;
-            const onPublicPath = PUBLIC_PATHS.includes(path);
+            const onPublicPath = isPublicBrowsablePath(path);
             // In header mode only redirect if we thought we were logged in (avoid
             // disrupting guests). In cookie mode we can't read the httpOnly cookie, so
             // rely on the public-path guard.

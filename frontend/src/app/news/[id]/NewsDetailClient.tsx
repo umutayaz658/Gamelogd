@@ -12,6 +12,7 @@ import PostCard from '@/components/PostCard';
 
 import { Post } from '@/types';
 import ShareModal from '@/components/ShareModal';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import DOMPurify from 'isomorphic-dompurify';
@@ -37,6 +38,7 @@ export default function NewsDetailClient() {
     const id = params.id;
     const { t } = useTranslation();
     const toast = useToast();
+    const { requireAuth } = useAuthGate();
 
     const getTranslatedCategory = (cat: string) => {
         const lower = cat.toLowerCase();
@@ -89,6 +91,7 @@ export default function NewsDetailClient() {
     }, [id]);
 
     const handleLike = async () => {
+        if (requireAuth('like')) return;
         if (!news) return;
         // Optimistic update
         setIsLiked(!isLiked);
@@ -231,6 +234,7 @@ export default function NewsDetailClient() {
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setShowShareMenu(false);
+                                                if (requireAuth('message')) return;
                                                 setIsShareModalOpen(true);
                                             }}
                                             className="w-full flex items-center gap-2 px-3 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors text-xs font-semibold text-left"

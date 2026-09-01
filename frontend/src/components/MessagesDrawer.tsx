@@ -184,6 +184,30 @@ export default function MessagesDrawer() {
         }
     }, [user, isOpen]);
 
+    // This component never unmounts on logout — it's a singleton rendered at the app root
+    // (layout.tsx), and `!user` below only skips rendering, it doesn't reset state. Without
+    // this, a logout followed by a different account logging in on the same tab (shared
+    // computer) would resume with the PREVIOUS user's conversations/messages/open chat still
+    // sitting in memory until an unrelated refetch happened to overwrite them — a real
+    // cross-account data leak, not just a stale-UI glitch.
+    const prevUserIdRef = useRef<number | null | undefined>(undefined);
+    useEffect(() => {
+        const currentId = user?.id ?? null;
+        if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== currentId) {
+            setIsOpen(false);
+            setActiveChatId(null);
+            setConversations([]);
+            setMessages([]);
+            setInputText('');
+            clearAttachments();
+            setReplyingTo(null);
+            setShowEmojiPicker(false);
+            setShowGifPicker(false);
+            setActiveEmojiMenuMsgId(null);
+        }
+        prevUserIdRef.current = currentId;
+    }, [user?.id]);
+
     // Fetch Messages & Start Polling
     useEffect(() => {
         let isMounted = true;
@@ -412,7 +436,11 @@ export default function MessagesDrawer() {
         return getImageUrl(chat.other_user?.avatar, chat.other_user?.username);
     };
 
-    if (!user || pathname?.startsWith('/messages')) return null;
+    // Defense in depth: never render on auth-flow pages, even if `user` were ever stale
+    // (e.g. a multi-tab race) — a drawer full of private conversations has no business
+    // appearing on a page whose whole point is "you are signed out".
+    const isAuthPage = pathname === '/login' || pathname === '/register' || pathname === '/verify-email';
+    if (!user || isAuthPage || pathname?.startsWith('/messages')) return null;
 
     return (
         <div className="fixed bottom-0 right-4 z-50 hidden lg:flex flex-col items-end">

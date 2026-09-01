@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Image as ImageIcon, ImagePlay, FileImage, X, Smile, BarChart2, Plus, Trash2, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { getImageUrl, formatHandle } from '@/lib/utils';
 import api from '@/lib/api';
 import GifPicker from '@/components/GifPicker';
@@ -38,6 +39,7 @@ interface PostComposerProps {
 
 export default function PostComposer({ onPostCreated, replyingTo, parentId, parentType = 'post' }: PostComposerProps) {
     const { user, isLoading: isAuthLoading } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { t } = useTranslation();
     const toast = useToast();
 
@@ -177,6 +179,8 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
     const isPollDurationValid = pollTotalMinutes >= 5 && pollTotalMinutes <= 10080;
 
     const handlePost = async () => {
+        if (requireAuth(parentId ? 'reply' : 'post')) return;
+
         const hasContent = content.trim().length > 0;
         const hasMedia = mediaItems.length > 0 || !!selectedGif;
         const validPoll = showPollCreator && pollOptions.filter(o => o.trim()).length >= 2 && isPollDurationValid;
@@ -271,6 +275,9 @@ export default function PostComposer({ onPostCreated, replyingTo, parentId, pare
                         className="w-full bg-transparent text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0 text-lg mb-2 resize-none min-h-[60px] overflow-hidden"
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
+                        onFocus={() => {
+                            if (requireAuth(parentId ? 'reply' : 'post')) textareaRef.current?.blur();
+                        }}
                         maxLength={350}
                         onKeyDown={handleMentionKeyDown}
                     />

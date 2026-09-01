@@ -5,6 +5,7 @@ import { Bell, MessageSquare, Bookmark, User, Settings, X, Maximize2, Hash, Plus
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useLogModal } from '@/context/LogModalContext';
 import { usePostModal } from '@/context/PostModalContext';
@@ -25,6 +26,7 @@ interface LeftSidebarContentProps {
 // so the two never drift out of sync.
 export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentProps) {
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const router = useRouter();
     const isMobile = useIsMobile();
     const { unreadMessages, unreadNotifications, markMessagesRead, markNotificationsRead } = useNotifications();
@@ -111,7 +113,8 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
                 markNotificationsRead();
             },
             badge: unreadNotifications,
-            key: 'notifications'
+            key: 'notifications',
+            gate: 'generic' as const,
         },
         {
             icon: MessageSquare,
@@ -119,11 +122,14 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
             href: '/messages',
             onClick: () => markMessagesRead(),
             badge: unreadMessages,
-            key: 'messages'
+            key: 'messages',
+            gate: 'message' as const,
         },
-        { icon: Bookmark, label: t('bookmarks'), href: '/bookmarks', key: 'bookmarks' },
+        { icon: Bookmark, label: t('bookmarks'), href: '/bookmarks', key: 'bookmarks', gate: 'generic' as const },
+        // Already navigates straight to /login for a guest — not a gated "action", just an
+        // honest reflection of "you have no profile until you sign in".
         { icon: User, label: t('profile'), href: user ? `/${user.username}` : '/login', key: 'profile' },
-        { icon: Settings, label: t('settings'), href: '/settings', key: 'settings' },
+        { icon: Settings, label: t('settings'), href: '/settings', key: 'settings', gate: 'generic' as const },
     ];
 
     return (
@@ -251,7 +257,10 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
                                 return (
                                     <button
                                         key={item.key}
-                                        onClick={item.onClick}
+                                        onClick={() => {
+                                            if ('gate' in item && item.gate && requireAuth(item.gate)) return;
+                                            item.onClick?.();
+                                        }}
                                         className={`flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group w-full text-left relative ${extraClass}`}
                                     >
                                         <div className="relative">
@@ -271,7 +280,11 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
                                 <Link
                                     key={item.key}
                                     href={item.href}
-                                    onClick={() => { item.onClick?.(); onNavigate?.(); }}
+                                    onClick={(e) => {
+                                        if ('gate' in item && item.gate && requireAuth(item.gate)) { e.preventDefault(); return; }
+                                        item.onClick?.();
+                                        onNavigate?.();
+                                    }}
                                     className={`flex items-center gap-4 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900/50 rounded-xl transition-all group relative ${extraClass}`}
                                 >
                                     <div className="relative">
@@ -301,7 +314,7 @@ export default function LeftSidebarContent({ onNavigate }: LeftSidebarContentPro
                             </button>
                         ) : (
                             <button
-                                onClick={() => { openPostModal(); onNavigate?.(); }}
+                                onClick={() => { if (requireAuth('post')) return; openPostModal(); onNavigate?.(); }}
                                 className="mt-6 flex items-center gap-4 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all group w-full text-left shadow-lg shadow-emerald-900/20"
                             >
                                 <PenSquare className="h-6 w-6 group-hover:scale-110 transition-transform" />

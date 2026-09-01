@@ -6,6 +6,7 @@ import { X, Search, Loader2, UserMinus, UserCheck, UserPlus, MoreHorizontal } fr
 import api from '@/lib/api';
 import { getImageUrl, formatHandle } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import ConfirmModal from './ui/ConfirmModal';
 import { useToast } from '@/context/ToastContext';
 import { useTranslation } from '@/lib/useTranslation';
@@ -36,6 +37,7 @@ export default function FollowersFollowingModal({
     onCountChange
 }: FollowersFollowingModalProps) {
     const { user: currentUser } = useAuth();
+    const { requireAuth } = useAuthGate();
     const toast = useToast();
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'followers' | 'following'>(initialTab);
@@ -99,7 +101,7 @@ export default function FollowersFollowingModal({
     }, [isOpen, activeTab, username, searchQuery]);
 
     const handleFollowToggle = async (targetUser: User) => {
-        if (!currentUser) return;
+        if (requireAuth('follow')) return;
         setActionLoadingId(targetUser.id);
 
         const wasFollowing = targetUser.is_following;
@@ -138,7 +140,7 @@ export default function FollowersFollowingModal({
     };
 
     const handleRemoveFollower = async (targetUser: User) => {
-        if (!currentUser) return;
+        if (requireAuth('generic')) return;
         setActionLoadingId(targetUser.id);
 
         // Optimistic UI Update (Remove user from list)
@@ -161,7 +163,7 @@ export default function FollowersFollowingModal({
     };
 
     const handleBlockUser = async (targetUser: User) => {
-        if (!currentUser) return;
+        if (requireAuth('generic')) return;
         setConfirmConfig({
             title: 'Block User',
             message: `Are you sure you want to block @${targetUser.username}?`,

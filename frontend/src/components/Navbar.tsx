@@ -241,7 +241,7 @@ export default function Navbar() {
                             {BRAND_NAME}
                         </Link>
                         <div className="hidden md:flex items-center gap-6">
-                            <Link href="/" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                            <Link href={user ? '/' : '/home'} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
                                 {t('home')}
                             </Link>
                             <Link href="/news" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">

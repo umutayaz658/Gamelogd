@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, Lock, Search, Settings2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useWorkspace } from '@/components/devs/WorkspaceContext';
+import { useWorkspaceOptional } from '@/components/devs/WorkspaceContext';
 import api from '@/lib/api';
 import { getImageUrl, formatHandle, wrapInParens } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
@@ -106,9 +106,11 @@ export default function MemberManager({
     const { user: currentUser } = useAuth();
     const toast = useToast();
     const { t } = useTranslation();
-    // MemberManager is only ever rendered from TeamRoles.tsx, itself only reachable under
-    // /devs's WorkspaceProvider — safe to call unconditionally here.
-    const { logActivity } = useWorkspace();
+    // Also rendered directly on the public organisation/project pages (Team/Participants
+    // tabs), which live outside /devs's WorkspaceProvider — useWorkspaceOptional() returns
+    // null there instead of throwing; logActivity calls below become no-ops in that case
+    // (there's no Devs activity feed to log into outside /devs anyway).
+    const logActivity = useWorkspaceOptional()?.logActivity;
 
     const [permissions, setPermissions] = useState<string[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
@@ -205,7 +207,7 @@ export default function MemberManager({
         if (member.isOwner) return;
         api.patch(memberEndpoint(member.id), { custom_role: roleId })
             .then(() => {
-                logActivity('member_role_changed', `${member.user.username}'s role was changed.`, '🔑');
+                logActivity?.('member_role_changed', `${member.user.username}'s role was changed.`, '🔑');
                 onRefresh();
                 setRoleDrawerFor(null);
             })
@@ -216,7 +218,7 @@ export default function MemberManager({
         if (member.isOwner) return;
         api.delete(memberEndpoint(member.id))
             .then(() => {
-                logActivity('member_removed', `${member.user.username} was removed.`, '👋');
+                logActivity?.('member_removed', `${member.user.username} was removed.`, '👋');
                 onRefresh();
             })
             .catch((err) => toast.error(err.response?.data?.error || 'Failed to remove member.'))
@@ -255,7 +257,7 @@ export default function MemberManager({
                                 projectId={projectId}
                                 excludeUserIds={displayMembers.map((m) => m.user.id)}
                                 onInvited={(username) => {
-                                    logActivity('member_joined', username ? `${username} was invited.` : 'A new member was invited.', '👋');
+                                    logActivity?.('member_joined', username ? `${username} was invited.` : 'A new member was invited.', '👋');
                                     onRefresh();
                                 }}
                             />

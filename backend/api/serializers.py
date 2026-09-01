@@ -3,6 +3,7 @@ from django.db.models import Count, OuterRef, Subquery, IntegerField, Q
 from django.db.models.functions import Coalesce
 from core.models import Game, Review, Post, PostMedia, Like, Bookmark, News, NewsSource, Pitch, InvestorCall, Project, JobPosting, ProjectMember, Organisation, OrganisationMember, OrganisationFollow, OrganisationInvitation, Role, PlaytestFeedback, CommunityTranslation
 from api.models import User, Interest, Follow, Notification, Conversation, Message, LibraryEntry, SupportTicket, ConversationMember, MessageReaction, Block, Report
+from api.uploads import validate_media_file
 
 
 def count_subquery(related_model, fk_name, q_filter=None, **extra_filters):
@@ -163,6 +164,12 @@ class InterestSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     interests = serializers.StringRelatedField(many=True, read_only=True)
+    # Not model fields — signal to explicitly clear avatar/cover_image on a PATCH, since
+    # DRF's ModelSerializer.update() only assigns fields present in validated_data and an
+    # empty multipart value doesn't mean "clear" for an ImageField the way it does for a
+    # CharField. Popped out of validated_data in update() before the super() call.
+    remove_avatar = serializers.BooleanField(write_only=True, required=False, default=False)
+    remove_cover_image = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = User
@@ -171,13 +178,41 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 'is_gamer', 'is_developer', 'is_investor',
             'gender', 'birth_date', 'show_birth_date', 'interests', 'platforms', 'top_favorites',
             'followers_count', 'following_count', 'is_following', 'is_requested', 'has_requested_me', 'is_blocked', 'has_blocked_me', 'is_muted', 'steam_id', 'xbox_gamertag', 'date_joined', 'settings', 'dnd_mode',
-            'reviews_count'
+            'reviews_count', 'remove_avatar', 'remove_cover_image'
         ]
         # email is read-only here: changing it must go through a verified flow, not a
         # plain profile PATCH (otherwise a user could take over account-recovery identity
         # without re-verification). steam_id is managed by the sync_steam/disconnect_steam
         # actions, not by direct serializer writes.
         read_only_fields = ['id', 'date_joined', 'email', 'steam_id']
+
+    def validate_avatar(self, value):
+        if value:
+            validate_media_file(value)
+        return value
+
+    def validate_cover_image(self, value):
+        if value:
+            validate_media_file(value)
+        return value
+
+    def update(self, instance, validated_data):
+        remove_avatar = validated_data.pop('remove_avatar', False)
+        remove_cover_image = validated_data.pop('remove_cover_image', False)
+
+        for field_name, remove_flag in (('avatar', remove_avatar), ('cover_image', remove_cover_image)):
+            old_file = getattr(instance, field_name)
+            if field_name in validated_data:
+                # A new file is replacing the old one — delete the old one first so it
+                # doesn't linger orphaned in storage (Cloudinary or local FileSystemStorage).
+                if old_file:
+                    old_file.delete(save=False)
+            elif remove_flag:
+                if old_file:
+                    old_file.delete(save=False)
+                validated_data[field_name] = None
+
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):
         """Override to safely handle mixed Cloudinary and local media paths and enforce privacy settings."""

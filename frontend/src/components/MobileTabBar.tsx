@@ -2,29 +2,31 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Home, Hash, Newspaper, Bell, MessageSquare, ChevronUp, Sparkles, PenSquare } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Home, Hash, Newspaper, Bell, MessageSquare, ChevronUp, Sparkles, PenSquare, LogIn } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useHideOnScroll } from '@/hooks/useHideOnScroll';
 import { usePostModal } from '@/context/PostModalContext';
+import { isChromeHiddenPath } from '@/lib/publicPaths';
 
-// Pixels of scroll movement (in one direction) required before the bar reacts,
-// so it doesn't flicker on tiny scroll jitter.
-const SCROLL_THRESHOLD = 8;
+type Tab = { key: string; href: string; icon: typeof Home; label: string; badge?: number; onClick?: () => void };
 
 export default function MobileTabBar() {
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { unreadNotifications, unreadMessages, markMessagesRead, markNotificationsRead, isChatFullscreen } = useNotifications();
     const { t } = useTranslation();
     const pathname = usePathname();
+    const router = useRouter();
     const isMobile = useIsMobile();
     const { openPostModal } = usePostModal();
 
-    const [hidden, setHidden] = useState(false);
+    const scrollHidden = useHideOnScroll();
     const [isExpanded, setIsExpanded] = useState(false);
-    const lastScrollY = useRef(0);
     const navRef = useRef<HTMLElement>(null);
 
     // Close the drawer on any tap outside the nav bar itself.
@@ -39,62 +41,24 @@ export default function MobileTabBar() {
         return () => document.removeEventListener('mousedown', handleOutside);
     }, [isExpanded]);
 
-    useEffect(() => {
-        lastScrollY.current = window.scrollY;
+    // Auth-flow pages (login/register/verify-email) have no use for a "Login" tab or any nav
+    // at all — the whole page IS the login flow. '/' is also excluded, but only while
+    // anonymous — it's the marketing/cover page then (see app/page.tsx), not a content page;
+    // a signed-in visitor still gets the normal tab bar there since '/' is their real feed.
+    const hideChrome = isChromeHiddenPath(pathname ?? '', !user);
 
-        const handleScroll = () => {
-            const currentScrollY = window.scrollY;
-            const delta = currentScrollY - lastScrollY.current;
+    // Only the auth-required condition changed here (dropped `!user`) — an anonymous
+    // visitor still gets a (reduced) tab bar instead of losing mobile nav entirely.
+    if (!isMobile || isChatFullscreen || hideChrome) return null;
 
-            if (currentScrollY <= 0) {
-                setHidden(false);
-            } else if (delta > SCROLL_THRESHOLD) {
-                setHidden(true); // scrolling down
-                lastScrollY.current = currentScrollY;
-            } else if (delta < -SCROLL_THRESHOLD) {
-                setHidden(false); // scrolling up
-                lastScrollY.current = currentScrollY;
-            }
-        };
+    // Anonymous visitors get a fully static bar — no scroll-hide/show — so it (and the
+    // login/register banner pinned above it) never slides away while browsing signed out.
+    // Signed-in behavior is unchanged.
+    const hidden = user ? scrollHidden : false;
 
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    if (!user || !isMobile || isChatFullscreen) return null;
-
-    const recommendedHref = `/${user.username}/recommended`;
-
-    const leftTabs = [
-        { key: 'home', href: '/', icon: Home, label: t('home') },
-        { key: 'explore', href: '/explore', icon: Hash, label: t('explore') },
-    ];
-    const rightTabs = [
-        {
-            key: 'notifications',
-            href: '/notifications',
-            icon: Bell,
-            label: t('notifications'),
-            badge: unreadNotifications,
-            onClick: markNotificationsRead,
-        },
-        {
-            key: 'messages',
-            href: '/messages',
-            icon: MessageSquare,
-            label: t('messages'),
-            badge: unreadMessages,
-            onClick: markMessagesRead,
-        },
-    ];
-    // News moved out of the main row into the expandable row below, alongside Recommended.
-    const expandedTabs = [
-        { key: 'news', href: '/news', icon: Newspaper, label: t('news') },
-        { key: 'recommended', href: recommendedHref, icon: Sparkles, label: t('recommended') },
-    ];
+    const recommendedHref = user ? `/${user.username}/recommended` : null;
 
     const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname?.startsWith(href));
-    const isExpandedGroupActive = isActive('/news') || isActive(recommendedHref);
 
     // These pages should never hide the tab bar on scroll-down — the messages check
     // only ever matters for the conversation list, since isChatFullscreen already hides
@@ -102,11 +66,7 @@ export default function MobileTabBar() {
     // sub-pages, so it's included for the same reason as Notifications/Messages.
     const alwaysVisible = pathname === '/notifications' || pathname === '/messages' || pathname === '/settings';
 
-    // Quick-post FAB only makes sense where there's a feed (or the user's own posts) to
-    // post into — not on e.g. Messages/Settings/someone else's profile.
-    const showPostFab = pathname === '/' || pathname === '/explore' || pathname === '/bookmarks' || pathname === `/${user.username}`;
-
-    const renderTab = (tab: { key: string; href: string; icon: typeof Home; label: string; badge?: number; onClick?: () => void }) => {
+    const renderTab = (tab: Tab) => {
         const active = isActive(tab.href);
         return (
             <Link
@@ -130,6 +90,86 @@ export default function MobileTabBar() {
             </Link>
         );
     };
+
+    if (!user) {
+        // Anonymous set: no Notifications/Messages/Recommended (all inherently personal —
+        // Recommended isn't even public per middleware), no expandable drawer since there's
+        // nothing left to put in it. News is promoted straight into the main row instead.
+        const anonTabs: Tab[] = [
+            { key: 'home', href: '/home', icon: Home, label: t('home') },
+            { key: 'explore', href: '/explore', icon: Hash, label: t('explore') },
+            { key: 'news', href: '/news', icon: Newspaper, label: t('news') },
+        ];
+        const showPostFab = pathname === '/home' || pathname === '/explore';
+
+        return (
+            <>
+                {showPostFab && (
+                    <button
+                        onClick={() => { if (requireAuth('post')) return; openPostModal(); }}
+                        aria-label={t('post')}
+                        className={`fixed right-4 z-40 lg:hidden h-14 w-14 flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-900/30 transition-all duration-300 ease-out ${
+                            hidden && !alwaysVisible ? 'bottom-[max(env(safe-area-inset-bottom),1rem)]' : 'bottom-20'
+                        }`}
+                    >
+                        <PenSquare className="h-6 w-6" />
+                    </button>
+                )}
+                <nav
+                    ref={navRef}
+                    className={`fixed bottom-0 inset-x-0 z-50 lg:hidden bg-zinc-900 border-t border-zinc-800 pb-[max(env(safe-area-inset-bottom),0.5rem)] transition-transform duration-300 ease-out ${
+                        hidden && !alwaysVisible ? 'translate-y-full' : 'translate-y-0'
+                    }`}
+                >
+                    <div className="grid grid-cols-4 h-14">
+                        {anonTabs.map(renderTab)}
+                        <button
+                            onClick={() => router.push('/login')}
+                            className="flex flex-col items-center justify-center gap-0.5 relative"
+                            aria-label={t('login')}
+                        >
+                            <LogIn className="h-5 w-5 text-zinc-500" />
+                            <span className="text-[10px] leading-none text-zinc-500">{t('login')}</span>
+                        </button>
+                    </div>
+                </nav>
+            </>
+        );
+    }
+
+    const leftTabs: Tab[] = [
+        { key: 'home', href: '/', icon: Home, label: t('home') },
+        { key: 'explore', href: '/explore', icon: Hash, label: t('explore') },
+    ];
+    const rightTabs: Tab[] = [
+        {
+            key: 'notifications',
+            href: '/notifications',
+            icon: Bell,
+            label: t('notifications'),
+            badge: unreadNotifications,
+            onClick: markNotificationsRead,
+        },
+        {
+            key: 'messages',
+            href: '/messages',
+            icon: MessageSquare,
+            label: t('messages'),
+            badge: unreadMessages,
+            onClick: markMessagesRead,
+        },
+    ];
+    // News moved out of the main row into the expandable row below, alongside Recommended.
+    const expandedTabs: Tab[] = [
+        { key: 'news', href: '/news', icon: Newspaper, label: t('news') },
+        { key: 'recommended', href: recommendedHref!, icon: Sparkles, label: t('recommended') },
+    ];
+
+    const isExpandedGroupActive = isActive('/news') || isActive(recommendedHref!);
+
+    // Quick-post FAB only makes sense where there's a feed (or the user's own posts) to
+    // post into — not on e.g. Messages/Settings/someone else's profile.
+    const showPostFab = pathname === '/' || pathname === '/explore' || pathname === '/bookmarks' || pathname === `/${user.username}`;
 
     return (
         <>

@@ -1,43 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { isPublicBrowsablePath, AUTH_ONLY_PATHS } from '@/lib/publicPaths';
 
-// Top-level static route segments that are NOT the [username] dynamic profile route.
-// Next's router always prefers a matching static segment over [username], so this list
-// only needs to stay in sync for THIS middleware's own string matching, not for routing
-// correctness itself.
-const RESERVED_TOP_LEVEL_SEGMENTS = [
-    'login', 'register', 'verify-email', 'settings', 'messages', 'notifications',
-    'bookmarks', 'devs', 'collabs', 'invest', 'games', 'developer', 'news',
-    'organisations', 'projects', 'explore',
-];
-
-// Fixed prefixes that are public/indexable content, EXCEPT their `/dashboard` subroute
-// (member-only management UI under organisations/[slug] and projects/[id]).
-const PUBLIC_CONTENT_PREFIXES = ['/games', '/developer', '/news', '/organisations', '/projects', '/explore'];
-
-// Shapes under the [username] catch-most segment that are public/indexable. Anything else
-// under an unreserved first segment (e.g. /{username}/recommended) falls through to the
-// default-deny (still gated) behavior below — safest posture given [username] can't be
-// prefix-matched like the fixed routes above.
-const PUBLIC_USERNAME_SUFFIXES = [/^$/, /^\/games$/, /^\/review\/[^/]+$/, /^\/status\/[^/]+$/];
-
-// Keep this in sync with the `disallow` list in frontend/src/app/robots.ts — that file
-// mirrors these same gated routes for crawlers that do respect robots.txt.
-function isPublicContentPath(pathname: string): boolean {
-    if (pathname === '/') return true;
-
-    if (PUBLIC_CONTENT_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
-        return !pathname.endsWith('/dashboard');
-    }
-
-    const segments = pathname.split('/').filter(Boolean);
-    const firstSegment = segments[0];
-    if (firstSegment && !RESERVED_TOP_LEVEL_SEGMENTS.includes(firstSegment)) {
-        const rest = `/${segments.slice(1).join('/')}`.replace(/\/$/, '');
-        return PUBLIC_USERNAME_SUFFIXES.some(re => re.test(rest));
-    }
-
-    return false;
+// Keep the public-route set (in ../lib/publicPaths.ts) in sync with the `disallow` list in
+// frontend/src/app/robots.ts — that file mirrors these same gated routes for crawlers that
+// do respect robots.txt.
+function isAuthOnlyPath(pathname: string): boolean {
+    return AUTH_ONLY_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
+        || pathname === '/favicon.ico';
 }
 
 export function middleware(request: NextRequest) {
@@ -53,14 +23,12 @@ export function middleware(request: NextRequest) {
     // content route (games, profiles, reviews, orgs, projects, news, developer, explore) —
     // search engines and social-share crawlers never carry a session cookie, so anything
     // meant to be indexed or link-unfurled has to resolve here without one.
-    const authOnlyPaths = ['/login', '/register', '/verify-email', '/favicon.ico'];
-    const isAuthOnlyPath = authOnlyPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
-    const isNoAuthRequiredPath = isAuthOnlyPath || isPublicContentPath(pathname);
+    const isNoAuthRequiredPath = pathname === '/favicon.ico' || isPublicBrowsablePath(pathname);
 
     // Paths a LOGGED-IN visitor gets bounced away from, back to '/'. Public content routes
     // are NOT in here — a logged-in user must still be able to browse games/profiles/etc.,
     // only /login-style auth pages redirect them away.
-    const isAuthRedirectPath = isAuthOnlyPath;
+    const isAuthRedirectPath = isAuthOnlyPath(pathname);
 
     // Also allow Next.js internal paths and API routes (handled by backend)
     if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.startsWith('/static')) {
