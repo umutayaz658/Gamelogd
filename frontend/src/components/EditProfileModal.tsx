@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { useToast } from '@/context/ToastContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import ImageCropModal from './ImageCropModal';
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -34,6 +35,14 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const [coverFile, setCoverFile] = useState<File | null>(null);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    // Explicitly cleared by the user (distinct from "unchanged") — tells the backend to
+    // delete the stored image rather than the PATCH simply omitting the field.
+    const [coverRemoved, setCoverRemoved] = useState(false);
+    const [avatarRemoved, setAvatarRemoved] = useState(false);
+
+    // Crop step: a picked file goes here first instead of straight into
+    // coverPreview/avatarPreview — ImageCropModal renders on top while this is set.
+    const [cropSource, setCropSource] = useState<{ type: 'cover' | 'avatar'; src: string } | null>(null);
 
     const coverInputRef = useRef<HTMLInputElement>(null);
     const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +58,9 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
             setAvatarPreview(getImageUrl(user.avatar, user.username));
             setCoverFile(null);
             setAvatarFile(null);
+            setCoverRemoved(false);
+            setAvatarRemoved(false);
+            setCropSource(null);
         }
     }, [isOpen, user]);
 
@@ -69,15 +81,45 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
 
         const reader = new FileReader();
         reader.onloadend = () => {
-            if (type === 'cover') {
-                setCoverPreview(reader.result as string);
-                setCoverFile(file);
-            } else {
-                setAvatarPreview(reader.result as string);
-                setAvatarFile(file);
-            }
+            setCropSource({ type, src: reader.result as string });
         };
         reader.readAsDataURL(file);
+
+        // Reset the input so re-picking the same file after Cancel still fires onChange.
+        e.target.value = '';
+    };
+
+    const handleCropCancel = () => {
+        setCropSource(null);
+    };
+
+    const handleCropConfirm = (blob: Blob) => {
+        if (!cropSource) return;
+        const file = new File([blob], `${cropSource.type}.jpg`, { type: 'image/jpeg' });
+        const previewUrl = URL.createObjectURL(blob);
+
+        if (cropSource.type === 'cover') {
+            setCoverFile(file);
+            setCoverPreview(previewUrl);
+            setCoverRemoved(false);
+        } else {
+            setAvatarFile(file);
+            setAvatarPreview(previewUrl);
+            setAvatarRemoved(false);
+        }
+        setCropSource(null);
+    };
+
+    const handleRemoveCover = () => {
+        setCoverFile(null);
+        setCoverPreview(null);
+        setCoverRemoved(true);
+    };
+
+    const handleRemoveAvatar = () => {
+        setAvatarFile(null);
+        setAvatarPreview(null);
+        setAvatarRemoved(true);
     };
 
     const handleSubmit = async () => {
@@ -94,9 +136,13 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
 
             if (coverFile) {
                 formData.append('cover_image', coverFile);
+            } else if (coverRemoved) {
+                formData.append('remove_cover_image', 'true');
             }
             if (avatarFile) {
                 formData.append('avatar', avatarFile);
+            } else if (avatarRemoved) {
+                formData.append('remove_avatar', 'true');
             }
 
             const res = await api.patch('/users/me/', formData, {
@@ -163,7 +209,8 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                             </div>
                             {coverPreview && (
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); setCoverPreview(null); setCoverFile(null); }}
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveCover(); }}
+                                    title={t('removeImage')}
                                     className="p-3 bg-black/50 rounded-full hover:bg-red-500/80 text-white backdrop-blur-sm transition-all"
                                 >
                                     <X className="h-5 w-5" />
@@ -183,11 +230,20 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
                     <div className="px-4 -mt-14 mb-4">
                         <div className="relative inline-block group">
                             <div className="w-28 h-28 rounded-full border-4 border-black bg-zinc-900 overflow-hidden relative">
-                                <img src={avatarPreview || getImageUrl(null)} alt="Avatar" className="w-full h-full object-cover" />
+                                <img src={avatarPreview || getImageUrl(null, user.username)} alt="Avatar" className="w-full h-full object-cover" />
                                 <div className="absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors flex items-center justify-center cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
                                     <Camera className="h-6 w-6 text-white" />
                                 </div>
                             </div>
+                            {avatarPreview && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveAvatar(); }}
+                                    title={t('removeImage')}
+                                    className="absolute bottom-0 right-0 p-1.5 bg-black/70 rounded-full hover:bg-red-500/80 text-white backdrop-blur-sm transition-all border-2 border-black"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            )}
                             <input
                                 type="file"
                                 ref={avatarInputRef}
@@ -268,6 +324,16 @@ export default function EditProfileModal({ isOpen, onClose, user, onUpdate }: Ed
 
                 </div>
             </div>
+
+            {cropSource && (
+                <ImageCropModal
+                    imageSrc={cropSource.src}
+                    aspect={cropSource.type === 'avatar' ? 1 : 3}
+                    cropShape={cropSource.type === 'avatar' ? 'round' : 'rect'}
+                    onCancel={handleCropCancel}
+                    onConfirm={handleCropConfirm}
+                />
+            )}
         </div>
     );
 }
