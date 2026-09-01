@@ -12,6 +12,7 @@ import { sanitizeUrl } from '@/lib/url';
 import { Users, Layout, Info, Edit2, Plus, Settings, ChevronDown, UserPlus, UserCheck, Bug, Calendar, Globe, Twitter, Youtube, Link2, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import CreateDevlogModal from '@/components/modals/CreateDevlogModal';
 import ShareCardModal from '@/components/ShareCardModal';
 import { useTranslation } from '@/lib/useTranslation';
@@ -29,6 +30,7 @@ export default function ProjectDetailClient() {
     const router = useRouter();
     const projectId = params.id;
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { t } = useTranslation();
     const confirm = useConfirm();
 
@@ -103,6 +105,7 @@ export default function ProjectDetailClient() {
     };
 
     const handleFollowToggle = async () => {
+        if (requireAuth('follow')) return;
         if (!project || isFollowLoading) return;
         setIsFollowLoading(true);
         try {

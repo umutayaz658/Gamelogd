@@ -816,3 +816,10 @@ export function useWorkspace() {
     if (!ctx) throw new Error('useWorkspace must be used within WorkspaceProvider');
     return ctx;
 }
+
+// For components that *might* render outside /devs's WorkspaceProvider (e.g. MemberManager,
+// also used on the public organisation/project pages) — returns null instead of throwing, so
+// callers can no-op workspace-only behavior (like activity-feed logging) instead of crashing.
+export function useWorkspaceOptional() {
+    return useContext(WorkspaceContext);
+}

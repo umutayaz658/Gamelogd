@@ -6,18 +6,21 @@ import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import PostCard from "@/components/PostCard";
 import TrendingHashtags from "@/components/TrendingHashtags";
+import SidebarSearch from "@/components/SidebarSearch";
 import { useAuth } from "@/context/AuthContext";
 import { Post } from "@/types";
 import api from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from '@/lib/useTranslation';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const EMPTY_INBOX_EMOJI = '📭';
 
 function ExploreContent() {
     const { t } = useTranslation();
     const { user } = useAuth();
+    const isMobile = useIsMobile();
     const searchParams = useSearchParams();
     const router = useRouter();
 
@@ -140,6 +143,13 @@ function ExploreContent() {
                         <div className="min-h-[calc(100vh-6rem)]">
 
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-4">
+
+                                {/* Mobile + logged-out only: LeftSidebar (with its embedded
+                                    SidebarSearch) is desktop-only, and MobileSidebarDrawer —
+                                    the mobile equivalent — is gated behind being signed in, so
+                                    an anonymous mobile visitor otherwise has no way to reach
+                                    user/organisation/project search at all. */}
+                                {isMobile && !user && <SidebarSearch />}
 
                                 {/* Active Hashtag Banner */}
                                 {activeHashtag && (

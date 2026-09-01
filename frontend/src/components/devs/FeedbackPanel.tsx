@@ -10,6 +10,7 @@ import {
 import api from '@/lib/api';
 import { cn, getImageUrl, getRelativeTime, formatHandle } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGate } from '@/context/AuthGateContext';
 import { useTranslation } from '@/lib/useTranslation';
 import { PRIORITY_COLOR, type TaskPriority } from './WorkspaceTypes';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -83,6 +84,7 @@ export default function FeedbackPanel({
     onKanbanChanged,
 }: FeedbackPanelProps) {
     const { user } = useAuth();
+    const { requireAuth } = useAuthGate();
     const { t, language } = useTranslation();
     const toast = useToast();
 
@@ -161,7 +163,7 @@ export default function FeedbackPanel({
     };
 
     const handleLike = (fb: PlaytestFeedback) => {
-        if (!user) return;
+        if (requireAuth('like')) return;
         const wasLiked = fb.is_liked;
         setFeedback((prev) => prev.map((f) => f.id === fb.id
             ? { ...f, is_liked: !wasLiked, likes_count: Math.max(0, f.likes_count + (wasLiked ? -1 : 1)) }
