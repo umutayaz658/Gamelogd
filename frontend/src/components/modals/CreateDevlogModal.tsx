@@ -1,6 +1,5 @@
 
 import { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
 import { X, Check, Upload, Plus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
@@ -86,12 +85,12 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, projectI
         });
     };
 
-    const postAs = (authorIdentity: 'organisation' | 'project') => {
+    const postAsProject = () => {
         const formData = new FormData();
         formData.append('project_parent', String(projectId));
         formData.append('title', title);
         formData.append('content', content);
-        formData.append('author_identity', authorIdentity);
+        formData.append('author_identity', 'project');
 
         // Append each file as 'uploaded_media' (DRF ListField handles multiple values for same key)
         mediaItems.forEach(item => {
@@ -108,23 +107,10 @@ export default function CreateDevlogModal({ isOpen, onClose, onSuccess, projectI
         setLoading(true);
 
         try {
-            // No more "Publish As" picker — resolve authorship automatically: post as the
-            // organisation when the project belongs to one, otherwise as the project itself.
-            const identity = project?.organisation_details ? 'organisation' : 'project';
-            let res;
-            try {
-                res = await postAs(identity);
-            } catch (err) {
-                // A project editor/admin who isn't an org owner/admin can post as the
-                // project but not as the organisation (see PostViewSet.perform_create) —
-                // retry once as 'project' instead of failing on a choice the user no
-                // longer makes explicitly.
-                if (identity === 'organisation' && axios.isAxiosError(err) && err.response?.status === 403) {
-                    res = await postAs('project');
-                } else {
-                    throw err;
-                }
-            }
+            // No more "Publish As" picker — a devlog always posts under the project's own
+            // identity, never the parent organisation's (PostViewSet.perform_create allows
+            // this for the project owner/admin AND any org owner/admin, so nothing is lost).
+            const res = await postAsProject();
             trackEvent('devlog_create');
             onLogged?.();
 
