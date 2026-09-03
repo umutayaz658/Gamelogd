@@ -705,8 +705,42 @@ class PostMediaSerializer(serializers.ModelSerializer):
         fields = ['id', 'file', 'media_type', 'order']
 
 
+def _get_post_author_details(obj, request):
+    # Shared by PostSerializer and SimplePostSerializer (the latter is what a repost/quote
+    # embeds its `repost_parent` through) so a devlog's project/organisation identity keeps
+    # showing correctly wherever the post is re-rendered, not just on its own feed card.
+    if obj.author_identity == 'organisation' and obj.project_parent and obj.project_parent.organisation:
+        org = obj.project_parent.organisation
+        return {
+            'type': 'organisation',
+            'name': org.name,
+            'slug': org.slug,
+            'avatar': request.build_absolute_uri(org.logo.url) if org.logo and request else (org.logo.url if org.logo else None),
+            'is_verified': org.is_verified,
+        }
+    elif obj.author_identity == 'project' and obj.project_parent:
+        proj = obj.project_parent
+        return {
+            'type': 'project',
+            'name': proj.title,
+            'slug': proj.id,
+            'avatar': request.build_absolute_uri(proj.logo.url) if proj.logo and request else (proj.logo.url if proj.logo else None),
+            'is_verified': False,
+        }
+    else:
+        user = obj.user
+        return {
+            'type': 'user',
+            'name': f"{user.first_name} {user.last_name}".strip() or user.username,
+            'slug': user.username,
+            'avatar': request.build_absolute_uri(user.avatar.url) if user.avatar and request else (user.avatar.url if user.avatar else None),
+            'is_verified': False,
+        }
+
+
 class SimplePostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    author_details = serializers.SerializerMethodField()
     type = serializers.CharField(default='post', read_only=True)
     replies_count = serializers.IntegerField(source='replies.count', read_only=True)
     reply_to_username = serializers.SerializerMethodField()
@@ -730,7 +764,10 @@ class SimplePostSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'poll_expires_at', 'poll_results', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score', 'is_liked', 'likes_count', 'is_bookmarked', 'bookmarks_count', 'is_reposted', 'reposts_count']
+        fields = ['id', 'user', 'author_details', 'title', 'content', 'image', 'media_file', 'media_type', 'media', 'gif_url', 'poll_options', 'poll_expires_at', 'poll_results', 'timestamp', 'parent', 'review_parent', 'news_parent', 'repost_parent', 'replies_count', 'type', 'reply_to_username', 'news_details', 'category', 'trending_score', 'is_liked', 'likes_count', 'is_bookmarked', 'bookmarks_count', 'is_reposted', 'reposts_count']
+
+    def get_author_details(self, obj):
+        return _get_post_author_details(obj, self.context.get('request'))
 
     def get_poll_results(self, obj):
         return _compute_poll_results(obj, self.context)
@@ -918,34 +955,7 @@ class PostSerializer(serializers.ModelSerializer):
         return post
 
     def get_author_details(self, obj):
-        request = self.context.get('request')
-        if obj.author_identity == 'organisation' and obj.project_parent and obj.project_parent.organisation:
-            org = obj.project_parent.organisation
-            return {
-                'type': 'organisation',
-                'name': org.name,
-                'slug': org.slug,
-                'avatar': request.build_absolute_uri(org.logo.url) if org.logo and request else (org.logo.url if org.logo else None),
-                'is_verified': org.is_verified,
-            }
-        elif obj.author_identity == 'project' and obj.project_parent:
-            proj = obj.project_parent
-            return {
-                'type': 'project',
-                'name': proj.title,
-                'slug': proj.id,
-                'avatar': request.build_absolute_uri(proj.logo.url) if proj.logo and request else (proj.logo.url if proj.logo else None),
-                'is_verified': False,
-            }
-        else:
-            user = obj.user
-            return {
-                'type': 'user',
-                'name': f"{user.first_name} {user.last_name}".strip() or user.username,
-                'slug': user.username,
-                'avatar': request.build_absolute_uri(user.avatar.url) if user.avatar and request else (user.avatar.url if user.avatar else None),
-                'is_verified': False,
-            }
+        return _get_post_author_details(obj, self.context.get('request'))
 
     def get_is_liked(self, obj):
         request = self.context.get('request')

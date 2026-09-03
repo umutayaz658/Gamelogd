@@ -201,36 +201,27 @@ export default function SidebarSearch() {
                                 )}
                             </div>
                             {recentSearches.length > 0 ? (
-                                recentSearches.map((item) => {
-                                    const fallbackChar = (item.name || '?').charAt(0).toUpperCase();
-                                    return (
-                                        <Link
-                                            key={`${item.type}-${item.id}`}
-                                            href={item.href || '#'}
-                                            onClick={() => {
-                                                saveRecentSearch(item);
-                                                setShowResults(false);
-                                            }}
-                                            className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/80 transition-colors"
-                                        >
-                                            <div className="h-10 w-10 rounded-xl overflow-hidden bg-zinc-950 flex-shrink-0 border border-zinc-800 flex items-center justify-center font-bold text-white text-sm">
-                                                {item.avatar ? (
-                                                    <img
-                                                        src={getImageUrl(item.avatar)}
-                                                        alt={item.name || ''}
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                ) : (
-                                                    fallbackChar
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-bold text-white truncate">{item.name || ''}</p>
-                                                <p className="text-xs text-zinc-550 truncate font-mono">{item.subtext || ''}</p>
-                                            </div>
-                                        </Link>
-                                    );
-                                })
+                                recentSearches.map((item) => (
+                                    <Link
+                                        key={`${item.type}-${item.id}`}
+                                        href={item.href || '#'}
+                                        onClick={() => {
+                                            saveRecentSearch(item);
+                                            setShowResults(false);
+                                        }}
+                                        className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/80 transition-colors"
+                                    >
+                                        <img
+                                            src={getImageUrl(item.avatar, item.name || '')}
+                                            alt={item.name || ''}
+                                            className="h-10 w-10 rounded-xl overflow-hidden bg-zinc-950 flex-shrink-0 border border-zinc-800 object-cover"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-white truncate">{item.name || ''}</p>
+                                            <p className="text-xs text-zinc-550 truncate font-mono">{item.subtext || ''}</p>
+                                        </div>
+                                    </Link>
+                                ))
                             ) : (
                                 <div className="px-4 py-6 text-center text-sm text-zinc-500">
                                     {t('noRecentSearches')}
@@ -255,7 +246,7 @@ export default function SidebarSearch() {
                                         type = 'organisations';
                                     } else if (filterType === 'projects') {
                                         href = `/projects/${item.id || ''}`;
-                                        avatar = item.cover_image;
+                                        avatar = item.logo;
                                         name = item.title || '';
                                         subtext = item.status ? `Status: ${item.status}` : 'Game Project';
                                         type = 'projects';
@@ -273,8 +264,6 @@ export default function SidebarSearch() {
                                         href
                                     };
 
-                                    const fallbackChar = name.charAt(0).toUpperCase();
-
                                     return (
                                         <Link
                                             key={item.id || `${type}-${name}`}
@@ -285,17 +274,11 @@ export default function SidebarSearch() {
                                             }}
                                             className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/80 transition-colors"
                                         >
-                                            <div className="h-10 w-10 rounded-xl overflow-hidden bg-zinc-950 flex-shrink-0 border border-zinc-800 flex items-center justify-center font-bold text-white text-sm">
-                                                {avatar ? (
-                                                    <img
-                                                        src={getImageUrl(avatar)}
-                                                        alt={name}
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                ) : (
-                                                    fallbackChar
-                                                )}
-                                            </div>
+                                            <img
+                                                src={getImageUrl(avatar, name)}
+                                                alt={name}
+                                                className="h-10 w-10 rounded-xl overflow-hidden bg-zinc-950 flex-shrink-0 border border-zinc-800 object-cover"
+                                            />
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-bold text-white truncate">{name}</p>
                                                 <p className="text-xs text-zinc-550 truncate font-mono">
