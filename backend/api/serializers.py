@@ -934,7 +934,7 @@ class PostSerializer(serializers.ModelSerializer):
                 'type': 'project',
                 'name': proj.title,
                 'slug': proj.id,
-                'avatar': request.build_absolute_uri(proj.cover_image.url) if proj.cover_image and request else (proj.cover_image.url if proj.cover_image else None),
+                'avatar': request.build_absolute_uri(proj.logo.url) if proj.logo and request else (proj.logo.url if proj.logo else None),
                 'is_verified': False,
             }
         else:
