@@ -126,7 +126,18 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         is_verified: false
     };
 
-    const authorLink = author.type === 'organisation' 
+    // Same fallback as `author` above, for the small nested quote-repost card — without this
+    // it always showed the devlog's actual poster (a user) instead of honoring the project/
+    // organisation identity the original post was published under.
+    const quotedAuthor = post.repost_details && (post.repost_details.author_details || {
+        type: 'user' as const,
+        name: post.repost_details.user.real_name || post.repost_details.user.username,
+        slug: post.repost_details.user.username,
+        avatar: post.repost_details.user.avatar,
+        is_verified: false
+    });
+
+    const authorLink = author.type === 'organisation'
         ? `/organisations/${author.slug}` 
         : author.type === 'project' 
             ? `/projects/${author.slug}` 
@@ -661,16 +672,18 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             >
                                 <div className="flex items-center gap-2">
                                     <Image
-                                        src={getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username)}
-                                        alt={post.repost_details.user.username}
+                                        src={getImageUrl(quotedAuthor!.avatar, quotedAuthor!.type === 'user' ? (quotedAuthor!.slug as string) : undefined)}
+                                        alt={quotedAuthor!.name}
                                         width={32}
                                         height={32}
-                                        unoptimized={isUnreachableForImageOptimizer(getImageUrl(post.repost_details.user.avatar, post.repost_details.user.username))}
+                                        unoptimized={isUnreachableForImageOptimizer(getImageUrl(quotedAuthor!.avatar, quotedAuthor!.type === 'user' ? (quotedAuthor!.slug as string) : undefined))}
                                         className="h-8 w-8 rounded-full object-cover bg-zinc-800"
                                     />
                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                                        <span className="font-bold text-white text-sm">{post.repost_details.user.real_name || post.repost_details.user.username}</span>
-                                        <span className="text-zinc-500 text-sm">{formatHandle(post.repost_details.user.username.toLowerCase())}</span>
+                                        <span className="font-bold text-white text-sm">{quotedAuthor!.name}</span>
+                                        {quotedAuthor!.type === 'user' && (
+                                            <span className="text-zinc-500 text-sm">{formatHandle(quotedAuthor!.slug.toString().toLowerCase())}</span>
+                                        )}
                                         <span className="text-zinc-600 text-sm" aria-hidden="true">{DOT_SEPARATOR}</span>
                                         <span className="text-zinc-500 text-sm">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
                                     </div>
