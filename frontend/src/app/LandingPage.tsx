@@ -132,6 +132,13 @@ export default function LandingPage() {
                                     </GoogleOAuthProvider>
                                 )}
                             </div>
+
+                            <button
+                                onClick={() => router.push('/home')}
+                                className="w-full h-10 flex items-center justify-center rounded-full bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium tracking-wide transition-colors"
+                            >
+                                {t('continueWithoutLogin')}
+                            </button>
                         </div>
                     </div>
                 </section>
