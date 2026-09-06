@@ -123,7 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
         } catch { /* storage disabled */ }
         setUser(null);
-        router.push('/login');
+        // '/' is the marketing/cover page for an anonymous visitor (see publicPaths.ts), not
+        // the feed — send logged-out users there instead of straight to the /login form.
+        router.push('/');
         router.refresh();
     };
 

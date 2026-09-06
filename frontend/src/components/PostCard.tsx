@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MoreHorizontal, MessageCircle, Heart, Share2, Image as ImageIcon, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, EyeOff, VolumeX, Ban, Check } from 'lucide-react';
+import { MoreHorizontal, MessageCircle, Heart, Share2, Image as ImageIcon, Bookmark, Trash2, Link as LinkIcon, Repeat2, Send, Flag, Eye, EyeOff, VolumeX, Ban, Check } from 'lucide-react';
 import { Post } from '@/types';
-import { getImageUrl, getRelativeTime, getTimeRemaining, formatCount, isUnreachableForImageOptimizer, formatHandle } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, getAbsoluteDateTime, getTimeRemaining, formatCount, isUnreachableForImageOptimizer, formatHandle, resolveAuthorDisplay } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useAuth } from '@/context/AuthContext';
@@ -102,6 +102,11 @@ const renderContentWithLinks = (content: string | undefined) => {
 interface PostCardProps {
     post: Post;
     isDetailView?: boolean;
+    // Shows an absolute "17:54 · Sep 5, 2026"-style timestamp instead of the usual
+    // relative time — only for the single focused post on its own thread page,
+    // independent of isDetailView (which also applies to the quoted/replied-to
+    // context post above it, which should stay relative, Twitter-style).
+    showAbsoluteTimestamp?: boolean;
     hideNewsQuote?: boolean;
     // Set when this card is being rendered as the reposted original inside a plain
     // "X reposted" wrapper — renders the label inside this card's own bordered
@@ -109,7 +114,7 @@ interface PostCardProps {
     repostedBy?: { name: string };
 }
 
-export default function PostCard({ post, isDetailView = false, hideNewsQuote = false, repostedBy }: PostCardProps) {
+export default function PostCard({ post, isDetailView = false, showAbsoluteTimestamp = false, hideNewsQuote = false, repostedBy }: PostCardProps) {
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
@@ -118,24 +123,12 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
     const toast = useToast();
     const confirm = useConfirm();
 
-    const author = post.author_details || {
-        type: 'user',
-        name: post.user.real_name || post.user.username,
-        slug: post.user.username,
-        avatar: post.user.avatar,
-        is_verified: false
-    };
+    const author = resolveAuthorDisplay(post);
 
     // Same fallback as `author` above, for the small nested quote-repost card — without this
     // it always showed the devlog's actual poster (a user) instead of honoring the project/
     // organisation identity the original post was published under.
-    const quotedAuthor = post.repost_details && (post.repost_details.author_details || {
-        type: 'user' as const,
-        name: post.repost_details.user.real_name || post.repost_details.user.username,
-        slug: post.repost_details.user.username,
-        avatar: post.repost_details.user.avatar,
-        is_verified: false
-    });
+    const quotedAuthor = post.repost_details && resolveAuthorDisplay(post.repost_details);
 
     const authorLink = author.type === 'organisation'
         ? `/organisations/${author.slug}` 
@@ -145,6 +138,10 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
 
     const [isLiked, setIsLiked] = useState(post.is_liked || false);
     const [isExpanded, setIsExpanded] = useState(false);
+    // Spoiler-blur toggle for the nested quoted-review card (mirrors ReviewCard.tsx's own
+    // isSpoilerVisible state) — without this, quoting a spoiler-flagged review showed its
+    // comment unblurred here even though ReviewCard itself correctly hides it.
+    const [isNestedReviewSpoilerVisible, setIsNestedReviewSpoilerVisible] = useState(false);
     const [shouldShowShowMore, setShouldShowShowMore] = useState(false);
     const contentRef = useRef<HTMLParagraphElement>(null);
 
@@ -447,6 +444,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
             <PostCard
                 post={post.repost_details}
                 isDetailView={isDetailView}
+                showAbsoluteTimestamp={showAbsoluteTimestamp}
                 hideNewsQuote={hideNewsQuote}
                 repostedBy={{ name: post.user.real_name || post.user.username }}
             />
@@ -457,6 +455,8 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
         return (
             <ReviewCard
                 review={post.repost_review_details}
+                isDetailView={isDetailView}
+                showAbsoluteTimestamp={showAbsoluteTimestamp}
                 repostedBy={{ name: post.user.real_name || post.user.username }}
             />
         );
@@ -480,11 +480,11 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                         onClick={(e) => e.stopPropagation()}
                     >
                         <Image
-                            src={getImageUrl(author.avatar, author.type === 'user' ? (author.slug as string) : undefined)}
+                            src={getImageUrl(author.avatar, author.name)}
                             alt={author.name}
                             width={40}
                             height={40}
-                            unoptimized={isUnreachableForImageOptimizer(getImageUrl(author.avatar, author.type === 'user' ? (author.slug as string) : undefined))}
+                            unoptimized={isUnreachableForImageOptimizer(getImageUrl(author.avatar, author.name))}
                             className="h-10 w-10 rounded-full bg-zinc-800 object-cover hover:opacity-80 transition-opacity"
                         />
                     </Link>
@@ -533,13 +533,19 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                 </span>
                             ) : null}
                             <span className="text-zinc-700 text-sm flex-shrink-0" aria-hidden="true">{DOT_SEPARATOR}</span>
-                            {/* suppressHydrationWarning: this tooltip's exact wording depends on the
-                                renderer's timezone, which can legitimately differ between the SSR
-                                pass (server/container timezone) and hydration (browser timezone) —
-                                the visible {getRelativeTime} text below is timezone-independent. */}
-                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(post.timestamp).toLocaleString()} suppressHydrationWarning>
-                                {getRelativeTime(post.timestamp, language)}
-                            </span>
+                            {showAbsoluteTimestamp ? (
+                                <span className="text-zinc-500 text-sm flex-shrink-0" suppressHydrationWarning>
+                                    {getAbsoluteDateTime(post.timestamp, language)}
+                                </span>
+                            ) : (
+                                /* suppressHydrationWarning: this tooltip's exact wording depends on the
+                                   renderer's timezone, which can legitimately differ between the SSR
+                                   pass (server/container timezone) and hydration (browser timezone) —
+                                   the visible {getRelativeTime} text below is timezone-independent. */
+                                <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(post.timestamp).toLocaleString()} suppressHydrationWarning>
+                                    {getRelativeTime(post.timestamp, language)}
+                                </span>
+                            )}
                             {post.news_details && !hideNewsQuote && (
                                 <span className="ml-2 text-zinc-500 text-sm font-normal truncate hidden sm:inline">
                                     {DOT_SEPARATOR} {t('commentedOnThisNews')}
@@ -672,11 +678,11 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                             >
                                 <div className="flex items-center gap-2">
                                     <Image
-                                        src={getImageUrl(quotedAuthor!.avatar, quotedAuthor!.type === 'user' ? (quotedAuthor!.slug as string) : undefined)}
+                                        src={getImageUrl(quotedAuthor!.avatar, quotedAuthor!.name)}
                                         alt={quotedAuthor!.name}
                                         width={32}
                                         height={32}
-                                        unoptimized={isUnreachableForImageOptimizer(getImageUrl(quotedAuthor!.avatar, quotedAuthor!.type === 'user' ? (quotedAuthor!.slug as string) : undefined))}
+                                        unoptimized={isUnreachableForImageOptimizer(getImageUrl(quotedAuthor!.avatar, quotedAuthor!.name))}
                                         className="h-8 w-8 rounded-full object-cover bg-zinc-800"
                                     />
                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
@@ -685,7 +691,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                             <span className="text-zinc-500 text-sm">{formatHandle(quotedAuthor!.slug.toString().toLowerCase())}</span>
                                         )}
                                         <span className="text-zinc-600 text-sm" aria-hidden="true">{DOT_SEPARATOR}</span>
-                                        <span className="text-zinc-500 text-sm">{new Date(post.repost_details.timestamp).toLocaleDateString()}</span>
+                                        <span className="text-zinc-500 text-sm">{getRelativeTime(post.repost_details.timestamp, language)}</span>
                                     </div>
                                 </div>
                                 {post.repost_details.title && (
@@ -730,7 +736,7 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                         <span className="font-bold text-white text-sm">{post.repost_review_details.user.real_name || post.repost_review_details.user.username}</span>
                                         <span className="text-zinc-500 text-sm">{formatHandle(post.repost_review_details.user.username.toLowerCase())}</span>
                                         <span className="text-zinc-600 text-sm" aria-hidden="true">{DOT_SEPARATOR}</span>
-                                        <span className="text-zinc-500 text-sm">{new Date(post.repost_review_details.timestamp).toLocaleDateString()}</span>
+                                        <span className="text-zinc-500 text-sm">{getRelativeTime(post.repost_review_details.timestamp, language)}</span>
                                     </div>
                                 </div>
                                 <div className="flex gap-3">
@@ -747,7 +753,19 @@ export default function PostCard({ post, isDetailView = false, hideNewsQuote = f
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold text-sm text-white mb-0.5">{post.repost_review_details.game?.title}</div>
                                         <div className="text-emerald-500 text-xs font-bold mb-1">{t('logged')} {[post.repost_review_details.rating, '/10'].join('')}</div>
-                                        <p className="text-zinc-300 text-sm line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                        {post.repost_review_details.contains_spoilers && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIsNestedReviewSpoilerVisible(!isNestedReviewSpoilerVisible);
+                                                }}
+                                                className="inline-flex items-center gap-1 px-2 py-0.5 mb-1.5 rounded text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors"
+                                            >
+                                                {isNestedReviewSpoilerVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                                                {t('spoilers')}
+                                            </button>
+                                        )}
+                                        <p className={`text-zinc-300 text-sm line-clamp-3 whitespace-pre-wrap leading-relaxed transition-all duration-300 ${post.repost_review_details.contains_spoilers && !isNestedReviewSpoilerVisible ? 'blur-sm select-none opacity-50' : ''}`}>
                                             {renderContentWithLinks(post.repost_review_details.content) || t('noReviewWritten')}
                                         </p>
                                     </div>

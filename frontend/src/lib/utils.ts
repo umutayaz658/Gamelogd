@@ -86,6 +86,50 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     return "https://placehold.co/400x600?text=No+Image";
 };
 
+export interface AuthorDisplay {
+    type: 'user' | 'organisation' | 'project';
+    name: string;
+    slug: string | number;
+    avatar: string | null;
+    is_verified?: boolean;
+}
+
+/**
+ * Resolves the identity a post/quote should be displayed under: `author_details`
+ * (project/organisation identity, set server-side) when present, else the raw
+ * posting user. Centralizes the fallback so every quote/repost preview honors the
+ * same identity instead of each caller re-deriving (and potentially forgetting) it.
+ */
+export function resolveAuthorDisplay(item: {
+    author_details?: AuthorDisplay | null;
+    user: { real_name?: string; username: string; avatar?: string | null };
+}): AuthorDisplay {
+    return item.author_details || {
+        type: 'user',
+        name: item.user.real_name || item.user.username,
+        slug: item.user.username,
+        avatar: item.user.avatar ?? null,
+        is_verified: false,
+    };
+}
+
+const MONTHS_BY_LANG: Record<string, string[]> = {
+    english: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    turkish: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+    spanish: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
+    french: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
+    german: ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'],
+};
+
+/** Twitter-style absolute date+time for a post's own detail/thread page, e.g. "17:54 · Sep 5, 2026". */
+export function getAbsoluteDateTime(timestamp: string | Date, lang: string = 'English'): string {
+    const date = new Date(timestamp);
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const months = MONTHS_BY_LANG[lang.toLowerCase()] || MONTHS_BY_LANG.english;
+    return `${hh}:${mm} · ${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
 export function getRelativeTime(timestamp: string | Date, lang: string = 'English'): string {
     const date = new Date(timestamp);
     const now = new Date();
