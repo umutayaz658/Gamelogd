@@ -7,7 +7,7 @@ import LeftSidebar from "@/components/LeftSidebar";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
 import { Project, Post } from '@/types';
-import { getImageUrl, wrapInParens } from '@/lib/utils';
+import { getImageUrl } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/url';
 import { Users, Layout, Info, Edit2, Plus, Settings, ChevronDown, UserPlus, UserCheck, Bug, Calendar, Globe, Twitter, Youtube, Link2, Share2 } from 'lucide-react';
 import Link from 'next/link';
@@ -216,7 +216,7 @@ export default function ProjectDetailClient() {
                                 </div>
 
                                 {/* Action Buttons */}
-                                <div className="flex items-center gap-3 self-start md:self-end">
+                                <div className="flex items-center gap-3 self-start md:self-end flex-wrap">
                                     <button
                                         onClick={() => setIsShareCardModalOpen(true)}
                                         title={t('shareAsImage')}
@@ -257,7 +257,7 @@ export default function ProjectDetailClient() {
                                                     onClick={() => setShowDevlogModal(true)}
                                                     className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-blue-900/20"
                                                 >
-                                                    <Plus className="w-4 h-4" /> {t('newDevlog')}
+                                                    <Plus className="w-4 h-4" /> {t('devlogShort')}
                                                 </button>
                                             )}
                                             {/* Follow Button */}
@@ -348,15 +348,15 @@ export default function ProjectDetailClient() {
                         </div>
 
                         {/* Tabs */}
-                        <div className="flex gap-6 border-b border-zinc-800 mb-6 relative">
+                        <div className="flex gap-6 border-b border-zinc-800 mb-6 relative overflow-x-auto no-scrollbar">
                             <button
                                 onClick={() => setActiveTab('devlogs')}
-                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'devlogs' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                className={`flex-shrink-0 whitespace-nowrap pb-3 text-lg font-bold transition-all relative ${activeTab === 'devlogs' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
                                 <div className="flex items-center gap-2">
                                     <Layout className="h-5 w-5" />
-                                    {t('devlogs')} {wrapInParens(devlogs.length)}
+                                    {t('devlogs')}
                                 </div>
                                 {activeTab === 'devlogs' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
@@ -364,7 +364,7 @@ export default function ProjectDetailClient() {
                             </button>
                             <button
                                 onClick={() => setActiveTab('about')}
-                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'about' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                className={`flex-shrink-0 whitespace-nowrap pb-3 text-lg font-bold transition-all relative ${activeTab === 'about' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
                                 <div className="flex items-center gap-2">
@@ -377,7 +377,7 @@ export default function ProjectDetailClient() {
                             </button>
                             <button
                                 onClick={() => setActiveTab('feedback')}
-                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'feedback' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                className={`flex-shrink-0 whitespace-nowrap pb-3 text-lg font-bold transition-all relative ${activeTab === 'feedback' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
                                 <div className="flex items-center gap-2">
@@ -390,7 +390,7 @@ export default function ProjectDetailClient() {
                             </button>
                             <button
                                 onClick={() => setActiveTab('translations')}
-                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'translations' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                className={`flex-shrink-0 whitespace-nowrap pb-3 text-lg font-bold transition-all relative ${activeTab === 'translations' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
                                 <div className="flex items-center gap-2">
@@ -403,12 +403,12 @@ export default function ProjectDetailClient() {
                             </button>
                             <button
                                 onClick={() => setActiveTab('participants')}
-                                className={`pb-3 text-lg font-bold transition-all relative ${activeTab === 'participants' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                className={`flex-shrink-0 whitespace-nowrap pb-3 text-lg font-bold transition-all relative ${activeTab === 'participants' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
                                 <div className="flex items-center gap-2">
                                     <Users className="h-5 w-5" />
-                                    {t('participants')}
+                                    {t('team')}
                                 </div>
                                 {activeTab === 'participants' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500 rounded-t-full" />
@@ -540,7 +540,7 @@ export default function ProjectDetailClient() {
                                         <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
                                             <h3 className="text-lg font-bold flex items-center gap-2 mb-6">
                                                 <Users className="w-5 h-5 text-emerald-500" />
-                                                {t('participants')}
+                                                {t('team')}
                                             </h3>
                                             <MemberManager
                                                 scope="project"

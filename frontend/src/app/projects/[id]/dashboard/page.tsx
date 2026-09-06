@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import LeftSidebar from '@/components/LeftSidebar';
 import api from '@/lib/api';
@@ -23,6 +23,7 @@ const AVAILABLE_TECH = [
 export default function ProjectDashboardPage() {
     const { t } = useTranslation();
     const { id } = useParams() as { id: string };
+    const router = useRouter();
     const { user: currentUser } = useAuth();
 
     const [project, setProject] = useState<Project | null>(null);
@@ -126,11 +127,17 @@ export default function ProjectDashboardPage() {
         }
     };
 
-    const backHref = project
-        ? (project.organisation
-            ? `/devs?workspace=org_${project.organisation}&tool=settings&board=project_${id}`
-            : `/devs?workspace=solo&tool=settings&board=project_${id}`)
-        : '/devs';
+    // Reached either from the project profile's "Manage" button or from Devs Workspace
+    // Settings' "Edit identity & members" link — both push a real history entry, so
+    // router.back() naturally returns to whichever one the user actually came from.
+    // The direct-load/refresh case (no prior entry in this tab) falls back to the profile.
+    const handleBack = () => {
+        if (typeof window !== 'undefined' && window.history.length > 1) {
+            router.back();
+        } else {
+            router.push(`/projects/${id}`);
+        }
+    };
 
     if (loading) {
         return (
@@ -172,13 +179,13 @@ export default function ProjectDashboardPage() {
                         {/* Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
                             <div className="flex items-center gap-3">
-                                <Link
-                                    href={backHref}
+                                <button
+                                    onClick={handleBack}
                                     className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:text-blue-400 hover:border-zinc-700 transition-all"
-                                    title="Back to Workspace Settings"
+                                    title={t('back')}
                                 >
                                     <ArrowLeft className="h-5 w-5" />
-                                </Link>
+                                </button>
                                 <div>
                                     <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
                                         {project?.title} {t('dashboard')}

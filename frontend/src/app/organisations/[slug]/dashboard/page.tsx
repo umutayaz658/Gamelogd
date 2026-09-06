@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import api from '@/lib/api';
@@ -20,9 +20,22 @@ import { useToast } from '@/context/ToastContext';
 
 export default function OrganisationDashboardPage() {
     const { slug } = useParams() as { slug: string };
+    const router = useRouter();
     const { t } = useTranslation();
     const { user: currentUser } = useAuth();
     const toast = useToast();
+
+    // Reached either from the organisation profile's "Manage" button or from Devs
+    // Workspace Settings' "Edit identity & members" link — both push a real history
+    // entry, so router.back() naturally returns to whichever one the user came from.
+    // The direct-load/refresh case (no prior entry in this tab) falls back to the profile.
+    const handleBack = () => {
+        if (typeof window !== 'undefined' && window.history.length > 1) {
+            router.back();
+        } else {
+            router.push(`/organisations/${slug}`);
+        }
+    };
 
     const [organisation, setOrganisation] = useState<Organisation | null>(null);
     const [invitations, setInvitations] = useState<OrganisationInvitation[]>([]);
@@ -182,13 +195,13 @@ export default function OrganisationDashboardPage() {
                         {/* Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
                             <div className="flex items-center gap-3">
-                                <Link
-                                    href={organisation ? `/devs?workspace=org_${organisation.id}&tool=settings&board=org` : '/devs'}
+                                <button
+                                    onClick={handleBack}
                                     className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:text-blue-400 hover:border-zinc-700 transition-all"
-                                    title="Back to Workspace Settings"
+                                    title={t('back')}
                                 >
                                     <ArrowLeft className="h-5 w-5" />
-                                </Link>
+                                </button>
                                 <div>
                                     <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
                                         {organisation?.name} {t('dashboard')}

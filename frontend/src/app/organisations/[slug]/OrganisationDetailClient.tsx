@@ -8,14 +8,14 @@ import ProjectCard from "@/components/ProjectCard";
 import PostCard from "@/components/PostCard";
 import api from '@/lib/api';
 import { Organisation, OrganisationInvitation, Project, Post } from '@/types';
-import { getImageUrl, wrapInParens } from '@/lib/utils';
+import { getImageUrl } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/url';
 import { useAuth } from '@/context/AuthContext';
 import { useAuthGate } from '@/context/AuthGateContext';
 import { useTranslation } from '@/lib/useTranslation';
 import {
     Check, Users, Globe, Twitter, Youtube, Calendar, Link2,
-    FolderKanban, Layout, Users2, Settings, Plus, CheckSquare, Share2
+    FolderKanban, Layout, Users2, Settings, Share2, UserPlus, UserCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import ShareCardModal from '@/components/ShareCardModal';
@@ -239,7 +239,7 @@ export default function OrganisationDetailClient() {
                                 </div>
 
                                 {/* Action Buttons */}
-                                <div className="flex items-center gap-3 self-start md:self-end">
+                                <div className="flex items-center gap-3 self-start md:self-end flex-wrap">
                                     <button
                                         onClick={() => setIsShareCardModalOpen(true)}
                                         title={t('shareAsImage')}
@@ -280,20 +280,20 @@ export default function OrganisationDetailClient() {
                                             <button
                                                 onClick={handleFollowToggle}
                                                 disabled={followLoading}
-                                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all text-sm border ${
+                                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${
                                                     organisation.is_following
-                                                        ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
-                                                        : 'bg-blue-600 border-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/15'
-                                                }`}
+                                                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
+                                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20'
+                                                } ${followLoading ? 'opacity-50 pointer-events-none' : ''}`}
                                             >
                                                 {organisation.is_following ? (
                                                     <>
-                                                        <CheckSquare className="h-4 w-4" />
+                                                        <UserCheck className="w-4 h-4" />
                                                         <span>{t('following')}</span>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <Plus className="h-4 w-4" />
+                                                        <UserPlus className="w-4 h-4" />
                                                         <span>{t('follow')}</span>
                                                     </>
                                                 )}
@@ -344,16 +344,16 @@ export default function OrganisationDetailClient() {
                         </div>
 
                         {/* Profile Tabs */}
-                        <div className="flex gap-4 border-b border-zinc-800">
+                        <div className="flex gap-4 border-b border-zinc-800 overflow-x-auto no-scrollbar">
                             <button
                                 onClick={() => setActiveTab('projects')}
-                                className={`flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'projects'
+                                className={`flex-shrink-0 whitespace-nowrap flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'projects'
                                     ? 'text-white'
                                     : 'text-zinc-550 hover:text-zinc-350'
                                     }`}
                             >
                                 <FolderKanban className="h-5 w-5" />
-                                {t('projects')} {wrapInParens(projects.length)}
+                                {t('projects')}
                                 {activeTab === 'projects' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
@@ -361,13 +361,13 @@ export default function OrganisationDetailClient() {
 
                             <button
                                 onClick={() => setActiveTab('devlogs')}
-                                className={`flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'devlogs'
+                                className={`flex-shrink-0 whitespace-nowrap flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'devlogs'
                                     ? 'text-white'
                                     : 'text-zinc-550 hover:text-zinc-350'
                                     }`}
                             >
                                 <Layout className="h-5 w-5" />
-                                {t('devlogs')} {wrapInParens(devlogs.length)}
+                                {t('devlogs')}
                                 {activeTab === 'devlogs' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
@@ -375,13 +375,13 @@ export default function OrganisationDetailClient() {
 
                             <button
                                 onClick={() => setActiveTab('team')}
-                                className={`flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'team'
+                                className={`flex-shrink-0 whitespace-nowrap flex items-center gap-2 pb-4 px-2 text-lg font-bold transition-all relative ${activeTab === 'team'
                                     ? 'text-white'
                                     : 'text-zinc-550 hover:text-zinc-350'
                                     }`}
                             >
                                 <Users2 className="h-5 w-5" />
-                                {t('team')} {wrapInParens(organisation.members?.length || 0)}
+                                {t('team')}
                                 {activeTab === 'team' && (
                                     <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500 rounded-t-full" />
                                 )}
