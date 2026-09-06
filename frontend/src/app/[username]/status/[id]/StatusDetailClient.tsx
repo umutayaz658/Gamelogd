@@ -121,7 +121,7 @@ export default function StatusDetailClient() {
 
                                 {/* Focused Post */}
                                 <div className="z-10 bg-zinc-950">
-                                    <PostCard post={post} isDetailView={true} />
+                                    <PostCard post={post} isDetailView={true} showAbsoluteTimestamp={true} />
                                 </div>
 
                                 {/* Reply Composer */}

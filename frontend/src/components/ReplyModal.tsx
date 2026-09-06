@@ -5,7 +5,7 @@ import { useFeed } from '@/context/FeedContext';
 import { Post, Review } from '@/types';
 import { X, Loader2, ImagePlay, Smile, BarChart2, Plus, Trash2, FileImage } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { getImageUrl, formatHandle } from '@/lib/utils';
+import { getImageUrl, formatHandle, getRelativeTime, resolveAuthorDisplay } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from './PostCard';
@@ -50,7 +50,7 @@ export default function ReplyModal() {
     const activeItem = rawActiveItem as (Post | Review) | null;
     const { addFeedItem } = useFeed();
     const { user } = useAuth();
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
 
     // Core State
     const [content, setContent] = useState('');
@@ -256,6 +256,12 @@ export default function ReplyModal() {
         return item.type === 'review';
     };
 
+    // Reviews have no author_details/project identity concept, so they always fall
+    // back to the reviewing user. Posts (including devlogs) resolve the same way
+    // PostCard's quotedAuthor does — without this, quoting a devlog showed the team
+    // member who technically posted it instead of the project it was published under.
+    const quotedAuthor = activeItem && !isReview(activeItem) ? resolveAuthorDisplay(activeItem) : null;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div
@@ -293,15 +299,11 @@ export default function ReplyModal() {
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                         <div className="flex gap-4">
                             <div className="flex-shrink-0">
-                                {user?.avatar ? (
-                                    <img
-                                        src={getImageUrl(user.avatar)}
-                                        alt={user.username}
-                                        className="h-10 w-10 rounded-full bg-zinc-800 object-cover"
-                                    />
-                                ) : (
-                                    <div className="h-10 w-10 rounded-full bg-zinc-800" />
-                                )}
+                                <img
+                                    src={getImageUrl(user?.avatar, user?.username)}
+                                    alt={user?.username || ''}
+                                    className="h-10 w-10 rounded-full bg-zinc-800 object-cover"
+                                />
                             </div>
 
                             <div className="flex-1 min-w-0">
@@ -329,20 +331,19 @@ export default function ReplyModal() {
                                 {/* Embedded Quoted Post (ONLY if mode === 'quote') */}
                                 {mode === 'quote' && (
                                     <div className="mt-2.5 mb-4 border border-zinc-800 rounded-xl p-3 bg-zinc-950/45 text-left flex flex-col gap-2 max-w-full">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 min-w-0 flex-wrap">
                                             <img
-                                                src={getImageUrl(activeItem.user.avatar, activeItem.user.username)}
-                                                alt={activeItem.user.username}
+                                                src={getImageUrl(quotedAuthor ? quotedAuthor.avatar : activeItem.user.avatar, quotedAuthor ? quotedAuthor.name : (activeItem.user.real_name || activeItem.user.username))}
+                                                alt={quotedAuthor ? quotedAuthor.name : activeItem.user.username}
                                                 className="h-5 w-5 rounded-full object-cover bg-zinc-800"
                                             />
-                                            <span className="font-bold text-white text-xs leading-none">{activeItem.user.real_name || activeItem.user.username}</span>
-                                            <span className="text-zinc-500 text-xs leading-none">{formatHandle(activeItem.user.username.toLowerCase())}</span>
+                                            <span className="font-bold text-white text-xs leading-none">{quotedAuthor ? quotedAuthor.name : (activeItem.user.real_name || activeItem.user.username)}</span>
+                                            {(!quotedAuthor || quotedAuthor.type === 'user') && (
+                                                <span className="text-zinc-500 text-xs leading-none">{formatHandle(activeItem.user.username.toLowerCase())}</span>
+                                            )}
                                             <span className="text-zinc-650 text-xs leading-none" aria-hidden="true">{MIDDLE_DOT}</span>
                                             <span className="text-zinc-500 text-xs leading-none">
-                                                {isReview(activeItem) 
-                                                    ? new Date((activeItem as any).timestamp).toLocaleDateString()
-                                                    : new Date(activeItem.timestamp).toLocaleDateString()
-                                                }
+                                                {getRelativeTime(activeItem.timestamp, language)}
                                             </span>
                                         </div>
                                         {isReview(activeItem) ? (
@@ -472,7 +473,10 @@ export default function ReplyModal() {
 
                                 {/* Toolbar & Send Button */}
                                 <div className="flex items-center justify-between border-t border-zinc-800 pt-3 relative">
-                                    <div className="flex gap-2 items-center">
+                                    {/* Icon buttons sized down a notch (px-3/h-5 -> px-2/h-4) so this whole
+                                        group + the Post button reliably fit on one line without wrapping,
+                                        even in the narrower quote-compose card. */}
+                                    <div className="flex gap-1 items-center">
                                         <input
                                             type="file"
                                             ref={fileInputRef}
@@ -484,37 +488,37 @@ export default function ReplyModal() {
                                         <button
                                             onClick={() => fileInputRef.current?.click()}
                                             disabled={mediaItems.length >= MAX_MEDIA_ITEMS}
-                                            className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-3 py-1.5 rounded-full transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                            className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-2 py-1 rounded-full transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                                             title="Media"
                                         >
-                                            <ImagePlay className="h-5 w-5" />
+                                            <ImagePlay className="h-4 w-4" />
                                         </button>
                                         <button
                                             onClick={() => {
                                                 setShowGifPicker(!showGifPicker);
                                                 setShowEmojiPicker(false);
                                             }}
-                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-sm font-medium ${showGifPicker ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
+                                            className={`flex items-center gap-2 px-2 py-1 rounded-full transition-all text-sm font-medium ${showGifPicker ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                                             title="GIF"
                                         >
-                                            <FileImage className="h-5 w-5" />
+                                            <FileImage className="h-4 w-4" />
                                         </button>
                                         <button
                                             onClick={() => {
                                                 setShowEmojiPicker(!showEmojiPicker);
                                                 setShowGifPicker(false);
                                             }}
-                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-sm font-medium ${showEmojiPicker ? 'bg-zinc-800 text-yellow-500' : 'text-zinc-400 hover:text-yellow-500 hover:bg-zinc-800'}`}
+                                            className={`flex items-center gap-2 px-2 py-1 rounded-full transition-all text-sm font-medium ${showEmojiPicker ? 'bg-zinc-800 text-yellow-500' : 'text-zinc-400 hover:text-yellow-500 hover:bg-zinc-800'}`}
                                             title="Emoji"
                                         >
-                                            <Smile className="h-5 w-5" />
+                                            <Smile className="h-4 w-4" />
                                         </button>
                                         <button
                                             onClick={togglePollCreator}
-                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-sm font-medium ${showPollCreator ? 'bg-zinc-800 text-blue-500' : 'text-zinc-400 hover:text-blue-500 hover:bg-zinc-800'}`}
+                                            className={`flex items-center gap-2 px-2 py-1 rounded-full transition-all text-sm font-medium ${showPollCreator ? 'bg-zinc-800 text-blue-500' : 'text-zinc-400 hover:text-blue-500 hover:bg-zinc-800'}`}
                                             title="Poll"
                                         >
-                                            <BarChart2 className="h-5 w-5" />
+                                            <BarChart2 className="h-4 w-4" />
                                         </button>
                                     </div>
 

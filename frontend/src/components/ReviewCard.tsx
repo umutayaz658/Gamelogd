@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { MoreHorizontal, MessageCircle, Heart, Share2, Image as ImageIcon, Check, EyeOff, Eye, Bookmark, Trash2, Link as LinkIcon, Send, Repeat2, Flag, VolumeX, Ban } from 'lucide-react';
 import { Review } from '@/types';
-import { getImageUrl, getRelativeTime, formatCount, formatHandle, getRatingTextClass } from '@/lib/utils';
+import { getImageUrl, getRelativeTime, getAbsoluteDateTime, formatCount, formatHandle, getRatingTextClass } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useReplyModal } from '@/context/ReplyModalContext';
 import { useState, useId, useRef, useEffect } from 'react';
@@ -23,12 +23,16 @@ const DOT_SEPARATOR = '•';
 interface ReviewCardProps {
     review: Review;
     isDetailView?: boolean;
+    // See PostCard's identical prop — shows an absolute "17:54 · Sep 5, 2026"-style
+    // timestamp instead of relative time, only for the focused review on its own
+    // detail page.
+    showAbsoluteTimestamp?: boolean;
     // See PostCard's identical prop — renders the "X reposted" label inside this
     // card's own bordered container instead of the caller stacking a div above it.
     repostedBy?: { name: string };
 }
 
-export default function ReviewCard({ review, isDetailView = false, repostedBy }: ReviewCardProps) {
+export default function ReviewCard({ review, isDetailView = false, showAbsoluteTimestamp = false, repostedBy }: ReviewCardProps) {
     const router = useRouter();
     const { openReplyModal, openQuoteModal } = useReplyModal();
     const { user } = useAuth();
@@ -262,9 +266,15 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 {formatHandle(review.user.username.toLowerCase())}
                             </Link>
                             <span className="text-zinc-700 text-sm flex-shrink-0" aria-hidden="true">{DOT_SEPARATOR}</span>
-                            <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(review.timestamp).toLocaleString()} suppressHydrationWarning>
-                                {getRelativeTime(review.timestamp, language)}
-                            </span>
+                            {showAbsoluteTimestamp ? (
+                                <span className="text-zinc-500 text-sm flex-shrink-0" suppressHydrationWarning>
+                                    {getAbsoluteDateTime(review.timestamp, language)}
+                                </span>
+                            ) : (
+                                <span className="text-zinc-500 text-sm hover:underline flex-shrink-0" title={new Date(review.timestamp).toLocaleString()} suppressHydrationWarning>
+                                    {getRelativeTime(review.timestamp, language)}
+                                </span>
+                            )}
                         </div>
                         <div className="relative flex-shrink-0" ref={menuRef}>
                             <button
@@ -357,14 +367,26 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                 </Link>
 
                                 {/* Rating Stars */}
-                                <div className="flex items-center gap-1 mb-2">
+                                <div className="flex items-center gap-1 mb-2 flex-wrap">
+                                    {/* Stars + score grouped into one flex item so flex-wrap (needed below for
+                                        the mobile-only playtime break) can never split the score away from its
+                                        stars — only the playtime block is allowed to wrap onto its own line. */}
+                                    <div className="flex items-center gap-1 flex-shrink-0">
                                     <div className={`flex gap-0.5 ${getRatingTextClass(Number(review.rating))}`}>
                                         {[...Array(5)].map((_, i) => {
                                             const ratingVal = Number(review.rating) / 2;
                                             const fillPercentage = Math.max(0, Math.min(100, (ratingVal - i) * 100));
 
-                                            // The viewBox is 0 0 24 24, so calculate absolute width
-                                            const absoluteWidth = (fillPercentage / 100) * 24;
+                                            // The star polygon's own leftmost/rightmost points sit at x=2/x=22 (not
+                                            // 0/24 — the viewBox's edges are just padding around the star), so
+                                            // clipping from x=0 with a viewBox-width-based rect wastes a chunk of
+                                            // the fill percentage on empty space before the star even starts —
+                                            // e.g. a rating of 8.4 (4.2/5, 20% into the 5th star) rendered as
+                                            // barely a sliver instead of a visibly-partial star. Offsetting by the
+                                            // star's actual x-span makes 0%/100% land exactly on its own edges.
+                                            const STAR_X_OFFSET = 2;
+                                            const STAR_X_SPAN = 20;
+                                            const absoluteWidth = STAR_X_OFFSET + (fillPercentage / 100) * STAR_X_SPAN;
 
                                             // Ensure unique IDs across the entire DOM, even if the same review is rendered twice
                                             const clipId = `star-clip-${baseId}-${review.id}-${i}`;
@@ -395,40 +417,49 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                     <span className={`text-sm font-bold ${getRatingTextClass(Number(review.rating))}`}>
                                         {Number(review.rating).toFixed(1)}
                                     </span>
+                                </div>
                                     {review.playtime_hours != null && review.playtime_hours > 0 && (
-                                        <span className="text-sm text-zinc-500 font-medium flex items-center gap-1">
-                                            <span className="text-zinc-600">{DOT_SEPARATOR}</span>
-                                            {Number.isInteger(review.playtime_hours) ? review.playtime_hours : review.playtime_hours.toFixed(1)}h
-                                        </span>
+                                        <>
+                                            {/* Forces the playtime onto its own line ONLY on mobile — a long
+                                                hour count (e.g. "1932h") next to the star row otherwise gets
+                                                tight fast on narrow screens; sm+ has room so it stays inline. */}
+                                            <span className="basis-full h-0 sm:hidden" aria-hidden="true" />
+                                            <span className="text-sm text-zinc-500 font-medium flex items-center gap-1">
+                                                <span className="text-zinc-600 hidden sm:inline">{DOT_SEPARATOR}</span>
+                                                {Number.isInteger(review.playtime_hours) ? review.playtime_hours : review.playtime_hours.toFixed(1)}h
+                                            </span>
+                                        </>
                                     )}
                                 </div>
 
-                                {/* Platforms */}
+                                {/* Platforms — own row, horizontally scrollable. A review can carry up to 20
+                                    platform tags server-side; a fixed single line + overflow-x-auto guarantees
+                                    this row never grows taller than the cover image no matter the count. */}
                                 {review.platforms && review.platforms.length > 0 && (
-                                    <div className="flex flex-wrap gap-2 mb-2">
+                                    <div className="flex items-center gap-2 mb-2 overflow-x-auto no-scrollbar">
                                         {review.platforms.map((platform) => (
-                                            <span key={platform} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
+                                            <span key={platform} className="flex-shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
                                                 {platform}
                                             </span>
                                         ))}
                                     </div>
                                 )}
 
-                                {/* Badges */}
-                                <div className="flex flex-wrap gap-2 mb-2">
+                                {/* Status badges — own row, below platforms, same horizontal-scroll safety. */}
+                                <div className="flex items-center gap-2 mb-2 overflow-x-auto no-scrollbar">
                                     {review.playthrough_number && review.playthrough_number > 1 && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                        <span className="flex-shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                                             {review.playthrough_number === 2 ? '2nd' : review.playthrough_number === 3 ? '3rd' : `${review.playthrough_number}th`} {t('playthrough')}
                                         </span>
                                     )}
                                     {review.is_liked && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20">
+                                        <span className="flex-shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20">
                                             <Heart className="h-3 w-3 fill-current" /> {t('liked')}
                                         </span>
                                     )}
                                     {review.is_completed && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                        <span className="flex-shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                                             <Check className="h-3 w-3" /> {t('completed')}
                                         </span>
                                     )}
@@ -438,7 +469,7 @@ export default function ReviewCard({ review, isDetailView = false, repostedBy }:
                                                 e.stopPropagation();
                                                 setIsSpoilerVisible(!isSpoilerVisible);
                                             }}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors"
+                                            className="flex-shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors"
                                         >
                                             {isSpoilerVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                                             {t('spoilers')}

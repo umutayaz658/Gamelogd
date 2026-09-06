@@ -82,7 +82,7 @@ export default function ReviewDetailClient() {
                         ) : review ? (
                             <div className="flex flex-col gap-4">
                                 <div className="z-10 bg-zinc-950">
-                                    <ReviewCard review={review} isDetailView={true} />
+                                    <ReviewCard review={review} isDetailView={true} showAbsoluteTimestamp={true} />
                                 </div>
 
                                 {/* Reply Composer */}
