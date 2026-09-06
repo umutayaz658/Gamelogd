@@ -17,7 +17,11 @@ export default function robots(): MetadataRoute.Robots {
                 '/devs',
                 '/collabs',
                 '/invest',
-                '/login',
+                // '/login' is deliberately crawlable (unlike /register, /verify-email): it's a
+                // real, distinct route here (root '/' is a separate marketing page, unlike e.g.
+                // Twitter/X where the root domain doubles as the login screen), so indexing it
+                // is what makes a "Log In" sitelink possible at all — see Reddit's own search
+                // result for a working example of this exact pattern.
                 '/register',
                 '/verify-email',
                 '/*/recommended',
