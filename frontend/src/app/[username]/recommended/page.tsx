@@ -162,7 +162,7 @@ export default function RecommendedGamesPage() {
     const isMobile = useIsMobile();
     const username = params.username as string;
 
-    const hasPlatformLinked = !!user?.steam_id;
+    const hasPlatformLinked = !!user?.steam_id || !!user?.xbox_gamertag;
 
     const [games, setGames] = useState<GameItem[]>([]);
     const [friendsPlaying, setFriendsPlaying] = useState<GameItem[]>([]);
