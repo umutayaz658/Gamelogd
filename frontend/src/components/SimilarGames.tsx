@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import api from '@/lib/api';
-import { getMediaUrl } from '@/lib/utils';
+import { getMediaUrl, handleGameCoverError } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
 
 export default function SimilarGames({ currentId, genres }: { currentId: string, genres?: string[] }) {
@@ -69,7 +69,7 @@ export default function SimilarGames({ currentId, genres }: { currentId: string,
                             className="group relative aspect-[3/4] rounded-2xl overflow-hidden cursor-pointer shadow-lg hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] hover:ring-1 hover:ring-indigo-500/50 transition-all duration-500 transform hover:-translate-y-2 bg-zinc-900"
                         >
                             {coverUrl ? (
-                                <Image src={coverUrl} alt={game.title} fill className="object-cover transition-transform duration-700 group-hover:scale-110 group-hover:saturate-150" unoptimized />
+                                <Image src={coverUrl} alt={game.title} fill className="object-cover transition-transform duration-700 group-hover:scale-110 group-hover:saturate-150" unoptimized onError={handleGameCoverError} />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center bg-zinc-800">
                                     <span className="text-zinc-600 font-medium">{t('noCover')}</span>

@@ -9,7 +9,7 @@ import Navbar from '@/components/Navbar';
 import LeftSidebar from '@/components/LeftSidebar';
 import ReviewCard from '@/components/ReviewCard';
 import SimilarGames from '@/components/SimilarGames';
-import { getMediaUrl, getRatingTextClass } from '@/lib/utils';
+import { getMediaUrl, getRatingTextClass, handleGameCoverError } from '@/lib/utils';
 import Image from 'next/image';
 import { useLogModal } from '@/context/LogModalContext';
 import { useAuth } from '@/context/AuthContext';
@@ -272,7 +272,7 @@ export default function GameDetailClient() {
                     <div className="px-6 md:px-12 flex flex-col md:flex-row gap-8 relative -mt-24 md:-mt-32">
                         <div className="w-36 h-48 sm:w-48 sm:h-64 md:w-56 md:h-72 flex-shrink-0 rounded-xl overflow-hidden shadow-2xl border-4 border-zinc-950 relative z-20">
                             {coverUrl ? (
-                                <Image src={coverUrl} alt={game.title} fill className="object-cover" unoptimized />
+                                <Image src={coverUrl} alt={game.title} fill className="object-cover" unoptimized onError={handleGameCoverError} />
                             ) : (
                                 <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
                                     <span className="text-zinc-500 font-medium">{t('noCover')}</span>

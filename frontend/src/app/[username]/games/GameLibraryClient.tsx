@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import FilterDropdown from "@/components/FilterDropdown";
 import { Filter, ArrowUpDown, ArrowLeft, LayoutGrid, List, Gamepad2, Monitor, Play, Loader2 } from 'lucide-react';
-import { getImageUrl } from "@/lib/utils";
+import { getImageUrl, handleGameCoverError } from "@/lib/utils";
 import api from "@/lib/api";
 import Link from 'next/link';
 import { useAuth } from "@/context/AuthContext";
@@ -332,6 +332,7 @@ export default function GameLibraryClient({ username }: { username: string }) {
                                                     <img
                                                         src={getImageUrl(entry.game.cover_image)}
                                                         alt={entry.game.title}
+                                                        onError={handleGameCoverError}
                                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                                                     />
                                                 ) : (
@@ -412,7 +413,7 @@ export default function GameLibraryClient({ username }: { username: string }) {
                                         <div key={entry.id} className="relative flex items-center gap-4 p-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-800/50 transition-colors group">
                                             <div className="h-16 w-12 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-950">
                                                 {entry.game.cover_image ? (
-                                                    <img src={getImageUrl(entry.game.cover_image)} alt={entry.game.title} className="w-full h-full object-cover" />
+                                                    <img src={getImageUrl(entry.game.cover_image)} alt={entry.game.title} onError={handleGameCoverError} className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center text-zinc-700">
                                                         <Gamepad2 className="h-6 w-6" />
