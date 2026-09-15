@@ -20,7 +20,8 @@ function getCompany(name: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { name } = await params;
-    const company = await getCompany(name);
+    const decodedName = decodeURIComponent(name);
+    const company = await getCompany(decodedName);
     if (!company) {
         return { title: 'Developer not found' };
     }
@@ -31,7 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return {
         title: company.name,
         description,
-        alternates: { canonical: `/developer/${encodeURIComponent(name)}` },
+        alternates: { canonical: `/developer/${encodeURIComponent(decodedName)}` },
         openGraph: { title: company.name, description, images },
         twitter: { card: 'summary_large_image', title: company.name, description, images: images?.map(i => i.url) },
     };
@@ -39,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function DeveloperDetailPage({ params }: Props) {
     const { name } = await params;
-    const company = await getCompany(name);
+    const company = await getCompany(decodeURIComponent(name));
     if (!company) {
         notFound();
     }
