@@ -3,6 +3,7 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Gamepad2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { handleGameCoverError } from '@/lib/utils';
 
 export interface CarouselGame {
     id: number;
@@ -36,6 +37,7 @@ const GameCardContent = ({ game, isCenter, overlay }: { game: CarouselGame; isCe
                 <img
                     src={game.cover_image}
                     alt={game.title}
+                    onError={handleGameCoverError}
                     className="w-full h-full object-cover transition-transform duration-500"
                 />
             ) : (

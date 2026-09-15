@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { SyntheticEvent } from "react";
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -85,6 +86,21 @@ export const getImageUrl = (path: string | null | undefined, name?: string) => {
     // Final Fallback: Generic Placeholder
     return "https://placehold.co/400x600?text=No+Image";
 };
+
+/** Shown in place of a game cover whose URL fails to load (e.g. a stale/404ing CDN link). */
+export const GAME_COVER_FALLBACK = "https://placehold.co/400x600?text=No+Image";
+
+/**
+ * onError handler for plain <img> game covers: swaps to a placeholder once, so a broken
+ * source (a cover URL that no longer resolves) shows a graceful fallback instead of the
+ * browser's broken-image icon, without looping if the placeholder itself ever failed to load.
+ */
+export function handleGameCoverError(e: SyntheticEvent<HTMLImageElement>) {
+    const img = e.currentTarget;
+    if (img.src === GAME_COVER_FALLBACK) return;
+    img.onerror = null;
+    img.src = GAME_COVER_FALLBACK;
+}
 
 export interface AuthorDisplay {
     type: 'user' | 'organisation' | 'project';

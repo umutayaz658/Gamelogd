@@ -23,17 +23,18 @@ def fix_live_covers():
     print(f"Found {len(steam_games)} games needing Steam covers.")
     print(f"Found {len(igdb_games)} games needing IGDB covers.")
 
-    # Fix Steam covers instantly
+    # Fix Steam covers — validate each candidate URL (HEAD request) before assigning it.
+    # library_600x900.jpg only exists for standalone Steam apps; DLC-type apps (e.g. Witcher 3's
+    # Blood and Wine / Hearts of Stone) never get that asset and 404, so it can't be constructed
+    # blindly. get_steam_cover_url() checks the CDN and falls back to header.jpg (which DLCs do have).
     update_steam = []
     for g in steam_games:
-        # Steam CDN URL can be constructed directly without API calls
-        cover_url = f"https://steamcdn-a.akamaihd.net/steam/apps/{g.steam_appid}/library_600x900.jpg"
-        g.cover_image = cover_url
+        g.cover_image = get_steam_cover_url(g.steam_appid)
         update_steam.append(g)
-    
+
     if update_steam:
         Game.objects.bulk_update(update_steam, ['cover_image'])
-        print(f"Fixed {len(update_steam)} Steam covers instantly.")
+        print(f"Fixed {len(update_steam)} Steam covers (validated).")
 
     # Fix IGDB covers
     if not igdb_games:

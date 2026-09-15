@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, ChevronDown, LogIn, PlusCircle, Search, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLogModal } from '@/context/LogModalContext';
-import { getImageUrl, getMediaUrl } from '@/lib/utils';
+import { getImageUrl, getMediaUrl, handleGameCoverError } from '@/lib/utils';
 import api from '@/lib/api';
 import { useTranslation } from '@/lib/useTranslation';
 import { trackEvent } from '@/lib/analytics';
@@ -153,7 +153,7 @@ export default function Navbar() {
                                 >
                                     <div className={`w-10 h-13 rounded-md overflow-hidden flex-shrink-0 border border-zinc-700/50 ${isCompany ? 'bg-zinc-100 flex items-center justify-center p-1' : 'bg-zinc-800'}`}>
                                         {coverUrl ? (
-                                            <img src={coverUrl} alt={item.title || item.name} className={isCompany ? "w-full h-auto object-contain max-h-full" : "w-full h-full object-cover"} />
+                                            <img src={coverUrl} alt={item.title || item.name} onError={handleGameCoverError} className={isCompany ? "w-full h-auto object-contain max-h-full" : "w-full h-full object-cover"} />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center">
                                                 <Search className="w-4 h-4 text-zinc-600" />
@@ -201,7 +201,7 @@ export default function Navbar() {
                                 >
                                     <div className={`w-8 h-10 rounded overflow-hidden flex-shrink-0 border border-zinc-700/50 ${isCompany ? 'bg-zinc-100 flex items-center justify-center p-1' : 'bg-zinc-800'}`}>
                                         {coverUrl ? (
-                                            <img src={coverUrl} alt={item.title || item.name} className={isCompany ? "w-full h-auto object-contain max-h-full" : "w-full h-full object-cover"} />
+                                            <img src={coverUrl} alt={item.title || item.name} onError={handleGameCoverError} className={isCompany ? "w-full h-auto object-contain max-h-full" : "w-full h-full object-cover"} />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center">
                                                 <Search className="w-3 h-3 text-zinc-600" />

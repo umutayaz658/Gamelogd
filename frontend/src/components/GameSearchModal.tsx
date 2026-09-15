@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Search, Loader2, Calendar } from 'lucide-react';
 import api from '@/lib/api';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, handleGameCoverError } from '@/lib/utils';
 import { useTranslation } from '@/lib/useTranslation';
 
 interface Game {
@@ -98,7 +98,7 @@ export default function GameSearchModal({ isOpen, onClose, onSelectGame }: GameS
                                 >
                                     <div className="h-16 w-12 bg-zinc-800 rounded-lg overflow-hidden flex-shrink-0 border border-zinc-800 group-hover:border-zinc-700">
                                         {game.cover_image ? (
-                                            <img src={getImageUrl(game.cover_image)} alt={game.title} className="w-full h-full object-cover" />
+                                            <img src={getImageUrl(game.cover_image)} alt={game.title} onError={handleGameCoverError} className="w-full h-full object-cover" />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-zinc-600">
                                                 <Search className="h-4 w-4" />
