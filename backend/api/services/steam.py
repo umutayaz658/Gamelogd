@@ -348,7 +348,8 @@ def fetch_steam_library(user_id, steam_id):
                 continue  # Don't let one game failure stop all others
             
     except Exception as e:
-        print(f"Error fetching Steam library: {e}")
+        # Same URL-embeds-the-key leak risk as fetch_steam_currently_playing above.
+        print(f"Error fetching Steam library: {str(e).replace(api_key, '***')}")
         raise  # Re-raise so the view knows sync failed
     
     print(f"Steam sync complete: {stats['synced']}/{stats['total']} games synced, "
@@ -416,7 +417,10 @@ def fetch_steam_currently_playing(steam_id):
                 return status_data
 
     except Exception as e:
-        print(f"Error fetching Steam currently playing: {e}")
+        # requests embeds the full request URL (including ?key=...) in its exception
+        # message, so logging str(e) as-is leaks the API key into production logs —
+        # redact it before printing.
+        print(f"Error fetching Steam currently playing: {str(e).replace(api_key, '***')}")
 
     status_data = {
         "is_playing": False,

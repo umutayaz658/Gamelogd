@@ -2809,14 +2809,29 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
         if not expected_secret or client_secret != expected_secret:
             return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
 
+        # Guard against overlapping runs: the external cron pings this endpoint on its own
+        # schedule, so a slow/stuck previous run must not let a new raw thread pile up on
+        # top of it (unbounded thread/DB-connection growth with no caller to time it out).
+        from django.core.cache import cache
+        if not cache.add('fetch_news_running', True, timeout=600):
+            return Response({"message": "News fetch already running, skipping."}, status=status.HTTP_200_OK)
+
         # Run feedparser news fetching in a background thread to prevent http connection timeout
         def run_fetch():
+            from django.db import connections
             try:
                 call_command('fetch_news')
             except Exception as e:
                 print(f"Error in background fetch_news task: {e}")
+            finally:
+                # This thread never goes through Django's request/response cycle, so the
+                # request_finished signal that normally closes per-thread DB connections
+                # never fires here — without this, every run leaks one open connection
+                # (and the memory that comes with it) for the life of the process.
+                connections.close_all()
+                cache.delete('fetch_news_running')
 
-        threading.Thread(target=run_fetch).start()
+        threading.Thread(target=run_fetch, daemon=True).start()
         return Response({"message": "News fetch task started in background."}, status=status.HTTP_200_OK)
 
 from .serializers import LikeSerializer
