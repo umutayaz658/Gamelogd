@@ -1,4 +1,5 @@
 import feedparser
+import requests
 from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -29,8 +30,13 @@ class Command(BaseCommand):
         for source in sources:
             self.stdout.write(f"Fetching {source.name}...")
             try:
-                feed = feedparser.parse(source.rss_url)
-                
+                # feedparser.parse(url) does its own fetch internally with no timeout — a
+                # single slow/unresponsive RSS host can hang this call (and the thread this
+                # command runs in, for the HTTP-triggered cron path) indefinitely. Fetch with
+                # an explicit timeout ourselves and hand feedparser the bytes instead.
+                resp = requests.get(source.rss_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+                feed = feedparser.parse(resp.content)
+
                 for entry in feed.entries[:10]: # Limit to 10 latest
                     if News.objects.filter(link=entry.link).exists():
                         continue
