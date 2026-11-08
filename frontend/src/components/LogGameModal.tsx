@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Search, Loader2, ChevronLeft, Calendar, Check, RefreshCw } from 'lucide-react';
+import { X, Search, Loader2, ArrowLeft, ChevronLeft, Calendar, Check, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { getImageUrl, getRatingColor, getRatingTextClass } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -296,7 +296,185 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full flex flex-col md:flex-row h-full">
+                    <>
+                    {/* Mobile-only step 2 — a dedicated layout, not a responsive tweak of
+                        the desktop tree (same divergence pattern as ProfileClient.tsx's
+                        lg:hidden mobile blocks). A back-arrow + title replaces the X close
+                        button and doubles as the "change game" action (going back to step
+                        1) — desktop's hover-only "Change Game" overlay never shows on
+                        touch anyway, so this makes the same action an explicit, always-
+                        visible control instead. The game cover shrinks to a small
+                        thumbnail sized to match the 3-line text block beside it (fixed
+                        px, not CSS-derived) so everything — including the whole form
+                        below — fits on one screen without scrolling; only the review
+                        textarea is flex-1, so it's the one element that absorbs whatever
+                        vertical space is left (same technique the desktop column already
+                        uses, just also applied to the fields above it here). */}
+                    <div className="w-full h-full flex flex-col md:hidden">
+                        <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-800 shrink-0">
+                            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
+                                <button onClick={() => setStep(1)} className="flex items-center gap-1.5 text-left">
+                                    <ArrowLeft className="h-4 w-4 text-white shrink-0" />
+                                    <span className="text-sm font-bold text-white">
+                                        {isReplay ? t('logReplay') : existingReview ? t('editReview') : t('writeReview')}
+                                    </span>
+                                    {isReplay && (
+                                        <span className="text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full">
+                                            {nextPlaythrough === 2 ? '2nd' : nextPlaythrough === 3 ? '3rd' : `${nextPlaythrough}th`} {t('playthrough')}
+                                        </span>
+                                    )}
+                                </button>
+                                <h2 className="text-lg font-black text-white leading-tight truncate">{selectedGame?.title}</h2>
+                                {selectedGame?.release_date && (
+                                    <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium">
+                                        <Calendar className="h-3 w-3" />
+                                        <span>{selectedGame.release_date.split('-')[0]}</span>
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ width: 50, height: 66 }} className="shrink-0 rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900">
+                                {selectedGame?.cover_image ? (
+                                    <img
+                                        src={getImageUrl(selectedGame.cover_image)}
+                                        className="w-full h-full object-cover"
+                                        alt={selectedGame.title}
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <Search className="h-4 w-4 text-zinc-700" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-3">
+                            {/* Rating Slider */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t('rating')}</label>
+                                    <div className={`text-2xl font-black transition-colors ${getRatingTextClass(rating)}`}>{Number(rating || 0).toFixed(1)}</div>
+                                </div>
+                                <div className="relative h-6 flex items-center">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="10"
+                                        step="0.1"
+                                        value={rating}
+                                        onChange={(e) => setRating(parseFloat(e.target.value))}
+                                        style={{
+                                            background: `linear-gradient(to right, ${getRatingColor(rating)} ${rating * 10}%, #27272a ${rating * 10}%)`
+                                        }}
+                                        className="w-full h-3 rounded-full appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-xl [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Playtime & Platform */}
+                            <div className="grid grid-cols-2 gap-3 shrink-0">
+                                <div>
+                                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">{t('playtimeHoursLabel')}</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="50000"
+                                        value={playtimeHours}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '') { setPlaytimeHours(''); return; }
+                                            const num = Number(val);
+                                            if (num < 0 || num > 50000) return;
+                                            setPlaytimeHours(num);
+                                        }}
+                                        placeholder="e.g. 10"
+                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-600 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">{t('platform')}</label>
+                                    <FilterDropdown
+                                        label={t('selectPlatform')}
+                                        multiSelect
+                                        values={selectedPlatforms}
+                                        onChangeMulti={setSelectedPlatforms}
+                                        showAllOption={false}
+                                        showSelectionAccent={false}
+                                        matchTriggerWidth
+                                        fullWidth
+                                        options={(gamePlatforms.length > 0 ? gamePlatforms : DEFAULT_PLATFORMS)
+                                            .map((platform: string) => ({ value: platform, label: platform }))}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Review Text */}
+                            <div className="flex-1 flex flex-col min-h-0">
+                                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">{t('reviewOptional')}</label>
+                                <textarea
+                                    value={content}
+                                    onChange={(e) => setContent(e.target.value)}
+                                    placeholder={t('whatDidYouThink')}
+                                    className="flex-1 w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-200 focus:outline-none focus:border-emerald-500/50 transition-all resize-none placeholder:text-zinc-600 text-base leading-relaxed"
+                                />
+                            </div>
+
+                            {/* Toggles */}
+                            <div className="grid grid-cols-3 gap-2 shrink-0">
+                                <button
+                                    onClick={() => setIsLiked(!isLiked)}
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${isLiked ? 'border-pink-500 bg-pink-500/10 text-white' : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700'}`}
+                                >
+                                    <div className={`p-1.5 rounded-full ${isLiked ? 'bg-pink-500 text-white' : 'bg-zinc-800'}`}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={isLiked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>
+                                    </div>
+                                    <span className="font-bold text-xs">{t('liked')}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setIsCompleted(!isCompleted)}
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${isCompleted ? 'border-emerald-500 bg-emerald-500/10 text-white' : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700'}`}
+                                >
+                                    <div className={`p-1.5 rounded-full ${isCompleted ? 'bg-emerald-500 text-white' : 'bg-zinc-800'}`}>
+                                        <Check className="h-4 w-4" />
+                                    </div>
+                                    <span className="font-bold text-xs">{t('completed')}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setContainsSpoilers(!containsSpoilers)}
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${containsSpoilers ? 'border-amber-500 bg-amber-500/10 text-white' : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700'}`}
+                                >
+                                    <div className={`p-1.5 rounded-full ${containsSpoilers ? 'bg-amber-500 text-white' : 'bg-zinc-800'}`}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /><path d="M2 2l20 20" /></svg>
+                                    </div>
+                                    <span className="font-bold text-xs">{t('spoilers')}</span>
+                                </button>
+                            </div>
+
+                            {submitError && (
+                                <div className="px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-medium flex items-center gap-2 shrink-0">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+                                    {submitError}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end gap-3 shrink-0">
+                            <button onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm">
+                                {t('cancel')}
+                            </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={!selectedGame || isSubmitting}
+                                className="px-6 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 text-sm"
+                            >
+                                {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
+                                {isReplay ? t('logReplay') : existingReview ? t('updateLog') : t('logActivity')}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="hidden md:flex w-full md:flex-row h-full">
                         {/* Left Column: Game Info (Clickable to change game) */}
                         <button
                             onClick={() => setStep(1)}
@@ -487,6 +665,7 @@ export default function LogGameModal({ isOpen, onClose, onSuccess, initialGame, 
                             </div>
                         </div>
                     </div>
+                    </>
                 )}
             </div>
         </div>
