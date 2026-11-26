@@ -358,6 +358,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         
         import threading
         def run_sync():
+            from django.db import connections
             from api.services.steam import fetch_steam_library
             try:
                 stats = fetch_steam_library(user.id, steam_id)
@@ -377,7 +378,12 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                     verb='Steam library sync failed. Please check your privacy settings.',
                     notification_type='steam_sync_failed',
                 )
-        threading.Thread(target=run_sync, daemon=False).start()
+            finally:
+                # This thread never goes through Django's request/response cycle, so the
+                # request_finished signal that normally closes per-thread DB connections
+                # never fires here — without this, every Steam sync leaks one open connection.
+                connections.close_all()
+        threading.Thread(target=run_sync, daemon=True).start()
         
         return HttpResponseRedirect(f"{frontend_url}/settings?sync=steam_success")
 
@@ -440,6 +446,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         
         import threading
         def run_sync():
+            from django.db import connections
             from api.services.xbox import sync_xbox_library
             try:
                 sync_xbox_library(user, xuid, xsts_token, user_hash)
@@ -455,7 +462,12 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                     actor=user,
                     verb='Xbox library sync failed. Please check your Xbox Live privacy settings.'
                 )
-        threading.Thread(target=run_sync, daemon=False).start()
+            finally:
+                # This thread never goes through Django's request/response cycle, so the
+                # request_finished signal that normally closes per-thread DB connections
+                # never fires here — without this, every Xbox sync leaks one open connection.
+                connections.close_all()
+        threading.Thread(target=run_sync, daemon=True).start()
         
         return HttpResponseRedirect(f"{frontend_url}/settings?sync=xbox_success")
 
